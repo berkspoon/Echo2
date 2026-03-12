@@ -1,0 +1,160 @@
+<!-- Tasks list table partial (HTMX target) -->
+{% set base_url = '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' %}
+{% set filter_params = 'q=' ~ (search or '') ~ '&status=' ~ (status_filter or '') ~ '&assignee=' ~ (assignee_filter or '') ~ '&source=' ~ (source_filter or '') ~ '&overdue=' ~ (overdue_only or '') ~ '&from=' ~ (date_from or '') ~ '&to=' ~ (date_to or '') %}
+
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <!-- Status (not sortable — has action buttons) -->
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">Status</th>
+
+                {% macro sort_header(col, label) %}
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    hx-get="{{ base_url }}?{{ filter_params }}&sort_by={{ col }}&sort_dir={{ 'desc' if sort_by == col and sort_dir == 'asc' else 'asc' }}"
+                    hx-target="#tasks-list-container" hx-push-url="true">
+                    <div class="flex items-center gap-1">
+                        {{ label }}
+                        {% if sort_by == col %}
+                        <svg class="h-3 w-3 {{ 'rotate-180' if sort_dir == 'desc' else '' }}" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+                        {% endif %}
+                    </div>
+                </th>
+                {% endmacro %}
+
+                {{ sort_header("title", "Title") }}
+                {{ sort_header("due_date", "Due Date") }}
+                {% if view_mode == 'all_tasks' %}
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                {% endif %}
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Linked Record</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% if tasks %}
+            {% for task in tasks %}
+            <tr class="hover:bg-gray-50 cursor-pointer {{ 'bg-red-50' if task.is_overdue else '' }}" onclick="window.location='/tasks/{{ task.id }}'">
+                <!-- Status + Quick Action -->
+                <td class="px-4 py-3 text-sm whitespace-nowrap" onclick="event.stopPropagation()">
+                    <div id="task-status-{{ task.id }}">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                            {% if task.status == 'open' %}bg-yellow-100 text-yellow-800
+                            {% elif task.status == 'in_progress' %}bg-blue-100 text-blue-800
+                            {% elif task.status == 'complete' %}bg-green-100 text-green-800
+                            {% elif task.status == 'cancelled' %}bg-gray-100 text-gray-500
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ (task.status or '') | replace('_', ' ') | title }}
+                        </span>
+                        {% if task.status == 'open' %}
+                        <button hx-post="/tasks/{{ task.id }}/status"
+                                hx-vals='{"status": "in_progress"}'
+                                hx-target="#task-status-{{ task.id }}" hx-swap="innerHTML"
+                                class="ml-1 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200">
+                            Start
+                        </button>
+                        {% elif task.status == 'in_progress' %}
+                        <button hx-post="/tasks/{{ task.id }}/status"
+                                hx-vals='{"status": "complete"}'
+                                hx-target="#task-status-{{ task.id }}" hx-swap="innerHTML"
+                                class="ml-1 text-xs px-2 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200">
+                            Complete
+                        </button>
+                        {% endif %}
+                    </div>
+                </td>
+
+                <!-- Title -->
+                <td class="px-4 py-3 text-sm">
+                    <div class="font-medium text-brand-600 hover:text-brand-700">
+                        {{ task.title or 'Untitled' }}
+                    </div>
+                    {% if task.notes %}
+                    <p class="text-xs text-gray-400 mt-1 truncate max-w-md">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</p>
+                    {% endif %}
+                </td>
+
+                <!-- Due Date -->
+                <td class="px-4 py-3 text-sm whitespace-nowrap {{ 'text-red-600 font-semibold' if task.is_overdue else 'text-gray-600' }}">
+                    {{ task.due_date[:10] if task.due_date else '—' }}
+                    {% if task.is_overdue %}
+                    <span class="ml-1 text-xs text-red-500">(overdue)</span>
+                    {% endif %}
+                </td>
+
+                <!-- Assigned To (all tasks only) -->
+                {% if view_mode == 'all_tasks' %}
+                <td class="px-4 py-3 text-sm text-gray-600">{{ task.assigned_to_name or '—' }}</td>
+                {% endif %}
+
+                <!-- Source -->
+                <td class="px-4 py-3 text-sm whitespace-nowrap">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                        {% if task.source == 'manual' %}bg-gray-100 text-gray-700
+                        {% elif task.source == 'activity_follow_up' %}bg-blue-100 text-blue-700
+                        {% elif task.source == 'lead_next_steps' %}bg-purple-100 text-purple-700
+                        {% elif task.source == 'fund_prospect_next_steps' %}bg-indigo-100 text-indigo-700
+                        {% else %}bg-gray-100 text-gray-700{% endif %}">
+                        {{ task.source_label or 'Manual' }}
+                    </span>
+                </td>
+
+                <!-- Linked Record -->
+                <td class="px-4 py-3 text-sm" onclick="event.stopPropagation()">
+                    {% if task.linked_record_info %}
+                    <a href="{{ task.linked_record_info.url }}" class="text-brand-600 hover:underline text-sm">
+                        {{ task.linked_record_info.name }}
+                    </a>
+                    {% if task.linked_record_info.subtitle %}
+                    <p class="text-xs text-gray-400 truncate max-w-xs">{{ task.linked_record_info.subtitle }}</p>
+                    {% endif %}
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr>
+                <td colspan="{{ 6 if view_mode == 'all_tasks' else 5 }}" class="px-4 py-8 text-center text-sm text-gray-500">
+                    No tasks found.
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
+        <p class="text-sm text-gray-500">
+            Showing {{ ((page - 1) * page_size) + 1 }}–{{ [page * page_size, total_count] | min }} of {{ total_count }}
+        </p>
+        <div class="flex gap-1">
+            {% if page > 1 %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="{{ base_url }}?{{ filter_params }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page - 1 }}"
+                    hx-target="#tasks-list-container" hx-push-url="true">Prev</button>
+            {% endif %}
+
+            {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <span class="px-3 py-1 text-sm rounded bg-brand-500 text-white">{{ p }}</span>
+            {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="{{ base_url }}?{{ filter_params }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ p }}"
+                    hx-target="#tasks-list-container" hx-push-url="true">{{ p }}</button>
+            {% elif p == 4 or p == total_pages - 3 %}
+            <span class="px-3 py-1 text-sm text-gray-400">…</span>
+            {% endif %}
+            {% endfor %}
+
+            {% if page < total_pages %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="{{ base_url }}?{{ filter_params }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page + 1 }}"
+                    hx-target="#tasks-list-container" hx-push-url="true">Next</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>

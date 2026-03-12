@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}{{ 'My Tasks' if view_mode == 'my_tasks' else 'All Tasks' }} — Echo 2.0{% endblock %}
+{% block page_title %}{{ 'My Tasks' if view_mode == 'my_tasks' else 'Tasks' }}{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+    <!-- Header row -->
+    <div class="flex items-center justify-between">
+        <div>
+            <div class="flex items-center gap-4 mb-1">
+                <a href="/tasks/my-tasks"
+                   class="text-sm font-medium px-3 py-1 rounded-md {{ 'bg-brand-500 text-white' if view_mode == 'my_tasks' else 'text-gray-600 hover:bg-gray-100' }}">
+                    My Tasks
+                </a>
+                <a href="/tasks/"
+                   class="text-sm font-medium px-3 py-1 rounded-md {{ 'bg-brand-500 text-white' if view_mode == 'all_tasks' else 'text-gray-600 hover:bg-gray-100' }}">
+                    All Tasks
+                </a>
+            </div>
+            <p class="text-sm text-gray-500">{{ total_count }} task{{ 's' if total_count != 1 else '' }}</p>
+        </div>
+        {% if user.role in ['admin', 'standard_user', 'rfp_team'] %}
+        <a href="/tasks/new"
+           class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            New Task
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <form id="filter-form" hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-target="#tasks-list-container" hx-push-url="true" class="flex flex-wrap items-end gap-4">
+
+            {% if view_mode == 'all_tasks' %}
+            <!-- Search (all tasks only) -->
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Search</label>
+                <input type="text" name="q" value="{{ search }}"
+                       placeholder="Search by title or notes..."
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/tasks/" hx-trigger="keyup changed delay:400ms" hx-target="#tasks-list-container" hx-push-url="true" hx-include="#filter-form">
+            </div>
+            {% endif %}
+
+            <!-- Status -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                <select name="status"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Statuses</option>
+                    {% for s in statuses %}
+                    <option value="{{ s.value }}" {{ 'selected' if status_filter == s.value else '' }}>{{ s.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            {% if view_mode == 'all_tasks' %}
+            <!-- Assignee (all tasks only) -->
+            <div class="w-44">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Assignee</label>
+                <select name="assignee"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/tasks/" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Assignees</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}" {{ 'selected' if assignee_filter == u.id|string else '' }}>{{ u.display_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Source (all tasks only) -->
+            <div class="w-44">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Source</label>
+                <select name="source"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/tasks/" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Sources</option>
+                    <option value="manual" {{ 'selected' if source_filter == 'manual' else '' }}>Manual</option>
+                    <option value="activity_follow_up" {{ 'selected' if source_filter == 'activity_follow_up' else '' }}>Activity Follow-Up</option>
+                    <option value="lead_next_steps" {{ 'selected' if source_filter == 'lead_next_steps' else '' }}>Lead Next Steps</option>
+                    <option value="fund_prospect_next_steps" {{ 'selected' if source_filter == 'fund_prospect_next_steps' else '' }}>Fund Prospect Next Steps</option>
+                </select>
+            </div>
+            {% endif %}
+
+            <!-- Overdue only -->
+            <div class="flex items-center pt-5">
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" name="overdue" value="true"
+                           {{ 'checked' if overdue_only == 'true' else '' }}
+                           class="h-4 w-4 rounded border-gray-300 text-red-500 focus:ring-red-500"
+                           hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <span class="text-xs font-medium text-red-600">Overdue only</span>
+                </label>
+            </div>
+
+            <!-- Date From -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Due From</label>
+                <input type="date" name="from" value="{{ date_from }}"
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+            </div>
+
+            <!-- Date To -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Due To</label>
+                <input type="date" name="to" value="{{ date_to }}"
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+            </div>
+
+            <input type="hidden" name="sort_by" value="{{ sort_by }}">
+            <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
+        </form>
+    </div>
+
+    <!-- Table -->
+    <div id="tasks-list-container">
+        {% include "tasks/_list_table.html" %}
+    </div>
+
+</div>
+{% endblock %}

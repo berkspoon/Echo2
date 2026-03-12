@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python3:*)",
       "Bash(python -c \":*)",
-      "Bash(python -c \"import py_compile; py_compile.compile\\(''routers/fund_prospects.py'', doraise=True\\); print\\(''Syntax OK''\\)\")"
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''routers/fund_prospects.py'', doraise=True\\); print\\(''Syntax OK''\\)\")",
+      "Bash(python:*)"
     ]
   }
 }
