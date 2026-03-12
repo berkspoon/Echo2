@@ -1,9 +1,249 @@
 {% extends "base.html" %}
-{% block title %}Fund Prospect — Echo 2.0{% endblock %}
+{% block title %}Fund Prospect — {{ org_name }} — {{ fund_info.ticker }} — Echo 2.0{% endblock %}
 {% block page_title %}Fund Prospect Detail{% endblock %}
 
 {% block content %}
-<div class="bg-white rounded-lg shadow p-6">
-    <p class="text-sm text-gray-500">Fund prospect detail view — stub</p>
+<div class="space-y-6">
+
+    <!-- Prospect Header Card -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="p-6">
+            <div class="flex items-start justify-between">
+                <div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <h2 class="text-xl font-bold text-gray-900">
+                            <a href="/organizations/{{ prospect.organization_id }}" class="text-brand-600 hover:underline">{{ org_name }}</a>
+                        </h2>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-mono font-medium bg-gray-100 text-gray-800">{{ fund_info.ticker }}</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                            {% if prospect.share_class == 'domestic' %}bg-blue-50 text-blue-700
+                            {% else %}bg-teal-50 text-teal-700{% endif %}">
+                            {{ prospect.share_class | title }}
+                        </span>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                            {% if prospect.stage == 'target_identified' %}bg-gray-100 text-gray-800
+                            {% elif prospect.stage == 'intro_scheduled' %}bg-blue-100 text-blue-800
+                            {% elif prospect.stage == 'initial_meeting_complete' %}bg-indigo-100 text-indigo-800
+                            {% elif prospect.stage == 'ddq_materials_sent' %}bg-cyan-100 text-cyan-800
+                            {% elif prospect.stage == 'due_diligence' %}bg-yellow-100 text-yellow-800
+                            {% elif prospect.stage == 'ic_review' %}bg-orange-100 text-orange-800
+                            {% elif prospect.stage == 'soft_circle' %}bg-purple-100 text-purple-800
+                            {% elif prospect.stage == 'legal_docs' %}bg-pink-100 text-pink-800
+                            {% elif prospect.stage == 'closed' %}bg-green-100 text-green-800
+                            {% elif prospect.stage == 'declined' %}bg-red-100 text-red-800
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ stage_labels.get(prospect.stage, prospect.stage | replace('_', ' ') | title) }}
+                        </span>
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">{{ fund_info.fund_name }} — {{ fund_info.brand }}</p>
+                </div>
+                <div class="flex gap-2">
+                    <a href="/fund-prospects/{{ prospect.id }}/edit"
+                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm">
+                        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        Edit
+                    </a>
+                    {% if user.role == 'admin' %}
+                    <button hx-post="/fund-prospects/{{ prospect.id }}/archive" hx-confirm="Are you sure you want to archive this fund prospect?"
+                            class="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 shadow-sm">
+                        Archive
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Stage Progress Bar -->
+            <div class="mt-6">
+                {% set current_stage = stage_order.get(prospect.stage, 1) %}
+                {% set pipeline_stages = [
+                    ('target_identified', 'Target', 1),
+                    ('intro_scheduled', 'Intro', 2),
+                    ('initial_meeting_complete', 'Meeting', 3),
+                    ('ddq_materials_sent', 'DDQ', 4),
+                    ('due_diligence', 'Diligence', 5),
+                    ('ic_review', 'IC Review', 6),
+                    ('soft_circle', 'Soft Circle', 7),
+                    ('legal_docs', 'Legal', 8),
+                ] %}
+                <div class="flex items-center gap-1">
+                    {% for val, label, order in pipeline_stages %}
+                    <div class="flex-1">
+                        <div class="h-2 rounded-full {{ 'bg-brand-500' if current_stage >= order and prospect.stage != 'declined' else 'bg-gray-200' }}"></div>
+                        <p class="mt-1 text-xs {{ 'text-brand-600 font-medium' if prospect.stage == val else 'text-gray-400' }} truncate">{{ label }}</p>
+                    </div>
+                    {% endfor %}
+                    <div class="flex-1">
+                        {% if prospect.stage == 'closed' %}
+                        <div class="h-2 rounded-full bg-green-500"></div>
+                        <p class="mt-1 text-xs text-green-600 font-medium">Closed</p>
+                        {% elif prospect.stage == 'declined' %}
+                        <div class="h-2 rounded-full bg-red-500"></div>
+                        <p class="mt-1 text-xs text-red-600 font-medium">Declined</p>
+                        {% else %}
+                        <div class="h-2 rounded-full bg-gray-200"></div>
+                        <p class="mt-1 text-xs text-gray-400">Outcome</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Allocation Metrics Grid -->
+            <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Target Allocation</dt>
+                    <dd class="mt-1 text-lg font-semibold text-gray-900">
+                        {% if prospect.target_allocation_mn is not none %}${{ '{:,.1f}'.format(prospect.target_allocation_mn) }}mn{% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Soft Circle</dt>
+                    <dd class="mt-1 text-lg font-semibold text-gray-900">
+                        {% if prospect.soft_circle_mn is not none %}${{ '{:,.1f}'.format(prospect.soft_circle_mn) }}mn{% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Hard Circle</dt>
+                    <dd class="mt-1 text-lg font-semibold text-gray-900">
+                        {% if prospect.hard_circle_mn is not none %}${{ '{:,.1f}'.format(prospect.hard_circle_mn) }}mn{% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Probability</dt>
+                    <dd class="mt-1 text-lg font-semibold text-gray-900">
+                        {% if prospect.probability_pct is not none %}{{ prospect.probability_pct }}%{% else %}—{% endif %}
+                    </dd>
+                </div>
+            </div>
+
+            <!-- Info Grid -->
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Aksia Owner</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ owner_name }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Stage Entry Date</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ prospect.stage_entry_date or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Created</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ prospect.created_at[:10] if prospect.created_at else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Last Updated</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ prospect.updated_at[:10] if prospect.updated_at else '—' }}</dd>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Decline Reason (only when declined) -->
+    {% if prospect.stage == 'declined' and prospect.decline_reason %}
+    <div class="bg-white rounded-lg shadow border-l-4 border-red-400">
+        <div class="p-6">
+            <h3 class="text-sm font-semibold text-red-800 uppercase tracking-wider mb-2">Decline Reason</h3>
+            <p class="text-sm text-gray-900">{{ decline_labels.get(prospect.decline_reason, prospect.decline_reason | replace('_', ' ') | title) }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Linked Lead (if any) -->
+    {% if linked_lead %}
+    <div class="bg-white rounded-lg shadow border-l-4 border-brand-400">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Linked Advisory Lead</h3>
+        </div>
+        <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Lead Summary</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    <a href="/leads/{{ linked_lead.id }}" class="text-brand-600 hover:underline">{{ linked_lead.summary or 'Untitled Lead' }}</a>
+                </dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Lead Stage</dt>
+                <dd class="mt-1 text-sm">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                        {% if linked_lead.rating == 'exploratory' %}bg-gray-100 text-gray-800
+                        {% elif linked_lead.rating == 'radar' %}bg-blue-100 text-blue-800
+                        {% elif linked_lead.rating == 'focus' %}bg-yellow-100 text-yellow-800
+                        {% elif linked_lead.rating == 'verbal_mandate' %}bg-purple-100 text-purple-800
+                        {% elif linked_lead.rating == 'won' %}bg-green-100 text-green-800
+                        {% else %}bg-red-100 text-red-800{% endif %}">
+                        {{ linked_lead.rating | replace('_', ' ') | title }}
+                    </span>
+                </dd>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Next Steps -->
+    {% if prospect.next_steps or prospect.next_steps_date %}
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Next Steps</h3>
+        </div>
+        <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Next Steps</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ prospect.next_steps or '—' }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Next Steps Date</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ prospect.next_steps_date or '—' }}</dd>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Notes -->
+    {% if prospect.notes %}
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Notes</h3>
+        </div>
+        <div class="p-6">
+            <p class="text-sm text-gray-900 whitespace-pre-wrap">{{ prospect.notes }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Related Tasks -->
+    {% if related_tasks %}
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+                Related Tasks
+                <span class="ml-1 text-xs text-gray-400 font-normal">({{ related_tasks | length }})</span>
+            </h3>
+        </div>
+        <div class="p-6">
+            <ul class="space-y-2">
+                {% for task in related_tasks %}
+                <li class="flex items-center gap-2 text-sm">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                        {% if task.status == 'complete' %}bg-green-100 text-green-800
+                        {% elif task.status == 'in_progress' %}bg-blue-100 text-blue-800
+                        {% elif task.status == 'cancelled' %}bg-gray-100 text-gray-500
+                        {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                        {{ task.status | replace('_', ' ') | title }}
+                    </span>
+                    <span class="text-gray-700">{{ task.title }}</span>
+                    {% if task.due_date %}
+                    <span class="text-xs text-gray-400">Due: {{ task.due_date }}</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Back link -->
+    <div>
+        <a href="/fund-prospects" class="text-sm text-brand-600 hover:underline">&larr; Back to Capital Raise Pipeline</a>
+    </div>
+
 </div>
 {% endblock %}

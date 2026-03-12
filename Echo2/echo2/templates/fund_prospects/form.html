@@ -1,9 +1,284 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if prospect else 'New' }} Fund Prospect — Echo 2.0{% endblock %}
-{% block page_title %}{{ 'Edit' if prospect else 'New' }} Fund Prospect{% endblock %}
+{% block title %}{{ 'Edit' if prospect and prospect.id is defined else 'New' }} Fund Prospect — Echo 2.0{% endblock %}
+{% block page_title %}{{ 'Edit Fund Prospect' if prospect and prospect.id is defined else 'New Fund Prospect' }}{% endblock %}
 
 {% block content %}
-<form class="bg-white rounded-lg shadow p-6 space-y-6" method="post">
-    <p class="text-sm text-gray-500">Fund prospect form — stub</p>
+<form class="space-y-6" method="post"
+      action="{{ '/fund-prospects/' + prospect.id|string if prospect and prospect.id is defined else '/fund-prospects/' }}">
+
+    {% if errors is defined and errors %}
+    <div class="rounded-md bg-red-50 border border-red-200 p-4">
+        <ul class="list-disc list-inside text-sm text-red-700">
+            {% for err in errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- ===== Section 1: Core Information ===== -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Core Information</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <!-- Organization (single-select autocomplete) -->
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700">Organization <span class="text-red-500">*</span></label>
+                <div id="org-selected" class="{{ 'hidden' if not pre_org else '' }}">
+                    <div class="mt-1 flex items-center gap-2 bg-brand-50 rounded-md px-3 py-2">
+                        <input type="hidden" name="organization_id" id="organization_id"
+                               value="{{ pre_org.id if pre_org else '' }}">
+                        <span id="org-selected-name" class="text-sm font-medium text-brand-700">{{ pre_org.company_name if pre_org else '' }}</span>
+                        <button type="button" onclick="clearOrg()" class="ml-auto text-brand-400 hover:text-brand-600">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="org-search-wrapper" class="{{ 'hidden' if pre_org else '' }}">
+                    <div class="relative mt-1">
+                        <input type="text" id="org-search-input"
+                               placeholder="Start typing to search organizations..."
+                               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                               hx-get="/fund-prospects/search-orgs"
+                               hx-trigger="keyup changed delay:300ms"
+                               hx-target="#org-search-results"
+                               name="q"
+                               autocomplete="off">
+                        <div id="org-search-results" class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fund -->
+            <div>
+                <label for="fund_id" class="block text-sm font-medium text-gray-700">Fund <span class="text-red-500">*</span></label>
+                <select name="fund_id" id="fund_id" required
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select Fund —</option>
+                    {% for f in funds %}
+                    <option value="{{ f.id }}" {{ 'selected' if prospect and prospect.fund_id and prospect.fund_id|string == f.id|string else '' }}>
+                        {{ f.ticker }} — {{ f.fund_name }} ({{ f.brand }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Share Class -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Share Class <span class="text-red-500">*</span></label>
+                <div class="mt-2 flex gap-6">
+                    <label class="flex items-center gap-2">
+                        <input type="radio" name="share_class" value="domestic"
+                               {{ 'checked' if prospect and prospect.share_class == 'domestic' else ('checked' if not prospect else '') }}
+                               class="h-4 w-4 border-gray-300 text-brand-500 focus:ring-brand-500">
+                        <span class="text-sm text-gray-700">Domestic</span>
+                    </label>
+                    <label class="flex items-center gap-2">
+                        <input type="radio" name="share_class" value="offshore"
+                               {{ 'checked' if prospect and prospect.share_class == 'offshore' else '' }}
+                               class="h-4 w-4 border-gray-300 text-brand-500 focus:ring-brand-500">
+                        <span class="text-sm text-gray-700">Offshore</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Stage -->
+            <div>
+                <label for="stage" class="block text-sm font-medium text-gray-700">Stage <span class="text-red-500">*</span></label>
+                <select name="stage" id="stage" required
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="updateConditionalFields()">
+                    {% for s in stages %}
+                    <option value="{{ s.value }}" {{ 'selected' if prospect and prospect.stage == s.value else ('selected' if not prospect and s.value == 'target_identified' else '') }}>{{ s.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Decline Reason (conditional: stage=declined) -->
+            <div id="decline-reason-wrapper" class="{{ '' if prospect and prospect.stage == 'declined' else 'hidden' }}">
+                <label for="decline_reason" class="block text-sm font-medium text-gray-700">Decline Reason <span class="text-red-500">*</span></label>
+                <select name="decline_reason" id="decline_reason"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for dr in decline_reasons %}
+                    <option value="{{ dr.value }}" {{ 'selected' if prospect and prospect.decline_reason == dr.value else '' }}>{{ dr.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Aksia Owner -->
+            <div>
+                <label for="aksia_owner_id" class="block text-sm font-medium text-gray-700">Aksia Owner <span class="text-red-500">*</span></label>
+                <select name="aksia_owner_id" id="aksia_owner_id"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}"
+                        {{ 'selected' if (prospect and prospect.aksia_owner_id and prospect.aksia_owner_id|string == u.id|string) or (not prospect and user.id|string == u.id|string) else '' }}>
+                        {{ u.display_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Section 2: Allocations & Probability ===== -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Allocations & Probability</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+            <!-- Target Allocation -->
+            <div>
+                <label for="target_allocation_mn" class="block text-sm font-medium text-gray-700">Target Allocation ($mn)</label>
+                <input type="number" name="target_allocation_mn" id="target_allocation_mn" step="0.01" min="0"
+                       value="{{ prospect.target_allocation_mn if prospect and prospect.target_allocation_mn is not none else '' }}"
+                       placeholder="0.00"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Soft Circle -->
+            <div>
+                <label for="soft_circle_mn" class="block text-sm font-medium text-gray-700">Soft Circle ($mn)</label>
+                <input type="number" name="soft_circle_mn" id="soft_circle_mn" step="0.01" min="0"
+                       value="{{ prospect.soft_circle_mn if prospect and prospect.soft_circle_mn is not none else '' }}"
+                       placeholder="0.00"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Hard Circle -->
+            <div>
+                <label for="hard_circle_mn" class="block text-sm font-medium text-gray-700">Hard Circle ($mn)</label>
+                <input type="number" name="hard_circle_mn" id="hard_circle_mn" step="0.01" min="0"
+                       value="{{ prospect.hard_circle_mn if prospect and prospect.hard_circle_mn is not none else '' }}"
+                       placeholder="0.00"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Probability -->
+            <div>
+                <label for="probability_pct" class="block text-sm font-medium text-gray-700">Probability (%)</label>
+                <input type="number" name="probability_pct" id="probability_pct" min="0" max="100" step="1"
+                       value="{{ prospect.probability_pct if prospect and prospect.probability_pct is not none else '' }}"
+                       placeholder="0–100"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Section 3: Related Records & Notes ===== -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Related Records & Notes</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <!-- Linked Lead -->
+            <div>
+                <label for="linked_lead_id" class="block text-sm font-medium text-gray-700">Linked Advisory Lead</label>
+                <select name="linked_lead_id" id="linked_lead_id"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— None —</option>
+                    {% for lead in leads_for_org %}
+                    <option value="{{ lead.id }}" {{ 'selected' if prospect and prospect.linked_lead_id and prospect.linked_lead_id|string == lead.id|string else '' }}>
+                        {{ lead.summary or 'Untitled Lead' }} ({{ lead.rating | replace('_', ' ') | title }})
+                    </option>
+                    {% endfor %}
+                </select>
+                <p class="mt-1 text-xs text-gray-400">Leads for the selected organization</p>
+            </div>
+
+            <!-- Spacer for alignment -->
+            <div></div>
+
+            <!-- Next Steps -->
+            <div>
+                <label for="next_steps" class="block text-sm font-medium text-gray-700">Next Steps</label>
+                <textarea name="next_steps" id="next_steps" rows="2"
+                          oninput="updateConditionalFields()"
+                          class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ prospect.next_steps if prospect and prospect.next_steps else '' }}</textarea>
+            </div>
+
+            <!-- Next Steps Date -->
+            <div id="next-steps-date-wrapper" class="{{ '' if prospect and prospect.next_steps else 'hidden' }}">
+                <label for="next_steps_date" class="block text-sm font-medium text-gray-700">Next Steps Date</label>
+                <input type="date" name="next_steps_date" id="next_steps_date"
+                       value="{{ prospect.next_steps_date if prospect and prospect.next_steps_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                <p class="mt-1 text-xs text-gray-400">Setting a date auto-generates a task assigned to the Aksia Owner.</p>
+            </div>
+
+            <!-- Notes -->
+            <div class="md:col-span-2">
+                <label for="notes" class="block text-sm font-medium text-gray-700">Notes</label>
+                <textarea name="notes" id="notes" rows="4"
+                          class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ prospect.notes if prospect and prospect.notes else '' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="flex items-center justify-end gap-3">
+        <a href="{{ '/fund-prospects/' + prospect.id|string if prospect and prospect.id is defined else '/fund-prospects' }}"
+           class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            Cancel
+        </a>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            {{ 'Save Changes' if prospect and prospect.id is defined else 'Create Fund Prospect' }}
+        </button>
+    </div>
+
 </form>
+
+{% block scripts %}
+<script>
+/* --- Conditional field visibility --- */
+function updateConditionalFields() {
+    // Decline reason: show when stage = declined
+    const stage = document.getElementById('stage').value;
+    document.getElementById('decline-reason-wrapper').classList.toggle('hidden', stage !== 'declined');
+
+    // Next steps date: show when next_steps has text
+    const nextSteps = document.getElementById('next_steps').value.trim();
+    document.getElementById('next-steps-date-wrapper').classList.toggle('hidden', nextSteps === '');
+}
+
+/* --- Org single-select autocomplete --- */
+function selectOrg(orgId, orgName) {
+    document.getElementById('organization_id').value = orgId;
+    document.getElementById('org-selected-name').textContent = orgName;
+    document.getElementById('org-selected').classList.remove('hidden');
+    document.getElementById('org-search-wrapper').classList.add('hidden');
+    document.getElementById('org-search-results').innerHTML = '';
+
+    // Refresh linked lead dropdown for the new org
+    const leadSelect = document.getElementById('linked_lead_id');
+    if (leadSelect) {
+        leadSelect.innerHTML = '<option value="">Loading...</option>';
+        fetch('/fund-prospects/leads-for-org?org=' + orgId, {
+            headers: { 'HX-Request': 'true' }
+        })
+        .then(r => r.text())
+        .then(html => { leadSelect.innerHTML = html; });
+    }
+}
+
+function clearOrg() {
+    document.getElementById('organization_id').value = '';
+    document.getElementById('org-selected').classList.add('hidden');
+    document.getElementById('org-search-wrapper').classList.remove('hidden');
+    document.getElementById('org-search-input').value = '';
+
+    // Clear linked lead dropdown
+    const leadSelect = document.getElementById('linked_lead_id');
+    if (leadSelect) {
+        leadSelect.innerHTML = '<option value="">— None —</option>';
+    }
+}
+
+/* --- Init on page load --- */
+document.addEventListener('DOMContentLoaded', function() {
+    updateConditionalFields();
+});
+</script>
+{% endblock %}
 {% endblock %}

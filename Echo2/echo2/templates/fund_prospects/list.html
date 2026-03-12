@@ -1,15 +1,111 @@
 {% extends "base.html" %}
 {% block title %}Fund Prospects — Echo 2.0{% endblock %}
-{% block page_title %}Fund Prospects{% endblock %}
+{% block page_title %}Capital Raise Pipeline{% endblock %}
 
 {% block content %}
-<div class="bg-white rounded-lg shadow">
-    <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-gray-900">All Fund Prospects</h2>
-        <a href="/fund-prospects/new" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600">+ New Fund Prospect</a>
+<div class="space-y-4">
+
+    <!-- Header row -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-semibold text-gray-900">All Fund Prospects</h2>
+            <p class="text-sm text-gray-500">{{ total_count }} prospect{{ 's' if total_count != 1 else '' }}</p>
+        </div>
+        <a href="/fund-prospects/new"
+           class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            New Fund Prospect
+        </a>
     </div>
-    <div id="fund-prospects-table" class="p-6">
-        <p class="text-sm text-gray-500">Loading...</p>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <form id="filter-form" hx-get="/fund-prospects" hx-target="#fund-prospects-list-container" hx-push-url="true" class="flex flex-wrap items-end gap-4">
+            <!-- Search -->
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Search</label>
+                <input type="text" name="q" value="{{ search }}"
+                       placeholder="Search by organization name..."
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/fund-prospects" hx-trigger="keyup changed delay:400ms" hx-target="#fund-prospects-list-container" hx-push-url="true" hx-include="#filter-form">
+            </div>
+
+            <!-- Fund -->
+            <div class="w-44">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Fund</label>
+                <select name="fund"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/fund-prospects" hx-trigger="change" hx-target="#fund-prospects-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Funds</option>
+                    {% for f in funds %}
+                    <option value="{{ f.id }}" {{ 'selected' if fund_id == f.id|string else '' }}>{{ f.ticker }} — {{ f.fund_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Stage -->
+            <div class="w-48">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Stage</label>
+                <select name="stage"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/fund-prospects" hx-trigger="change" hx-target="#fund-prospects-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Stages</option>
+                    {% for s in stages %}
+                    <option value="{{ s.value }}" {{ 'selected' if stage == s.value else '' }}>{{ s.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Share Class -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Share Class</label>
+                <select name="share_class"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/fund-prospects" hx-trigger="change" hx-target="#fund-prospects-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All</option>
+                    <option value="domestic" {{ 'selected' if share_class == 'domestic' else '' }}>Domestic</option>
+                    <option value="offshore" {{ 'selected' if share_class == 'offshore' else '' }}>Offshore</option>
+                </select>
+            </div>
+
+            <!-- Aksia Owner -->
+            <div class="w-44">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Aksia Owner</label>
+                <select name="owner"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/fund-prospects" hx-trigger="change" hx-target="#fund-prospects-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Owners</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}" {{ 'selected' if owner_id == u.id|string else '' }}>{{ u.display_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Date From -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">From</label>
+                <input type="date" name="from" value="{{ date_from }}"
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/fund-prospects" hx-trigger="change" hx-target="#fund-prospects-list-container" hx-include="#filter-form" hx-push-url="true">
+            </div>
+
+            <!-- Date To -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">To</label>
+                <input type="date" name="to" value="{{ date_to }}"
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/fund-prospects" hx-trigger="change" hx-target="#fund-prospects-list-container" hx-include="#filter-form" hx-push-url="true">
+            </div>
+
+            <input type="hidden" name="sort_by" value="{{ sort_by }}">
+            <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
+        </form>
     </div>
+
+    <!-- Table -->
+    <div id="fund-prospects-list-container">
+        {% include "fund_prospects/_list_table.html" %}
+    </div>
+
 </div>
 {% endblock %}

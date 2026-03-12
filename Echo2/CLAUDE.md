@@ -145,7 +145,7 @@ BASE_URL=http://localhost:8000
 - [x] Activities module (router logic, templates, HTMX org/person autocomplete, follow-up task generation, fund tags)
 - [x] Leads module (router logic, templates, stage-gated validation, Lead→Contract promotion, next-steps task generation)
 - [x] Contracts module (router logic, templates, Legal-only edit, fee arrangements CRUD)
-- [ ] Fund Prospects module (router logic)
+- [x] Fund Prospects module (router logic, templates, stage progression, next-steps task generation)
 - [ ] Distribution Lists module (router logic)
 - [ ] Tasks module (router logic)
 - [ ] Dashboards module (router logic)
@@ -266,3 +266,22 @@ _Use this section to track decisions made during Claude Code sessions:_
 - Route ordering: fee arrangement routes defined BEFORE `{contract_id}` routes to avoid UUID parse conflicts
 - `_audit_changes()` helper takes `record_type` parameter (used for both "contract" and "fee_arrangement")
 - Next step: Fund Prospects module
+
+### Session 7 — March 12, 2026
+- Built full Fund Prospects module: router (CRUD, search, filters, pagination, audit logging, soft delete, stage validation, next-steps task auto-generation), 5 templates (list, detail, form, list table partial, org tab partial update)
+- 10 fundraising stages from PRD Table 18: Target Identified → Intro Scheduled → Initial Meeting Complete → DDQ / Materials Sent → Due Diligence → IC Review → Soft Circle → Legal / Docs → Closed → Declined
+- Decline Reason conditional: required and visible only when stage=Declined; loaded from `decline_reason` reference_data category (7 placeholder values)
+- Stage Entry Date auto-set to today when stage changes on update (or on create)
+- Next Steps Date auto-task: when set or changed, creates Task assigned to aksia_owner_id with linked_record_type="fund_prospect"
+- Linked Lead dropdown: scoped to leads for the selected organization; refreshes via fetch() when org changes in the autocomplete
+- HTMX endpoint `/fund-prospects/leads-for-org` returns `<option>` elements for the linked lead dropdown
+- Fund ticker enrichment: on list page, all 4 funds loaded into a dict for O(1) lookups; on detail page, _get_fund_info() helper
+- Color-coded stage badges: target_identified=gray, intro_scheduled=blue, initial_meeting_complete=indigo, ddq_materials_sent=cyan, due_diligence=yellow, ic_review=orange, soft_circle=purple, legal_docs=pink, closed=green, declined=red
+- Share class displayed as colored badge: domestic=blue, offshore=teal
+- Fund ticker displayed as monospace badge on list and detail pages
+- Org detail Fund Prospects tab updated: added Fund (ticker) column, "New Fund Prospect" button pre-filled with org, enriched fund_prospects with ticker via funds_map
+- Stage progress bar on detail page: 8 pipeline stages + 1 outcome slot (Closed=green, Declined=red)
+- Allocation metrics displayed in highlighted grid cards: Target, Soft Circle, Hard Circle, Probability
+- Permissions: view=all, create/edit=admin+standard_user+rfp_team, archive=admin only
+- No promotion logic (unlike Leads→Contracts) — Closed stage is terminal
+- Next step: Distribution Lists module

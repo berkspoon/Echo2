@@ -357,6 +357,13 @@ async def get_organization(
     )
     fund_prospects = fp_resp.data or []
 
+    # Enrich fund prospects with ticker
+    if fund_prospects:
+        funds_resp = sb.table("funds").select("id, ticker").execute()
+        funds_map = {f["id"]: f["ticker"] for f in (funds_resp.data or [])}
+        for fp in fund_prospects:
+            fp["fund_ticker"] = funds_map.get(fp.get("fund_id"), "?")
+
     # Fee arrangements
     fee_resp = (
         sb.table("fee_arrangements")
