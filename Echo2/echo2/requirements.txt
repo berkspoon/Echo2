@@ -1,0 +1,20 @@
+# FastAPI & server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.18
+
+# Templating
+jinja2==3.1.5
+
+# Database
+supabase==2.11.0
+
+# Authentication (Microsoft Entra ID SSO)
+msal==1.31.1
+
+# Environment & config
+python-dotenv==1.0.1
+pydantic-settings==2.7.1
+
+# Session middleware
+itsdangerous==2.2.0

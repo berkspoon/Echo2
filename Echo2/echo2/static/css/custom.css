@@ -1,0 +1,6 @@
+/* Echo 2.0 — Custom styles beyond Tailwind */
+
+/* Active nav link highlight */
+.nav-link.active {
+    background-color: rgba(255, 255, 255, 0.1);
+}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Echo 2.0 — Dashboard{% endblock %}
+{% block page_title %}Personal Dashboard{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- My Open Tasks -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-base font-semibold text-gray-900 mb-4">My Open Tasks</h2>
+        <div id="my-tasks">
+            <p class="text-sm text-gray-500">Loading tasks...</p>
+        </div>
+    </div>
+
+    <!-- My Overdue Contacts -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-base font-semibold text-gray-900 mb-4">My Overdue Contacts</h2>
+        <div id="my-overdue-contacts">
+            <p class="text-sm text-gray-500">Loading contacts...</p>
+        </div>
+    </div>
+
+    <!-- My Open Leads -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-base font-semibold text-gray-900 mb-4">My Open Leads</h2>
+        <div id="my-leads">
+            <p class="text-sm text-gray-500">Loading leads...</p>
+        </div>
+    </div>
+
+    <!-- My Recent Activities -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-base font-semibold text-gray-900 mb-4">My Recent Activities</h2>
+        <div id="my-activities">
+            <p class="text-sm text-gray-500">Loading activities...</p>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

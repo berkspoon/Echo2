@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Organizations — Echo 2.0{% endblock %}
+{% block page_title %}Organizations{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow">
+    <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+        <h2 class="text-base font-semibold text-gray-900">All Organizations</h2>
+        <a href="/organizations/new" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600">+ New Organization</a>
+    </div>
+    <div id="organizations-table" class="p-6">
+        <p class="text-sm text-gray-500">Loading...</p>
+    </div>
+</div>
+{% endblock %}
