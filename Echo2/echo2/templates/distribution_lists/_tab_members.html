@@ -1,0 +1,87 @@
+<!-- Distribution list members tab partial -->
+
+<!-- Add Member Section -->
+{% if can_manage is not defined or can_manage %}
+<div class="mb-6">
+    <h4 class="text-sm font-medium text-gray-700 mb-2">Add Member</h4>
+    <div class="relative">
+        <input type="text" id="person-search-input"
+               placeholder="Search people by name..."
+               class="w-full md:w-96 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+               hx-get="/distribution-lists/search-people?list_id={{ dist_list.id }}"
+               hx-trigger="keyup changed delay:300ms"
+               hx-target="#person-search-results"
+               name="q"
+               autocomplete="off">
+        <div id="person-search-results" class="absolute z-10 w-full md:w-96 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"></div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Members List -->
+<div id="members-content">
+    {% if members %}
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coverage Owner</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                {% if can_manage is not defined or can_manage %}
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+            {% for m in members %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 text-sm">
+                    <a href="/people/{{ m.person_id }}" class="font-medium text-brand-600 hover:underline">{{ m.person_name }}</a>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-600">{{ m.person_email or '—' }}</td>
+                <td class="px-4 py-3 text-sm text-gray-600">{{ m.person_org or '—' }}</td>
+                <td class="px-4 py-3 text-sm text-gray-600">{{ m.coverage_owner_name or '—' }}</td>
+                <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ m.joined_at[:10] if m.joined_at else '—' }}</td>
+                {% if can_manage is not defined or can_manage %}
+                <td class="px-4 py-3 text-sm">
+                    <button hx-post="/distribution-lists/{{ dist_list.id }}/members/{{ m.id }}/remove"
+                            hx-target="#dl-tab-content"
+                            hx-swap="innerHTML"
+                            hx-confirm="Remove {{ m.person_name }} from this list?"
+                            class="text-red-600 hover:text-red-800 text-xs font-medium">
+                        Remove
+                    </button>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {% if members_total_pages > 1 %}
+    <div class="mt-3 flex items-center justify-between">
+        <p class="text-sm text-gray-500">
+            Showing {{ ((m_page - 1) * 25) + 1 }}–{{ [m_page * 25, members_total] | min }} of {{ members_total }} members
+        </p>
+        <div class="flex gap-1">
+            {% if m_page > 1 %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="/distribution-lists/{{ dist_list.id }}?tab=members&m_page={{ m_page - 1 }}"
+                    hx-target="#dl-tab-content">Prev</button>
+            {% endif %}
+            {% if m_page < members_total_pages %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="/distribution-lists/{{ dist_list.id }}?tab=members&m_page={{ m_page + 1 }}"
+                    hx-target="#dl-tab-content">Next</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <p class="text-sm text-gray-500">No members yet. {% if can_manage is not defined or can_manage %}Use the search above to add people to this list.{% endif %}</p>
+    {% endif %}
+</div>

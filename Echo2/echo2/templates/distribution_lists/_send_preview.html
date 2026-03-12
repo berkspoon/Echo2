@@ -1,0 +1,148 @@
+<!-- Send preview partial (loaded via HTMX) -->
+<div class="bg-white rounded-lg shadow border border-brand-200">
+    <div class="p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Send Preview — {{ dist_list.list_name }}</h3>
+
+        {% if errors is defined and errors %}
+        <div class="rounded-md bg-red-50 border border-red-200 p-3 mb-4">
+            <ul class="list-disc list-inside text-sm text-red-700">
+                {% for err in errors %}
+                <li>{{ err }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-3 gap-4 mb-6">
+            <div class="bg-green-50 rounded-lg p-3 border border-green-200">
+                <dt class="text-xs font-medium text-green-600 uppercase">Will Receive</dt>
+                <dd class="mt-1 text-2xl font-bold text-green-800">{{ preview.sendable_count }}</dd>
+            </div>
+            <div class="bg-red-50 rounded-lg p-3 border border-red-200">
+                <dt class="text-xs font-medium text-red-600 uppercase">Excluded (DNC)</dt>
+                <dd class="mt-1 text-2xl font-bold text-red-800">{{ preview.excluded_dnc | length }}</dd>
+            </div>
+            <div class="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                <dt class="text-xs font-medium text-orange-600 uppercase">Excluded (RFP Hold)</dt>
+                <dd class="mt-1 text-2xl font-bold text-orange-800">{{ preview.excluded_rfp_hold | length }}</dd>
+            </div>
+        </div>
+
+        <!-- L2 Inclusion Note -->
+        {% if preview.l2_member_count > 0 %}
+        <div class="rounded-md bg-blue-50 border border-blue-200 px-4 py-2 mb-4">
+            <p class="text-sm text-blue-700">
+                Includes {{ preview.l2_member_count }} additional member{{ 's' if preview.l2_member_count != 1 else '' }} from L2 list{{ 's' if preview.l2_lists | length > 1 else '' }}:
+                {% for l2 in preview.l2_lists %}{{ l2.list_name }}{{ ', ' if not loop.last else '' }}{% endfor %}
+            </p>
+        </div>
+        {% endif %}
+
+        <!-- Included Recipients -->
+        {% if preview.included %}
+        <details class="mb-4" open>
+            <summary class="cursor-pointer text-sm font-medium text-gray-700 mb-2">Included Recipients ({{ preview.included | length }})</summary>
+            <div class="max-h-60 overflow-auto border border-gray-200 rounded">
+                <table class="min-w-full divide-y divide-gray-200 text-xs">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500">Name</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500">Email</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500">Organization</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        {% for r in preview.included %}
+                        <tr>
+                            <td class="px-3 py-1.5">{{ r.name }}</td>
+                            <td class="px-3 py-1.5 text-gray-600">{{ r.email or '—' }}</td>
+                            <td class="px-3 py-1.5 text-gray-600">{{ r.org_name or '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+        {% endif %}
+
+        <!-- Excluded: DNC -->
+        {% if preview.excluded_dnc %}
+        <details class="mb-4">
+            <summary class="cursor-pointer text-sm font-medium text-red-700 mb-2">Excluded — Do Not Contact ({{ preview.excluded_dnc | length }})</summary>
+            <div class="max-h-40 overflow-auto border border-red-200 rounded bg-red-50">
+                <table class="min-w-full text-xs">
+                    <tbody>
+                        {% for r in preview.excluded_dnc %}
+                        <tr class="border-t border-red-100">
+                            <td class="px-3 py-1.5 text-red-800">{{ r.name }}</td>
+                            <td class="px-3 py-1.5 text-red-600">{{ r.email or '—' }}</td>
+                            <td class="px-3 py-1.5 text-red-600">{{ r.reason }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+        {% endif %}
+
+        <!-- Excluded: RFP Hold -->
+        {% if preview.excluded_rfp_hold %}
+        <details class="mb-4">
+            <summary class="cursor-pointer text-sm font-medium text-orange-700 mb-2">Excluded — RFP Hold ({{ preview.excluded_rfp_hold | length }})</summary>
+            <div class="max-h-40 overflow-auto border border-orange-200 rounded bg-orange-50">
+                <table class="min-w-full text-xs">
+                    <tbody>
+                        {% for r in preview.excluded_rfp_hold %}
+                        <tr class="border-t border-orange-100">
+                            <td class="px-3 py-1.5 text-orange-800">{{ r.name }}</td>
+                            <td class="px-3 py-1.5 text-orange-600">{{ r.email or '—' }}</td>
+                            <td class="px-3 py-1.5 text-orange-600">{{ r.reason }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+        {% endif %}
+
+        <!-- Send Form -->
+        {% if can_send %}
+        <form hx-post="/distribution-lists/{{ dist_list.id }}/send"
+              hx-target="#send-preview-container"
+              hx-swap="innerHTML"
+              class="mt-6 border-t border-gray-200 pt-4">
+            <div class="space-y-4">
+                <div>
+                    <label for="subject" class="block text-sm font-medium text-gray-700">Subject <span class="text-red-500">*</span></label>
+                    <input type="text" name="subject" id="subject" required
+                           placeholder="Enter email subject..."
+                           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                </div>
+                <div>
+                    <label for="body" class="block text-sm font-medium text-gray-700">Body (optional)</label>
+                    <textarea name="body" id="body" rows="3"
+                              placeholder="Optional email body or notes..."
+                              class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"></textarea>
+                </div>
+                <div class="flex items-center justify-end gap-3">
+                    <button type="button"
+                            onclick="document.getElementById('send-preview-container').innerHTML = ''"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                        Confirm Send ({{ preview.sendable_count }} recipients)
+                    </button>
+                </div>
+            </div>
+            <p class="mt-2 text-xs text-gray-400">Note: In Phase 1, this records the send in history. Actual email delivery via Power Automate is Phase 2.</p>
+        </form>
+        {% else %}
+        <div class="mt-4 rounded-md bg-yellow-50 border border-yellow-200 px-4 py-2">
+            <p class="text-sm text-yellow-700">You do not have permission to send from this list. Contact an admin for authorized sender access.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>

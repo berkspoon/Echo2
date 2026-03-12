@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Distribution Lists — Echo 2.0{% endblock %}
+{% block page_title %}Distribution Lists{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+    <!-- Header row -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-semibold text-gray-900">All Distribution Lists</h2>
+            <p class="text-sm text-gray-500">{{ total_count }} list{{ 's' if total_count != 1 else '' }}</p>
+        </div>
+        {% if user.role in ['admin', 'standard_user', 'rfp_team'] %}
+        <a href="/distribution-lists/new"
+           class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            New List
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <form id="filter-form" hx-get="/distribution-lists" hx-target="#dl-list-container" hx-push-url="true" class="flex flex-wrap items-end gap-4">
+            <!-- Search -->
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Search</label>
+                <input type="text" name="q" value="{{ search }}"
+                       placeholder="Search by list name..."
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/distribution-lists" hx-trigger="keyup changed delay:400ms" hx-target="#dl-list-container" hx-push-url="true" hx-include="#filter-form">
+            </div>
+
+            <!-- Type -->
+            <div class="w-40">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                <select name="type"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/distribution-lists" hx-trigger="change" hx-target="#dl-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Types</option>
+                    {% for t in list_types %}
+                    <option value="{{ t.value }}" {{ 'selected' if list_type == t.value else '' }}>{{ t.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Brand -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Brand</label>
+                <select name="brand"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/distribution-lists" hx-trigger="change" hx-target="#dl-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Brands</option>
+                    {% for b in brands %}
+                    <option value="{{ b.value }}" {{ 'selected' if brand == b.value else '' }}>{{ b.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Asset Class -->
+            <div class="w-40">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Asset Class</label>
+                <select name="asset_class"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/distribution-lists" hx-trigger="change" hx-target="#dl-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All</option>
+                    {% for ac in asset_classes %}
+                    <option value="{{ ac.value }}" {{ 'selected' if asset_class == ac.value else '' }}>{{ ac.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Official / Custom -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Official</label>
+                <select name="official"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/distribution-lists" hx-trigger="change" hx-target="#dl-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="" {{ 'selected' if not official else '' }}>All</option>
+                    <option value="official" {{ 'selected' if official == 'official' else '' }}>Official Only</option>
+                    <option value="custom" {{ 'selected' if official == 'custom' else '' }}>Custom Only</option>
+                </select>
+            </div>
+
+            <input type="hidden" name="sort_by" value="{{ sort_by }}">
+            <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
+        </form>
+    </div>
+
+    <!-- Table -->
+    <div id="dl-list-container">
+        {% include "distribution_lists/_list_table.html" %}
+    </div>
+
+</div>
+{% endblock %}

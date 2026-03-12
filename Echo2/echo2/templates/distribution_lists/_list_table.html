@@ -1,0 +1,109 @@
+<!-- Distribution lists table partial (HTMX target) -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                {% macro sort_header(col, label) %}
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    hx-get="/distribution-lists?q={{ search }}&type={{ list_type }}&brand={{ brand }}&asset_class={{ asset_class }}&official={{ official }}&sort_by={{ col }}&sort_dir={{ 'desc' if sort_by == col and sort_dir == 'asc' else 'asc' }}"
+                    hx-target="#dl-list-container" hx-push-url="true">
+                    <div class="flex items-center gap-1">
+                        {{ label }}
+                        {% if sort_by == col %}
+                        <svg class="h-3 w-3 {{ 'rotate-180' if sort_dir == 'desc' else '' }}" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+                        {% endif %}
+                    </div>
+                </th>
+                {% endmacro %}
+
+                {{ sort_header("list_name", "List Name") }}
+                {{ sort_header("list_type", "Type") }}
+                {{ sort_header("brand", "Brand") }}
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset Class</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Frequency</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Members</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                {{ sort_header("created_at", "Created") }}
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% if lists %}
+            {% for dl in lists %}
+            <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='/distribution-lists/{{ dl.id }}'">
+                <td class="px-4 py-3 text-sm">
+                    <div class="font-medium text-brand-600 hover:text-brand-700">{{ dl.list_name }}</div>
+                </td>
+                <td class="px-4 py-3 text-sm whitespace-nowrap">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                        {% if dl.list_type == 'publication' %}bg-blue-100 text-blue-800
+                        {% elif dl.list_type == 'newsletter' %}bg-green-100 text-green-800
+                        {% elif dl.list_type == 'fund' %}bg-purple-100 text-purple-800
+                        {% elif dl.list_type == 'event' %}bg-yellow-100 text-yellow-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ (dl.list_type or '') | replace('_', ' ') | title }}
+                    </span>
+                </td>
+                <td class="px-4 py-3 text-sm whitespace-nowrap">
+                    {% if dl.brand %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                        {% if dl.brand == 'aksia' %}bg-brand-50 text-brand-700
+                        {% else %}bg-indigo-50 text-indigo-700{% endif %}">
+                        {{ dl.brand | upper }}
+                    </span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-600">{{ (dl.asset_class or '') | upper if dl.asset_class else '—' }}</td>
+                <td class="px-4 py-3 text-sm text-gray-600">{{ dl.frequency or '—' }}</td>
+                <td class="px-4 py-3 text-sm text-gray-600">{{ dl.member_count or 0 }}</td>
+                <td class="px-4 py-3 text-sm whitespace-nowrap">
+                    {% if dl.is_official %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Official</span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Custom</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ dl.created_at[:10] if dl.created_at else '—' }}</td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr>
+                <td colspan="8" class="px-4 py-8 text-center text-sm text-gray-500">No distribution lists found.</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
+        <p class="text-sm text-gray-500">
+            Showing {{ ((page - 1) * page_size) + 1 }}–{{ [page * page_size, total_count] | min }} of {{ total_count }}
+        </p>
+        <div class="flex gap-1">
+            {% if page > 1 %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="/distribution-lists?q={{ search }}&type={{ list_type }}&brand={{ brand }}&asset_class={{ asset_class }}&official={{ official }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page - 1 }}"
+                    hx-target="#dl-list-container" hx-push-url="true">Prev</button>
+            {% endif %}
+
+            {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <span class="px-3 py-1 text-sm rounded bg-brand-500 text-white">{{ p }}</span>
+            {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="/distribution-lists?q={{ search }}&type={{ list_type }}&brand={{ brand }}&asset_class={{ asset_class }}&official={{ official }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ p }}"
+                    hx-target="#dl-list-container" hx-push-url="true">{{ p }}</button>
+            {% elif p == 4 or p == total_pages - 3 %}
+            <span class="px-3 py-1 text-sm text-gray-400">…</span>
+            {% endif %}
+            {% endfor %}
+
+            {% if page < total_pages %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="/distribution-lists?q={{ search }}&type={{ list_type }}&brand={{ brand }}&asset_class={{ asset_class }}&official={{ official }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page + 1 }}"
+                    hx-target="#dl-list-container" hx-push-url="true">Next</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>

@@ -146,7 +146,7 @@ BASE_URL=http://localhost:8000
 - [x] Leads module (router logic, templates, stage-gated validation, Lead→Contract promotion, next-steps task generation)
 - [x] Contracts module (router logic, templates, Legal-only edit, fee arrangements CRUD)
 - [x] Fund Prospects module (router logic, templates, stage progression, next-steps task generation)
-- [ ] Distribution Lists module (router logic)
+- [x] Distribution Lists module (router logic, templates, member management, send preview/history, L2 superset, DNC/RFP Hold suppression)
 - [ ] Tasks module (router logic)
 - [ ] Dashboards module (router logic)
 - [ ] Admin module (router logic)
@@ -285,3 +285,24 @@ _Use this section to track decisions made during Claude Code sessions:_
 - Permissions: view=all, create/edit=admin+standard_user+rfp_team, archive=admin only
 - No promotion logic (unlike Leads→Contracts) — Closed stage is terminal
 - Next step: Distribution Lists module
+
+### Session 8 — March 12, 2026
+- Built full Distribution Lists module: router (CRUD, search, filters, pagination, audit logging, member management, send preview/history, L2 superset enforcement, DNC/RFP Hold suppression), 7 templates (list, detail, form, list table partial, members tab, send history tab, send preview partial)
+- 17 official publication lists from PRD Table 20 supported: Publication (HF/PE/PC/RA L1+L2), Newsletter, Fund (APC/CAPIX/CAPVX/HEDGX/ACPM Combined), plus custom/event lists
+- L2-superset-of-L1 enforcement: `l2_superset_of` FK on L2 list points to L1 list. Send preview for L1 list reverse-queries L2 lists and merges their members (deduplicated). Note shown on detail page and send preview.
+- DNC suppression: DNC people cannot be added to lists (blocked at search + add endpoint). DNC members excluded from send preview with separate "Excluded (DNC)" section.
+- RFP Hold suppression: people at RFP Hold organizations are NOT removed from lists, but suppressed from send previews. Shown in separate "Excluded (RFP Hold)" section with org name.
+- Member management: HTMX person search autocomplete on detail page; add/remove via POST endpoints. Add handles reactivation of previously soft-removed members (UNIQUE constraint on distribution_list_id + person_id).
+- Member soft-removal: sets `is_active=False`, `removed_at=now()`, `removal_reason='manual'` (preserves audit trail). Note: DNC enforcement in people.py uses hard DELETE (existing behavior unchanged).
+- Send workflow: Preview shows included/excluded split with counts. Confirm saves `send_history` record with JSONB `recipient_snapshot` capturing exact audience. Actual email delivery via Power Automate is Phase 2.
+- Custom list privacy: non-admin users see official + own custom + public custom lists. Query uses `.or_("is_official.eq.true,owner_id.eq.{uid},is_private.eq.false")`.
+- Permissions: view=all, create custom=admin+standard_user+rfp_team, edit official=admin only, edit own custom=owner, add/remove members=admin+standard_user+rfp_team, send official=admin only (authorized senders TBD), send own custom=owner, archive=admin only
+- `distribution_lists` table uses `is_active` (not `is_archived`). All queries filter `.eq("is_active", True)`.
+- Color-coded type badges: publication=blue, newsletter=green, fund=purple, event=yellow, custom=gray
+- Brand badges: Aksia=brand color, ACPM=indigo
+- Official/Custom badges: Official=green, Custom=gray
+- Detail page has two tabs: Members (with inline add/remove) and Send History (with expandable detail view per send)
+- Form has conditional field visibility: Brand shown for publication/newsletter/fund types; Asset Class for publication/fund; L2 Superset Of dropdown for publication type only; Private checkbox hidden when Official is checked
+- L1 publication lists dropdown in form: filtered to official publication lists with no `l2_superset_of` set (i.e., they are L1)
+- Route ordering: /search-people and /new placed before /{list_id} to avoid UUID parse conflicts
+- Next step: Tasks module

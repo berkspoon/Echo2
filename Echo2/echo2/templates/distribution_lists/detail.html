@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}{{ dist_list.list_name }} — Distribution List — Echo 2.0{% endblock %}
+{% block page_title %}Distribution List Detail{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header Card -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="p-6">
+            <div class="flex items-start justify-between">
+                <div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <h2 class="text-xl font-bold text-gray-900">{{ dist_list.list_name }}</h2>
+                        <!-- Type badge -->
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                            {% if dist_list.list_type == 'publication' %}bg-blue-100 text-blue-800
+                            {% elif dist_list.list_type == 'newsletter' %}bg-green-100 text-green-800
+                            {% elif dist_list.list_type == 'fund' %}bg-purple-100 text-purple-800
+                            {% elif dist_list.list_type == 'event' %}bg-yellow-100 text-yellow-800
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ type_labels.get(dist_list.list_type, dist_list.list_type | replace('_', ' ') | title) }}
+                        </span>
+                        <!-- Official/Custom badge -->
+                        {% if dist_list.is_official %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Official</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Custom</span>
+                        {% endif %}
+                        <!-- Brand badge -->
+                        {% if dist_list.brand %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                            {% if dist_list.brand == 'aksia' %}bg-brand-50 text-brand-700
+                            {% else %}bg-indigo-50 text-indigo-700{% endif %}">
+                            {{ dist_list.brand | upper }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div class="mt-1 flex items-center gap-4 text-sm text-gray-500">
+                        {% if dist_list.asset_class %}
+                        <span>Asset Class: {{ dist_list.asset_class | upper }}</span>
+                        {% endif %}
+                        {% if dist_list.frequency %}
+                        <span>Frequency: {{ dist_list.frequency }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    {% if can_send %}
+                    <button hx-get="/distribution-lists/{{ dist_list.id }}/send-preview"
+                            hx-target="#send-preview-container"
+                            hx-swap="innerHTML"
+                            class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                        Preview Send
+                    </button>
+                    {% endif %}
+                    {% if can_edit %}
+                    <a href="/distribution-lists/{{ dist_list.id }}/edit"
+                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm">
+                        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        Edit
+                    </a>
+                    {% endif %}
+                    {% if user.role == 'admin' %}
+                    <button hx-post="/distribution-lists/{{ dist_list.id }}/archive" hx-confirm="Are you sure you want to archive this distribution list?"
+                            class="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 shadow-sm">
+                        Archive
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- L2 Superset Info -->
+            {% if l1_list %}
+            <div class="mt-3 rounded-md bg-blue-50 border border-blue-200 px-4 py-2">
+                <p class="text-sm text-blue-700">
+                    This is an L2 list — superset of:
+                    <a href="/distribution-lists/{{ l1_list.id }}" class="font-medium underline">{{ l1_list.list_name }}</a>.
+                    All members of this list also receive L1 publications.
+                </p>
+            </div>
+            {% endif %}
+            {% if l2_lists %}
+            <div class="mt-3 rounded-md bg-blue-50 border border-blue-200 px-4 py-2">
+                <p class="text-sm text-blue-700">
+                    This is an L1 list. L2 members are automatically included in sends:
+                    {% for l2 in l2_lists %}
+                    <a href="/distribution-lists/{{ l2.id }}" class="font-medium underline">{{ l2.list_name }}</a>{{ ', ' if not loop.last else '' }}
+                    {% endfor %}
+                </p>
+            </div>
+            {% endif %}
+
+            <!-- Summary Cards -->
+            <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Total Members</dt>
+                    <dd class="mt-1 text-lg font-semibold text-gray-900">{{ member_count }}</dd>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-gray-500 uppercase">List Type</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ type_labels.get(dist_list.list_type, dist_list.list_type | replace('_', ' ') | title) }}</dd>
+                </div>
+                {% if owner_name %}
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Owner</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ owner_name }}</dd>
+                </div>
+                {% endif %}
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Created</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ dist_list.created_at[:10] if dist_list.created_at else '—' }}</dd>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Send Preview Container (populated via HTMX) -->
+    <div id="send-preview-container"></div>
+
+    <!-- Tabs -->
+    <div class="bg-white rounded-lg shadow">
+        <nav class="flex border-b border-gray-200">
+            <button class="px-6 py-3 text-sm font-medium {{ 'text-brand-600 border-b-2 border-brand-500' if active_tab == 'members' else 'text-gray-500 hover:text-gray-700' }}"
+                    hx-get="/distribution-lists/{{ dist_list.id }}?tab=members"
+                    hx-target="#dl-tab-content"
+                    hx-push-url="false">
+                Members ({{ members_total }})
+            </button>
+            <button class="px-6 py-3 text-sm font-medium {{ 'text-brand-600 border-b-2 border-brand-500' if active_tab == 'send_history' else 'text-gray-500 hover:text-gray-700' }}"
+                    hx-get="/distribution-lists/{{ dist_list.id }}?tab=send_history"
+                    hx-target="#dl-tab-content"
+                    hx-push-url="false">
+                Send History ({{ send_history | length }})
+            </button>
+        </nav>
+        <div id="dl-tab-content" class="p-6">
+            {% if active_tab == 'send_history' %}
+                {% include "distribution_lists/_tab_send_history.html" %}
+            {% else %}
+                {% include "distribution_lists/_tab_members.html" %}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Back link -->
+    <div>
+        <a href="/distribution-lists" class="text-sm text-brand-600 hover:underline">&larr; Back to Distribution Lists</a>
+    </div>
+
+</div>
+{% endblock %}

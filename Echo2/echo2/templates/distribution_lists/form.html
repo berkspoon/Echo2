@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if dist_list and dist_list.id is defined else 'New' }} Distribution List — Echo 2.0{% endblock %}
+{% block page_title %}{{ 'Edit Distribution List' if dist_list and dist_list.id is defined else 'New Distribution List' }}{% endblock %}
+
+{% block content %}
+<form class="space-y-6" method="post"
+      action="{{ '/distribution-lists/' + dist_list.id|string if dist_list and dist_list.id is defined else '/distribution-lists/' }}">
+
+    {% if errors is defined and errors %}
+    <div class="rounded-md bg-red-50 border border-red-200 p-4">
+        <ul class="list-disc list-inside text-sm text-red-700">
+            {% for err in errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- ===== Section 1: Core Information ===== -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Core Information</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <!-- List Name -->
+            <div class="md:col-span-2">
+                <label for="list_name" class="block text-sm font-medium text-gray-700">List Name <span class="text-red-500">*</span></label>
+                <input type="text" name="list_name" id="list_name" required
+                       value="{{ dist_list.list_name if dist_list and dist_list.list_name else '' }}"
+                       placeholder="e.g., Hedge Funds L2 (Updates)"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- List Type -->
+            <div>
+                <label for="list_type" class="block text-sm font-medium text-gray-700">List Type <span class="text-red-500">*</span></label>
+                <select name="list_type" id="list_type" required
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="updateConditionalFields()">
+                    <option value="">— Select Type —</option>
+                    {% for t in list_types %}
+                    <option value="{{ t.value }}" {{ 'selected' if dist_list and dist_list.list_type == t.value else '' }}>{{ t.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Brand (conditional: shown for publication/newsletter/fund) -->
+            <div id="brand-wrapper" class="{{ '' if dist_list and dist_list.list_type in ['publication', 'newsletter', 'fund'] else 'hidden' }}">
+                <label for="brand" class="block text-sm font-medium text-gray-700">Brand</label>
+                <select name="brand" id="brand"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for b in brands %}
+                    <option value="{{ b.value }}" {{ 'selected' if dist_list and dist_list.brand == b.value else '' }}>{{ b.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Asset Class (conditional: shown for publication/fund) -->
+            <div id="asset-class-wrapper" class="{{ '' if dist_list and dist_list.list_type in ['publication', 'fund'] else 'hidden' }}">
+                <label for="asset_class" class="block text-sm font-medium text-gray-700">Asset Class</label>
+                <select name="asset_class" id="asset_class"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for ac in asset_classes %}
+                    <option value="{{ ac.value }}" {{ 'selected' if dist_list and dist_list.asset_class == ac.value else '' }}>{{ ac.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Frequency -->
+            <div>
+                <label for="frequency" class="block text-sm font-medium text-gray-700">Frequency</label>
+                <input type="text" name="frequency" id="frequency"
+                       value="{{ dist_list.frequency if dist_list and dist_list.frequency else '' }}"
+                       placeholder="e.g., Monthly, Quarterly, As published"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Section 2: Settings ===== -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Settings</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            {% if user.role == 'admin' %}
+            <!-- Is Official (admin only) -->
+            <div>
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" name="is_official" id="is_official"
+                           {{ 'checked' if dist_list and dist_list.is_official else '' }}
+                           onchange="updateConditionalFields()"
+                           class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                    <span class="text-sm font-medium text-gray-700">Official List</span>
+                </label>
+                <p class="mt-1 text-xs text-gray-400 ml-6">Official lists are visible to all users and sends are restricted.</p>
+            </div>
+            {% endif %}
+
+            <!-- Is Private (for custom lists) -->
+            <div id="private-wrapper" class="{{ 'hidden' if dist_list and dist_list.is_official else '' }}">
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" name="is_private" id="is_private"
+                           {{ 'checked' if (dist_list and dist_list.is_private) or (not dist_list) else '' }}
+                           class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                    <span class="text-sm font-medium text-gray-700">Private List</span>
+                </label>
+                <p class="mt-1 text-xs text-gray-400 ml-6">Private lists are only visible to you. Uncheck to share with all users.</p>
+            </div>
+
+            <!-- L2 Superset Of (conditional: publication type) -->
+            <div id="l2-wrapper" class="{{ '' if dist_list and dist_list.list_type == 'publication' else 'hidden' }}">
+                <label for="l2_superset_of" class="block text-sm font-medium text-gray-700">L2 Superset Of (L1 List)</label>
+                <select name="l2_superset_of" id="l2_superset_of"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— None (this is L1 or N/A) —</option>
+                    {% for l1 in l1_lists %}
+                    <option value="{{ l1.id }}" {{ 'selected' if dist_list and dist_list.l2_superset_of and dist_list.l2_superset_of|string == l1.id|string else '' }}>
+                        {{ l1.list_name }}{% if l1.asset_class %} ({{ l1.asset_class | upper }}){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                <p class="mt-1 text-xs text-gray-400">If this is an L2 list, select the L1 list it is a superset of. L2 members automatically receive L1 publications.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="flex items-center justify-end gap-3">
+        <a href="{{ '/distribution-lists/' + dist_list.id|string if dist_list and dist_list.id is defined else '/distribution-lists' }}"
+           class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            Cancel
+        </a>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            {{ 'Save Changes' if dist_list and dist_list.id is defined else 'Create List' }}
+        </button>
+    </div>
+
+</form>
+
+{% block scripts %}
+<script>
+function updateConditionalFields() {
+    const listType = document.getElementById('list_type').value;
+    const isOfficial = document.getElementById('is_official');
+
+    // Brand: show for publication, newsletter, fund
+    const showBrand = ['publication', 'newsletter', 'fund'].includes(listType);
+    document.getElementById('brand-wrapper').classList.toggle('hidden', !showBrand);
+
+    // Asset class: show for publication, fund
+    const showAsset = ['publication', 'fund'].includes(listType);
+    document.getElementById('asset-class-wrapper').classList.toggle('hidden', !showAsset);
+
+    // L2 superset: show only for publication type
+    document.getElementById('l2-wrapper').classList.toggle('hidden', listType !== 'publication');
+
+    // Private: hide when official is checked
+    const privateWrapper = document.getElementById('private-wrapper');
+    if (privateWrapper && isOfficial) {
+        privateWrapper.classList.toggle('hidden', isOfficial.checked);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateConditionalFields();
+});
+</script>
+{% endblock %}
+{% endblock %}
