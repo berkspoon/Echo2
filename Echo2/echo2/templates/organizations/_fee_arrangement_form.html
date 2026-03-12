@@ -1,0 +1,109 @@
+<!-- Fee Arrangement form — HTMX partial (loaded inline on org detail page) -->
+<div class="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+    <h4 class="text-sm font-semibold text-gray-900 mb-3">
+        {{ 'Edit Fee Arrangement' if fa and fa.id is defined else 'New Fee Arrangement' }}
+    </h4>
+
+    {% if errors %}
+    <div class="rounded-md bg-red-50 border border-red-200 p-3 mb-3">
+        <ul class="list-disc list-inside text-sm text-red-700">
+            {% for err in errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <form method="post"
+          action="{{ '/contracts/fee-arrangements/' + fa.id|string if fa and fa.id is defined else '/contracts/fee-arrangements/' }}">
+        <input type="hidden" name="organization_id" value="{{ org_id }}">
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+
+            <!-- Arrangement Name -->
+            <div class="lg:col-span-2">
+                <label for="arrangement_name" class="block text-sm font-medium text-gray-700">Arrangement Name <span class="text-red-500">*</span></label>
+                <input type="text" name="arrangement_name" id="arrangement_name" required
+                       value="{{ fa.arrangement_name if fa and fa.arrangement_name else '' }}"
+                       placeholder="E.g., Commissioned Research Reports 2026"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Annual Value -->
+            <div>
+                <label for="annual_value" class="block text-sm font-medium text-gray-700">Annual Value ($) <span class="text-red-500">*</span></label>
+                <input type="number" name="annual_value" id="annual_value" step="0.01" min="0" required
+                       value="{{ fa.annual_value if fa and fa.annual_value is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Frequency -->
+            <div>
+                <label for="frequency" class="block text-sm font-medium text-gray-700">Frequency <span class="text-red-500">*</span></label>
+                <select name="frequency" id="frequency" required
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for f in frequencies %}
+                    <option value="{{ f.value }}" {{ 'selected' if fa and fa.frequency == f.value else '' }}>{{ f.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Status -->
+            <div>
+                <label for="fa_status" class="block text-sm font-medium text-gray-700">Status <span class="text-red-500">*</span></label>
+                <select name="status" id="fa_status" required
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="toggleEndDate()">
+                    {% for s in fee_statuses %}
+                    <option value="{{ s.value }}" {{ 'selected' if fa and fa.status == s.value else ('selected' if not fa and s.value == 'active' else '') }}>{{ s.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Start Date -->
+            <div>
+                <label for="fa_start_date" class="block text-sm font-medium text-gray-700">Start Date <span class="text-red-500">*</span></label>
+                <input type="date" name="start_date" id="fa_start_date" required
+                       value="{{ fa.start_date if fa and fa.start_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- End Date (conditional on status = inactive) -->
+            <div id="fa-end-date-wrapper" class="{{ '' if fa and fa.status == 'inactive' else 'hidden' }}">
+                <label for="fa_end_date" class="block text-sm font-medium text-gray-700">End Date <span class="text-red-500">*</span></label>
+                <input type="date" name="end_date" id="fa_end_date"
+                       value="{{ fa.end_date if fa and fa.end_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Notes -->
+            <div class="lg:col-span-3">
+                <label for="fa_notes" class="block text-sm font-medium text-gray-700">Notes</label>
+                <textarea name="notes" id="fa_notes" rows="2"
+                          class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ fa.notes if fa and fa.notes else '' }}</textarea>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="mt-4 flex items-center justify-end gap-3">
+            <button type="button"
+                    hx-get="/organizations/{{ org_id }}?tab=fee_arrangements"
+                    hx-target="#tab-content"
+                    class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                {{ 'Save Changes' if fa and fa.id is defined else 'Create' }}
+            </button>
+        </div>
+    </form>
+
+    <script>
+    function toggleEndDate() {
+        const status = document.getElementById('fa_status').value;
+        document.getElementById('fa-end-date-wrapper').classList.toggle('hidden', status !== 'inactive');
+    }
+    </script>
+</div>

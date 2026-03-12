@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Contract — {{ org_name }} — Echo 2.0{% endblock %}
+{% block page_title %}Contract Detail{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Contract Header Card -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="p-6">
+            <div class="flex items-start justify-between">
+                <div>
+                    <div class="flex items-center gap-3">
+                        <h2 class="text-xl font-bold text-gray-900">
+                            <a href="/organizations/{{ contract.organization_id }}" class="text-brand-600 hover:underline">{{ org_name }}</a>
+                        </h2>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                            {% if contract.service_type == 'advisory' %}bg-blue-100 text-blue-800
+                            {% elif contract.service_type == 'discretionary' %}bg-purple-100 text-purple-800
+                            {% elif contract.service_type == 'research' %}bg-green-100 text-green-800
+                            {% elif contract.service_type == 'reporting' %}bg-gray-100 text-gray-800
+                            {% elif contract.service_type == 'project' %}bg-yellow-100 text-yellow-800
+                            {% elif contract.service_type == 'product' %}bg-orange-100 text-orange-800
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ st_labels.get(contract.service_type, (contract.service_type or '') | replace('_', ' ') | title) }}
+                        </span>
+                    </div>
+                    {% if contract.summary %}
+                    <p class="mt-1 text-sm text-gray-500">{{ contract.summary }}</p>
+                    {% endif %}
+                </div>
+                <div class="flex gap-2">
+                    {% if user.role in ('admin', 'legal') %}
+                    <a href="/contracts/{{ contract.id }}/edit"
+                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm">
+                        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        Edit
+                    </a>
+                    {% endif %}
+                    {% if user.role == 'admin' %}
+                    <button hx-post="/contracts/{{ contract.id }}/archive" hx-confirm="Are you sure you want to archive this contract?"
+                            class="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 shadow-sm">
+                        Archive
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Key fields grid -->
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Start Date</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ contract.start_date or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Service Type</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ st_labels.get(contract.service_type, (contract.service_type or '—') | replace('_', ' ') | title) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Actual Revenue</dt>
+                    <dd class="mt-1 text-sm text-gray-900 font-medium">
+                        {% if contract.actual_revenue is not none %}${{ '{:,.0f}'.format(contract.actual_revenue) }}{% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Client Coverage</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ contract.client_coverage or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Created</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ contract.created_at[:10] if contract.created_at else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Last Updated</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ contract.updated_at[:10] if contract.updated_at else '—' }}</dd>
+                </div>
+            </div>
+
+            <!-- Asset Classes -->
+            {% if contract.asset_classes %}
+            <div class="mt-4">
+                <dt class="text-xs font-medium text-gray-500 uppercase mb-2">Asset Classes</dt>
+                <div class="flex flex-wrap gap-1.5">
+                    {% for ac in contract.asset_classes %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700">
+                        {{ ac_labels.get(ac, ac) }}
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Inflation Provision & Escalator Clause (hidden when service_type = project or product) -->
+    {% if contract.service_type not in ('project', 'product') %}
+    {% if contract.inflation_provision or contract.escalator_clause %}
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Contract Terms</h3>
+        </div>
+        <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {% if contract.inflation_provision %}
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Inflation Provision</dt>
+                <dd class="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{{ contract.inflation_provision }}</dd>
+            </div>
+            {% endif %}
+            {% if contract.escalator_clause %}
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Escalator Clause</dt>
+                <dd class="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{{ contract.escalator_clause }}</dd>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <!-- Originating Lead -->
+    {% if lead_info %}
+    <div class="bg-white rounded-lg shadow border-l-4 border-brand-400">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-brand-800 uppercase tracking-wider">Originating Lead</h3>
+        </div>
+        <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Lead</dt>
+                <dd class="mt-1 text-sm">
+                    <a href="/leads/{{ lead_info.id }}" class="text-brand-600 hover:underline">View Lead &rarr;</a>
+                </dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Stage</dt>
+                <dd class="mt-1 text-sm">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                        {% if lead_info.rating == 'won' %}bg-green-100 text-green-800
+                        {% elif lead_info.rating starts with 'lost' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ stage_labels.get(lead_info.rating, lead_info.rating | replace('_', ' ') | title) }}
+                    </span>
+                </dd>
+            </div>
+            {% if lead_info.summary %}
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Lead Summary</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ lead_info.summary }}</dd>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Audit History -->
+    {% if audit_entries %}
+    <details class="bg-white rounded-lg shadow">
+        <summary class="px-6 py-4 cursor-pointer hover:bg-gray-50">
+            <span class="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+                Audit History
+                <span class="ml-1 text-xs text-gray-400 font-normal">({{ audit_entries | length }})</span>
+            </span>
+        </summary>
+        <div class="px-6 pb-4">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Field</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Old Value</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">New Value</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Changed By</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    {% for entry in audit_entries %}
+                    <tr>
+                        <td class="px-3 py-2 text-sm text-gray-900">{{ entry.field_name | replace('_', ' ') | title }}</td>
+                        <td class="px-3 py-2 text-sm text-gray-500">{{ entry.old_value or '—' }}</td>
+                        <td class="px-3 py-2 text-sm text-gray-900">{{ entry.new_value or '—' }}</td>
+                        <td class="px-3 py-2 text-sm text-gray-600">{{ entry.changed_by_name }}</td>
+                        <td class="px-3 py-2 text-sm text-gray-400 whitespace-nowrap">{{ entry.changed_at[:16] if entry.changed_at else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </details>
+    {% endif %}
+
+    <!-- Permission notice for non-legal users -->
+    {% if user.role not in ('admin', 'legal') %}
+    <div class="rounded-md bg-blue-50 border border-blue-200 p-3">
+        <p class="text-sm text-blue-700">
+            Only Legal and Admin users can edit contract records.
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- Back link -->
+    <div>
+        <a href="/contracts" class="text-sm text-brand-600 hover:underline">&larr; Back to Contracts</a>
+    </div>
+
+</div>
+{% endblock %}

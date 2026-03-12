@@ -144,7 +144,7 @@ BASE_URL=http://localhost:8000
 - [x] People module (router logic, templates, HTMX org autocomplete, DNC enforcement, duplicate detection)
 - [x] Activities module (router logic, templates, HTMX org/person autocomplete, follow-up task generation, fund tags)
 - [x] Leads module (router logic, templates, stage-gated validation, Lead→Contract promotion, next-steps task generation)
-- [ ] Contracts module (router logic)
+- [x] Contracts module (router logic, templates, Legal-only edit, fee arrangements CRUD)
 - [ ] Fund Prospects module (router logic)
 - [ ] Distribution Lists module (router logic)
 - [ ] Tasks module (router logic)
@@ -248,3 +248,21 @@ _Use this section to track decisions made during Claude Code sessions:_
 - List page filters: search (org name + summary), stage, owner, service type, relationship, date range; sortable columns; pagination
 - Currency formatting for revenue and FLAR fields using Jinja `'{:,.0f}'.format()` pattern
 - Next step: Contracts module
+
+### Session 6 — March 12, 2026
+- Built full Contracts module: router (list, detail, Legal-only edit, archive, audit logging), 4 templates (list, detail, form, list table partial)
+- Created Fee Arrangements CRUD: 5 endpoints on `/contracts/fee-arrangements/` for create, edit, archive (inline HTMX forms on org detail page)
+- Created `models/fee_arrangement.py` with Create/Update/Response Pydantic models
+- Contracts are NOT manually created — only via Lead→Contract promotion (already in leads.py)
+- Legal-only edit restriction: `require_role(current_user, ["admin", "legal"])` on edit/update routes
+- Organization and Originating Lead are always read-only on contracts (displayed as text, not inputs)
+- Conditional field visibility: Inflation Provision and Escalator Clause hidden when service_type = "project" or "product" (JS on form, Jinja2 on detail)
+- Fee arrangement end_date only visible/required when status = "inactive"
+- Fee arrangements are org-level, NOT Legal-restricted — standard users can CRUD them
+- Fee arrangement forms load as HTMX partials inline on the org detail page's Fee Arrangements tab
+- Updated `_tab_fee_arrangements.html` with New/Edit/Archive buttons wired to HTMX endpoints
+- Color-coded service type badges: advisory=blue, discretionary=purple, research=green, reporting=gray, project=yellow, product=orange
+- Contract detail page includes: originating lead card with link, audit history (collapsible), permission notice for non-legal users
+- Route ordering: fee arrangement routes defined BEFORE `{contract_id}` routes to avoid UUID parse conflicts
+- `_audit_changes()` helper takes `record_type` parameter (used for both "contract" and "fee_arrangement")
+- Next step: Fund Prospects module
