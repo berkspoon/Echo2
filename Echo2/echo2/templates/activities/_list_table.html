@@ -1,0 +1,114 @@
+<!-- Activities list table partial (HTMX target) -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                {% macro sort_header(col, label) %}
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    hx-get="/activities?q={{ search }}&type={{ activity_type }}&author={{ author_id }}&from={{ date_from }}&to={{ date_to }}&sort_by={{ col }}&sort_dir={{ 'desc' if sort_by == col and sort_dir == 'asc' else 'asc' }}"
+                    hx-target="#activities-list-container" hx-push-url="true">
+                    <div class="flex items-center gap-1">
+                        {{ label }}
+                        {% if sort_by == col %}
+                        <svg class="h-3 w-3 {{ 'rotate-180' if sort_dir == 'desc' else '' }}" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+                        {% endif %}
+                    </div>
+                </th>
+                {% endmacro %}
+
+                {{ sort_header("effective_date", "Date") }}
+                {{ sort_header("title", "Title") }}
+                {{ sort_header("activity_type", "Type") }}
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organizations</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% if activities %}
+            {% for act in activities %}
+            <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='/activities/{{ act.id }}'">
+                <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ act.effective_date }}</td>
+                <td class="px-4 py-3 text-sm">
+                    <div class="font-medium text-brand-600 hover:text-brand-700">
+                        {{ act.title or 'Untitled' }}
+                    </div>
+                    {% if act.details %}
+                    <p class="text-xs text-gray-400 mt-1 truncate max-w-md">{{ act.details[:120] }}{% if act.details|length > 120 %}...{% endif %}</p>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                        {% if act.activity_type == 'call' %}bg-blue-100 text-blue-800
+                        {% elif act.activity_type == 'meeting' %}bg-purple-100 text-purple-800
+                        {% elif act.activity_type == 'email' %}bg-green-100 text-green-800
+                        {% elif act.activity_type == 'note' %}bg-gray-100 text-gray-800
+                        {% elif act.activity_type == 'conference' %}bg-yellow-100 text-yellow-800
+                        {% elif act.activity_type == 'webinar' %}bg-indigo-100 text-indigo-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ (act.activity_type or '') | replace('_', ' ') | title }}
+                    </span>
+                    {% if act.subtype %}
+                    <span class="text-xs text-gray-400 ml-1">{{ (act.subtype or '') | replace('_', ' ') | title }}</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-600">{{ act.author_name or '—' }}</td>
+                <td class="px-4 py-3 text-sm text-gray-600">
+                    {% if act.linked_orgs %}
+                    {% for org in act.linked_orgs[:2] %}
+                    <a href="/organizations/{{ org.id }}" class="text-brand-600 hover:underline" onclick="event.stopPropagation()">{{ org.company_name }}</a>{% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                    {% if act.linked_orgs|length > 2 %}
+                    <span class="text-xs text-gray-400">+{{ act.linked_orgs|length - 2 }} more</span>
+                    {% endif %}
+                    {% else %}—{% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm">
+                    {% if act.follow_up_required %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">Follow-up</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr>
+                <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-500">No activities found.</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
+        <p class="text-sm text-gray-500">
+            Showing {{ ((page - 1) * page_size) + 1 }}–{{ [page * page_size, total_count] | min }} of {{ total_count }}
+        </p>
+        <div class="flex gap-1">
+            {% if page > 1 %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="/activities?q={{ search }}&type={{ activity_type }}&author={{ author_id }}&from={{ date_from }}&to={{ date_to }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page - 1 }}"
+                    hx-target="#activities-list-container" hx-push-url="true">Prev</button>
+            {% endif %}
+
+            {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <span class="px-3 py-1 text-sm rounded bg-brand-500 text-white">{{ p }}</span>
+            {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="/activities?q={{ search }}&type={{ activity_type }}&author={{ author_id }}&from={{ date_from }}&to={{ date_to }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ p }}"
+                    hx-target="#activities-list-container" hx-push-url="true">{{ p }}</button>
+            {% elif p == 4 or p == total_pages - 3 %}
+            <span class="px-3 py-1 text-sm text-gray-400">…</span>
+            {% endif %}
+            {% endfor %}
+
+            {% if page < total_pages %}
+            <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                    hx-get="/activities?q={{ search }}&type={{ activity_type }}&author={{ author_id }}&from={{ date_from }}&to={{ date_to }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page + 1 }}"
+                    hx-target="#activities-list-container" hx-push-url="true">Next</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>

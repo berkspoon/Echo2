@@ -142,7 +142,7 @@ BASE_URL=http://localhost:8000
 - [x] Template stubs — list/detail/form for all modules, 3 dashboard views, admin views
 - [x] Organizations module (router logic, templates, HTMX partials, duplicate detection)
 - [x] People module (router logic, templates, HTMX org autocomplete, DNC enforcement, duplicate detection)
-- [ ] Activities module (router logic)
+- [x] Activities module (router logic, templates, HTMX org/person autocomplete, follow-up task generation, fund tags)
 - [ ] Leads module (router logic)
 - [ ] Contracts module (router logic)
 - [ ] Fund Prospects module (router logic)
@@ -219,3 +219,17 @@ _Use this section to track decisions made during Claude Code sessions:_
 - Added `backstop_company_id` and `ostrako_id` to Pydantic model (PRD Table 7 legacy fields)
 - Distribution list membership tab is read-only for now — add/remove will be built with the Distribution Lists module
 - Next step: Activities module
+
+### Session 4 — March 12, 2026
+- Built full Activities module: router (CRUD, search, filters, pagination, audit logging, soft delete, follow-up task auto-generation), 4 templates (list, detail, form, list table partial)
+- Activity types and subtypes loaded from `reference_data` table; subtypes dynamically fetched via HTMX when type changes (meeting has 5 subtypes)
+- Multi-select HTMX autocomplete for both Linked Organizations (required, 1+) and Linked People (optional, 0+)
+- Org/person links stored in `activity_organization_links` and `activity_people_links` junction tables; fully synced on create/update
+- Follow-Up Required toggle: when enabled, auto-creates a Task assigned to the activity author with due date and notes
+- Fund Tags: multi-select checkboxes from `funds` table, stored as UUID array in `fund_tags` column
+- Activity form pre-fillable with org (`?org=<id>`) or person (`?person=<id>`) from their detail pages
+- List page filters: search (title/details), type, author, date range; sortable columns; pagination
+- Detail page shows linked orgs/people, fund tags, follow-up section with generated tasks
+- Color-coded type badges: call=blue, meeting=purple, email=green, note=gray, conference=yellow, webinar=indigo
+- Notification/email feature deferred to Phase 2 (field stored but not sent)
+- Next step: Leads module

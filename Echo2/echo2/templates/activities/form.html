@@ -1,9 +1,294 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if activity else 'New' }} Activity — Echo 2.0{% endblock %}
-{% block page_title %}{{ 'Edit' if activity else 'New' }} Activity{% endblock %}
+{% block title %}{{ 'Edit' if activity and activity.id is defined else 'New' }} Activity — Echo 2.0{% endblock %}
+{% block page_title %}{{ 'Edit Activity' if activity and activity.id is defined else 'New Activity' }}{% endblock %}
 
 {% block content %}
-<form class="bg-white rounded-lg shadow p-6 space-y-6" method="post">
-    <p class="text-sm text-gray-500">Activity form — stub</p>
+<form class="space-y-6" method="post"
+      action="{{ '/activities/' + activity.id|string if activity and activity.id is defined else '/activities/' }}">
+
+    {% if errors is defined and errors %}
+    <div class="rounded-md bg-red-50 border border-red-200 p-4">
+        <ul class="list-disc list-inside text-sm text-red-700">
+            {% for err in errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Basic Information -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Basic Information</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <div class="md:col-span-2">
+                <label for="title" class="block text-sm font-medium text-gray-700">Title</label>
+                <input type="text" name="title" id="title"
+                       value="{{ activity.title if activity and activity.title else '' }}"
+                       placeholder="Short description of the activity"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <div>
+                <label for="effective_date" class="block text-sm font-medium text-gray-700">Effective Date <span class="text-red-500">*</span></label>
+                <input type="date" name="effective_date" id="effective_date" required
+                       value="{{ activity.effective_date if activity and activity.effective_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <div>
+                <label for="author_id" class="block text-sm font-medium text-gray-700">Author <span class="text-red-500">*</span></label>
+                <select name="author_id" id="author_id" required
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    {% for u in users %}
+                    <option value="{{ u.id }}"
+                        {{ 'selected' if (activity and activity.author_id and activity.author_id|string == u.id|string) or (not activity and user.id|string == u.id|string) else '' }}>
+                        {{ u.display_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label for="activity_type" class="block text-sm font-medium text-gray-700">Type <span class="text-red-500">*</span></label>
+                <select name="activity_type" id="activity_type" required
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/activities/subtypes"
+                        hx-trigger="change"
+                        hx-target="#subtype-select"
+                        hx-include="this"
+                        onchange="toggleSubtypeField(this.value)">
+                    <option value="">— Select type —</option>
+                    {% for t in activity_types %}
+                    <option value="{{ t.value }}" {{ 'selected' if activity and activity.activity_type == t.value else '' }}>{{ t.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div id="subtype-field" class="{{ '' if activity and activity.subtype else 'hidden' }}">
+                <label for="subtype" class="block text-sm font-medium text-gray-700">Subtype</label>
+                <select name="subtype" id="subtype-select"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select subtype —</option>
+                    {% for st in activity_subtypes %}
+                    <option value="{{ st.value }}" {{ 'selected' if activity and activity.subtype == st.value else '' }}>{{ st.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Linked Organizations (multi-select autocomplete) -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Linked Organizations <span class="text-red-500">*</span></h3>
+
+        <!-- Selected orgs chips -->
+        <div id="selected-orgs" class="flex flex-wrap gap-2 mb-3">
+            {% for org in pre_orgs %}
+            <div class="org-chip inline-flex items-center gap-1 bg-brand-50 rounded-md px-3 py-1.5" data-org-id="{{ org.id }}">
+                <input type="hidden" name="linked_org_ids" value="{{ org.id }}">
+                <span class="text-sm font-medium text-brand-700">{{ org.company_name }}</span>
+                <button type="button" onclick="removeOrg(this)" class="text-brand-400 hover:text-brand-600">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Search input -->
+        <div class="relative">
+            <input type="text" id="org-search-input"
+                   placeholder="Start typing to search organizations..."
+                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                   hx-get="/activities/search-orgs"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-target="#org-search-results"
+                   name="q"
+                   autocomplete="off">
+            <div id="org-search-results" class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"></div>
+        </div>
+    </div>
+
+    <!-- Linked People (multi-select autocomplete) -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Linked People</h3>
+
+        <!-- Selected people chips -->
+        <div id="selected-people" class="flex flex-wrap gap-2 mb-3">
+            {% for person in pre_people %}
+            <div class="person-chip inline-flex items-center gap-1 bg-green-50 rounded-md px-3 py-1.5" data-person-id="{{ person.id }}">
+                <input type="hidden" name="linked_person_ids" value="{{ person.id }}">
+                <span class="text-sm font-medium text-green-700">{{ person.display_name }}</span>
+                <button type="button" onclick="removePerson(this)" class="text-green-400 hover:text-green-600">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Search input -->
+        <div class="relative">
+            <input type="text" id="person-search-input"
+                   placeholder="Start typing to search people..."
+                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                   hx-get="/activities/search-people"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-target="#person-search-results"
+                   name="q"
+                   autocomplete="off">
+            <div id="person-search-results" class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"></div>
+        </div>
+    </div>
+
+    <!-- Activity Details -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Activity Details <span class="text-red-500">*</span></h3>
+        <textarea name="details" id="details" rows="10" required
+                  placeholder="Full body of the activity note..."
+                  class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ activity.details if activity and activity.details else '' }}</textarea>
+    </div>
+
+    <!-- Follow-Up -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Follow-Up</h3>
+        <div class="space-y-4">
+            <label class="flex items-center gap-3">
+                <input type="checkbox" name="follow_up_required" id="follow_up_required"
+                       {{ 'checked' if activity and activity.follow_up_required else '' }}
+                       class="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                       onchange="toggleFollowUp(this.checked)">
+                <span class="text-sm font-medium text-gray-700">Follow-Up Required</span>
+                <span class="text-xs text-gray-400">Auto-generates a task assigned to the author</span>
+            </label>
+
+            <div id="follow-up-fields" class="{{ '' if activity and activity.follow_up_required else 'hidden' }}">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pl-7">
+                    <div>
+                        <label for="follow_up_date" class="block text-sm font-medium text-gray-700">Follow-Up Date</label>
+                        <input type="date" name="follow_up_date" id="follow_up_date"
+                               value="{{ activity.follow_up_date if activity and activity.follow_up_date else '' }}"
+                               class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    </div>
+                    <div>
+                        <label for="follow_up_notes" class="block text-sm font-medium text-gray-700">Follow-Up Notes</label>
+                        <input type="text" name="follow_up_notes" id="follow_up_notes"
+                               value="{{ activity.follow_up_notes if activity and activity.follow_up_notes else '' }}"
+                               placeholder="Pre-populates the task description"
+                               class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fund Tags -->
+    {% if funds %}
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Fund Tags</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {% set selected_funds = (activity.fund_tags or []) if activity else [] %}
+            {% for fund in funds %}
+            <label class="flex items-center gap-2">
+                <input type="checkbox" name="fund_tags" value="{{ fund.id }}"
+                       {{ 'checked' if fund.id|string in selected_funds|map('string')|list else '' }}
+                       class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                <span class="text-sm text-gray-700">{{ fund.fund_name }} ({{ fund.ticker }})</span>
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Submit -->
+    <div class="flex items-center justify-end gap-3">
+        <a href="{{ '/activities/' + activity.id|string if activity and activity.id is defined else '/activities' }}"
+           class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            Cancel
+        </a>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            {{ 'Save Changes' if activity and activity.id is defined else 'Create Activity' }}
+        </button>
+    </div>
+
 </form>
+
+{% block scripts %}
+<script>
+/* --- Org multi-select autocomplete --- */
+function addOrg(orgId, orgName) {
+    // Check if already selected
+    if (document.querySelector(`.org-chip[data-org-id="${orgId}"]`)) return;
+
+    const container = document.getElementById('selected-orgs');
+    const chip = document.createElement('div');
+    chip.className = 'org-chip inline-flex items-center gap-1 bg-brand-50 rounded-md px-3 py-1.5';
+    chip.dataset.orgId = orgId;
+    chip.innerHTML = `
+        <input type="hidden" name="linked_org_ids" value="${orgId}">
+        <span class="text-sm font-medium text-brand-700">${orgName}</span>
+        <button type="button" onclick="removeOrg(this)" class="text-brand-400 hover:text-brand-600">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+    `;
+    container.appendChild(chip);
+
+    // Clear search
+    document.getElementById('org-search-input').value = '';
+    document.getElementById('org-search-results').innerHTML = '';
+}
+
+function removeOrg(btn) {
+    btn.closest('.org-chip').remove();
+}
+
+/* --- Person multi-select autocomplete --- */
+function addPerson(personId, personName) {
+    if (document.querySelector(`.person-chip[data-person-id="${personId}"]`)) return;
+
+    const container = document.getElementById('selected-people');
+    const chip = document.createElement('div');
+    chip.className = 'person-chip inline-flex items-center gap-1 bg-green-50 rounded-md px-3 py-1.5';
+    chip.dataset.personId = personId;
+    chip.innerHTML = `
+        <input type="hidden" name="linked_person_ids" value="${personId}">
+        <span class="text-sm font-medium text-green-700">${personName}</span>
+        <button type="button" onclick="removePerson(this)" class="text-green-400 hover:text-green-600">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+    `;
+    container.appendChild(chip);
+
+    document.getElementById('person-search-input').value = '';
+    document.getElementById('person-search-results').innerHTML = '';
+}
+
+function removePerson(btn) {
+    btn.closest('.person-chip').remove();
+}
+
+/* --- Subtype visibility --- */
+function toggleSubtypeField(typeValue) {
+    const field = document.getElementById('subtype-field');
+    // Show subtypes for types that have them (meeting, conference, webinar)
+    const typesWithSubtypes = ['meeting'];
+    if (typesWithSubtypes.includes(typeValue)) {
+        field.classList.remove('hidden');
+    } else {
+        field.classList.add('hidden');
+        document.getElementById('subtype-select').value = '';
+    }
+}
+
+/* --- Follow-up toggle --- */
+function toggleFollowUp(checked) {
+    const fields = document.getElementById('follow-up-fields');
+    if (checked) {
+        fields.classList.remove('hidden');
+    } else {
+        fields.classList.add('hidden');
+    }
+}
+</script>
+{% endblock %}
 {% endblock %}
