@@ -1,9 +1,438 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if lead else 'New' }} Lead — Echo 2.0{% endblock %}
-{% block page_title %}{{ 'Edit' if lead else 'New' }} Lead{% endblock %}
+{% block title %}{{ 'Edit' if lead and lead.id is defined else 'New' }} Lead — Echo 2.0{% endblock %}
+{% block page_title %}{{ 'Edit Lead' if lead and lead.id is defined else 'New Lead' }}{% endblock %}
 
 {% block content %}
-<form class="bg-white rounded-lg shadow p-6 space-y-6" method="post">
-    <p class="text-sm text-gray-500">Lead form — stub</p>
+<form class="space-y-6" method="post"
+      action="{{ '/leads/' + lead.id|string if lead and lead.id is defined else '/leads/' }}">
+
+    {% if errors is defined and errors %}
+    <div class="rounded-md bg-red-50 border border-red-200 p-4">
+        <ul class="list-disc list-inside text-sm text-red-700">
+            {% for err in errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- ===== Section 1: Basic Information (Always visible) ===== -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Basic Information</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <!-- Organization (single-select autocomplete) -->
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700">Organization <span class="text-red-500">*</span></label>
+                <div id="org-selected" class="{{ 'hidden' if not pre_org else '' }}">
+                    <div class="mt-1 flex items-center gap-2 bg-brand-50 rounded-md px-3 py-2">
+                        <input type="hidden" name="organization_id" id="organization_id"
+                               value="{{ pre_org.id if pre_org else '' }}">
+                        <span id="org-selected-name" class="text-sm font-medium text-brand-700">{{ pre_org.company_name if pre_org else '' }}</span>
+                        <button type="button" onclick="clearOrg()" class="ml-auto text-brand-400 hover:text-brand-600">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="org-search-wrapper" class="{{ 'hidden' if pre_org else '' }}">
+                    <div class="relative mt-1">
+                        <input type="text" id="org-search-input"
+                               placeholder="Start typing to search organizations..."
+                               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                               hx-get="/leads/search-orgs"
+                               hx-trigger="keyup changed delay:300ms"
+                               hx-target="#org-search-results"
+                               name="q"
+                               autocomplete="off">
+                        <div id="org-search-results" class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Start Date -->
+            <div>
+                <label for="start_date" class="block text-sm font-medium text-gray-700">Start Date <span class="text-red-500">*</span></label>
+                <input type="date" name="start_date" id="start_date" required
+                       value="{{ lead.start_date if lead and lead.start_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Rating / Stage -->
+            <div>
+                <label for="rating" class="block text-sm font-medium text-gray-700">Stage <span class="text-red-500">*</span></label>
+                <select name="rating" id="rating" required
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="updateStageVisibility(this.value); updateConditionalFields()">
+                    {% for s in lead_stages %}
+                    <option value="{{ s.value }}" {{ 'selected' if lead and lead.rating == s.value else '' }}>{{ s.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Relationship -->
+            <div>
+                <label for="relationship" class="block text-sm font-medium text-gray-700">Relationship <span class="text-red-500">*</span></label>
+                <select name="relationship" id="relationship"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="updateConditionalFields()">
+                    <option value="">— Select —</option>
+                    {% for rt in relationship_types %}
+                    <option value="{{ rt.value }}" {{ 'selected' if lead and lead.relationship == rt.value else '' }}>{{ rt.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Aksia Owner -->
+            <div>
+                <label for="aksia_owner_id" class="block text-sm font-medium text-gray-700">Aksia Owner <span class="text-red-500">*</span></label>
+                <select name="aksia_owner_id" id="aksia_owner_id"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}"
+                        {{ 'selected' if (lead and lead.aksia_owner_id and lead.aksia_owner_id|string == u.id|string) or (not lead and user.id|string == u.id|string) else '' }}>
+                        {{ u.display_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Summary -->
+            <div class="md:col-span-2">
+                <label for="summary" class="block text-sm font-medium text-gray-700">Summary</label>
+                <input type="text" name="summary" id="summary" maxlength="200"
+                       value="{{ lead.summary if lead and lead.summary else '' }}"
+                       placeholder="Short description of the opportunity (max 200 chars)"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Section 2: Radar+ Fields ===== -->
+    <div id="section-radar" class="bg-white rounded-lg shadow p-6" data-stage-min="2">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Service & Classification
+            <span class="text-xs text-gray-400 font-normal ml-2">Radar+</span>
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <!-- Service Type -->
+            <div>
+                <label for="service_type" class="block text-sm font-medium text-gray-700">Service Type <span class="text-red-500">*</span></label>
+                <select name="service_type" id="service_type"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for st in service_types %}
+                    <option value="{{ st.value }}" {{ 'selected' if lead and lead.service_type == st.value else '' }}>{{ st.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Source -->
+            <div>
+                <label for="source" class="block text-sm font-medium text-gray-700">Source <span class="text-red-500">*</span></label>
+                <input type="text" name="source" id="source" maxlength="100"
+                       value="{{ lead.source if lead and lead.source else '' }}"
+                       placeholder="Origin of the lead"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Asset Classes (multi-select checkboxes) -->
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Asset Classes <span class="text-red-500">*</span></label>
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                    {% set selected_acs = (lead.asset_classes or []) if lead else [] %}
+                    {% for ac in asset_classes %}
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" name="asset_classes" value="{{ ac.value }}"
+                               {{ 'checked' if ac.value in selected_acs else '' }}
+                               class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                        <span class="text-sm text-gray-700">{{ ac.label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Section 3: Focus+ Fields ===== -->
+    <div id="section-focus" class="bg-white rounded-lg shadow p-6" data-stage-min="3">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Pipeline Details
+            <span class="text-xs text-gray-400 font-normal ml-2">Focus+</span>
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+            <!-- Pricing Proposal -->
+            <div>
+                <label for="pricing_proposal" class="block text-sm font-medium text-gray-700">Pricing Proposal <span class="text-red-500">*</span></label>
+                <select name="pricing_proposal" id="pricing_proposal"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="updateConditionalFields()">
+                    <option value="">— Select —</option>
+                    {% for pp in pricing_proposals %}
+                    <option value="{{ pp.value }}" {{ 'selected' if lead and lead.pricing_proposal == pp.value else '' }}>{{ pp.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Pricing Proposal Details (conditional) -->
+            <div id="pricing-details-wrapper" class="lg:col-span-2 {{ '' if lead and lead.pricing_proposal and lead.pricing_proposal != 'no_proposal' else 'hidden' }}">
+                <label for="pricing_proposal_details" class="block text-sm font-medium text-gray-700">Pricing Proposal Details <span class="text-red-500">*</span></label>
+                <input type="text" name="pricing_proposal_details" id="pricing_proposal_details"
+                       value="{{ lead.pricing_proposal_details if lead and lead.pricing_proposal_details else '' }}"
+                       placeholder="Details on the pricing proposal"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Expected Decision Date -->
+            <div>
+                <label for="expected_decision_date" class="block text-sm font-medium text-gray-700">Expected Decision Date <span class="text-red-500">*</span></label>
+                <input type="date" name="expected_decision_date" id="expected_decision_date"
+                       value="{{ lead.expected_decision_date if lead and lead.expected_decision_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Expected Revenue -->
+            <div>
+                <label for="expected_revenue" class="block text-sm font-medium text-gray-700">Expected Revenue ($) <span class="text-red-500">*</span></label>
+                <input type="number" name="expected_revenue" id="expected_revenue" step="0.01" min="0"
+                       value="{{ lead.expected_revenue if lead and lead.expected_revenue is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Expected Revenue Notes -->
+            <div>
+                <label for="expected_revenue_notes" class="block text-sm font-medium text-gray-700">Revenue Notes</label>
+                <input type="text" name="expected_revenue_notes" id="expected_revenue_notes"
+                       value="{{ lead.expected_revenue_notes if lead and lead.expected_revenue_notes else '' }}"
+                       placeholder="Notes on revenue assumption"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Expected Yr 1 FLAR -->
+            <div>
+                <label for="expected_yr1_flar" class="block text-sm font-medium text-gray-700">Expected Yr 1 FLAR ($) <span class="text-red-500">*</span></label>
+                <input type="number" name="expected_yr1_flar" id="expected_yr1_flar" step="0.01" min="0"
+                       value="{{ lead.expected_yr1_flar if lead and lead.expected_yr1_flar is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Expected Long-term FLAR -->
+            <div>
+                <label for="expected_longterm_flar" class="block text-sm font-medium text-gray-700">Expected Long-term FLAR ($) <span class="text-red-500">*</span></label>
+                <input type="number" name="expected_longterm_flar" id="expected_longterm_flar" step="0.01" min="0"
+                       value="{{ lead.expected_longterm_flar if lead and lead.expected_longterm_flar is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Previous FLAR (conditional on Extension/Re-Up) -->
+            <div id="previous-flar-wrapper" class="{{ '' if lead and lead.relationship in ('contract_extension', 're_up') else 'hidden' }}">
+                <label for="previous_flar" class="block text-sm font-medium text-gray-700">Previous FLAR ($) <span class="text-red-500">*</span></label>
+                <input type="number" name="previous_flar" id="previous_flar" step="0.01" min="0"
+                       value="{{ lead.previous_flar if lead and lead.previous_flar is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- RFP Status -->
+            <div>
+                <label for="rfp_status" class="block text-sm font-medium text-gray-700">RFP Status <span class="text-red-500">*</span></label>
+                <select name="rfp_status" id="rfp_status"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="updateConditionalFields()">
+                    <option value="">— Select —</option>
+                    {% for rs in rfp_statuses %}
+                    <option value="{{ rs.value }}" {{ 'selected' if lead and lead.rfp_status == rs.value else '' }}>{{ rs.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- RFP Expected Date (conditional) -->
+            <div id="rfp-date-wrapper" class="{{ '' if lead and lead.rfp_status and lead.rfp_status != 'not_applicable' else 'hidden' }}">
+                <label for="rfp_expected_date" class="block text-sm font-medium text-gray-700">RFP Expected Date <span class="text-red-500">*</span></label>
+                <input type="date" name="rfp_expected_date" id="rfp_expected_date"
+                       value="{{ lead.rfp_expected_date if lead and lead.rfp_expected_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Risk Weight -->
+            <div>
+                <label for="risk_weight" class="block text-sm font-medium text-gray-700">Risk Weight <span class="text-red-500">*</span></label>
+                <select name="risk_weight" id="risk_weight"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for rw in risk_weights %}
+                    <option value="{{ rw.value }}" {{ 'selected' if lead and lead.risk_weight == rw.value else '' }}>{{ rw.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- Next Steps -->
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label for="next_steps" class="block text-sm font-medium text-gray-700">Next Steps</label>
+                <textarea name="next_steps" id="next_steps" rows="2"
+                          class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ lead.next_steps if lead and lead.next_steps else '' }}</textarea>
+            </div>
+            <div>
+                <label for="next_steps_date" class="block text-sm font-medium text-gray-700">Next Steps Date</label>
+                <input type="date" name="next_steps_date" id="next_steps_date"
+                       value="{{ lead.next_steps_date if lead and lead.next_steps_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                <p class="mt-1 text-xs text-gray-400">Setting a date auto-generates a task assigned to the Aksia Owner.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Section 4: Verbal Mandate+ Fields ===== -->
+    <div id="section-verbal" class="bg-white rounded-lg shadow p-6" data-stage-min="4">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Verbal Mandate Details
+            <span class="text-xs text-gray-400 font-normal ml-2">Verbal Mandate+</span>
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <!-- Legacy Onboarding -->
+            <div>
+                <label class="flex items-center gap-3 mt-2">
+                    <input type="checkbox" name="legacy_onboarding" id="legacy_onboarding"
+                           {{ 'checked' if lead and lead.legacy_onboarding else '' }}
+                           class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+                           onchange="updateConditionalFields()">
+                    <span class="text-sm font-medium text-gray-700">Legacy Onboarding</span>
+                </label>
+                <p class="text-xs text-gray-400 mt-1 ml-7">Client has legacy holdings to transition</p>
+            </div>
+
+            <!-- Legacy Onboarding Holdings (conditional) -->
+            <div id="legacy-holdings-wrapper" class="{{ '' if lead and lead.legacy_onboarding else 'hidden' }}">
+                <label for="legacy_onboarding_holdings" class="block text-sm font-medium text-gray-700">Legacy Holdings Details <span class="text-red-500">*</span></label>
+                <textarea name="legacy_onboarding_holdings" id="legacy_onboarding_holdings" rows="2"
+                          class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ lead.legacy_onboarding_holdings if lead and lead.legacy_onboarding_holdings else '' }}</textarea>
+            </div>
+
+            <!-- Potential Coverage -->
+            <div class="md:col-span-2">
+                <label for="potential_coverage" class="block text-sm font-medium text-gray-700">Potential Coverage</label>
+                <input type="text" name="potential_coverage" id="potential_coverage"
+                       value="{{ lead.potential_coverage if lead and lead.potential_coverage else '' }}"
+                       placeholder="Proposed client coverage team"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Section 5: Closure Fields (Inactive stages) ===== -->
+    <div id="section-inactive" class="bg-white rounded-lg shadow p-6" data-stage-inactive>
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Closure</h3>
+
+        <!-- Won banner -->
+        <div id="won-banner" class="hidden mb-4 rounded-md bg-green-50 border border-green-200 p-3">
+            <p class="text-sm text-green-700">
+                <strong>Won Mandate:</strong> Saving this lead will auto-set the end date to today and create a Contract record inheriting this lead's details.
+            </p>
+        </div>
+
+        <!-- Lost banner -->
+        <div id="lost-banner" class="hidden mb-4 rounded-md bg-red-50 border border-red-200 p-3">
+            <p class="text-sm text-red-700">
+                <strong>Lost Lead:</strong> End Date is required to close this lead.
+            </p>
+        </div>
+
+        <div>
+            <label for="end_date" class="block text-sm font-medium text-gray-700">End Date <span id="end-date-required" class="text-red-500 hidden">*</span></label>
+            <input type="date" name="end_date" id="end_date"
+                   value="{{ lead.end_date if lead and lead.end_date else '' }}"
+                   class="mt-1 w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+        </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="flex items-center justify-end gap-3">
+        <a href="{{ '/leads/' + lead.id|string if lead and lead.id is defined else '/leads' }}"
+           class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            Cancel
+        </a>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            {{ 'Save Changes' if lead and lead.id is defined else 'Create Lead' }}
+        </button>
+    </div>
+
 </form>
+
+{% block scripts %}
+<script>
+/* --- Stage visibility mapping --- */
+const STAGE_ORDER = {
+    exploratory: 1, radar: 2, focus: 3, verbal_mandate: 4,
+    won: 5, lost_dropped_out: 5, lost_selected_other: 5, lost_nobody_hired: 5
+};
+const INACTIVE = ['won', 'lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired'];
+const LOST = ['lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired'];
+
+function updateStageVisibility(rating) {
+    const stage = STAGE_ORDER[rating] || 1;
+    const isInactive = INACTIVE.includes(rating);
+    const isWon = rating === 'won';
+    const isLost = LOST.includes(rating);
+
+    // Show/hide stage-gated sections
+    document.getElementById('section-radar').classList.toggle('hidden', stage < 2);
+    document.getElementById('section-focus').classList.toggle('hidden', stage < 3);
+    document.getElementById('section-verbal').classList.toggle('hidden', stage < 4);
+    document.getElementById('section-inactive').classList.toggle('hidden', !isInactive);
+
+    // Won/Lost banners
+    document.getElementById('won-banner').classList.toggle('hidden', !isWon);
+    document.getElementById('lost-banner').classList.toggle('hidden', !isLost);
+
+    // End date required indicator
+    document.getElementById('end-date-required').classList.toggle('hidden', !isLost);
+}
+
+function updateConditionalFields() {
+    // Previous FLAR: show when relationship is extension or re-up
+    const rel = document.getElementById('relationship').value;
+    document.getElementById('previous-flar-wrapper').classList.toggle('hidden',
+        rel !== 'contract_extension' && rel !== 're_up');
+
+    // Pricing Proposal Details: show when proposal != no_proposal
+    const pp = document.getElementById('pricing_proposal').value;
+    document.getElementById('pricing-details-wrapper').classList.toggle('hidden',
+        !pp || pp === 'no_proposal');
+
+    // RFP Expected Date: show when status != not_applicable
+    const rfp = document.getElementById('rfp_status').value;
+    document.getElementById('rfp-date-wrapper').classList.toggle('hidden',
+        !rfp || rfp === 'not_applicable');
+
+    // Legacy Onboarding Holdings: show when legacy_onboarding is checked
+    const legacy = document.getElementById('legacy_onboarding').checked;
+    document.getElementById('legacy-holdings-wrapper').classList.toggle('hidden', !legacy);
+}
+
+/* --- Org single-select autocomplete --- */
+function selectOrg(orgId, orgName) {
+    document.getElementById('organization_id').value = orgId;
+    document.getElementById('org-selected-name').textContent = orgName;
+    document.getElementById('org-selected').classList.remove('hidden');
+    document.getElementById('org-search-wrapper').classList.add('hidden');
+    document.getElementById('org-search-results').innerHTML = '';
+}
+
+function clearOrg() {
+    document.getElementById('organization_id').value = '';
+    document.getElementById('org-selected').classList.add('hidden');
+    document.getElementById('org-search-wrapper').classList.remove('hidden');
+    document.getElementById('org-search-input').value = '';
+}
+
+/* --- Init on page load --- */
+document.addEventListener('DOMContentLoaded', function() {
+    const rating = document.getElementById('rating').value;
+    updateStageVisibility(rating);
+    updateConditionalFields();
+});
+</script>
+{% endblock %}
 {% endblock %}

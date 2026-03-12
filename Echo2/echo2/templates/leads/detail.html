@@ -1,9 +1,307 @@
 {% extends "base.html" %}
-{% block title %}Lead — Echo 2.0{% endblock %}
+{% block title %}Lead — {{ org_name }} — Echo 2.0{% endblock %}
 {% block page_title %}Lead Detail{% endblock %}
 
 {% block content %}
-<div class="bg-white rounded-lg shadow p-6">
-    <p class="text-sm text-gray-500">Lead detail view — stub</p>
+<div class="space-y-6">
+
+    <!-- Lead Header Card -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="p-6">
+            <div class="flex items-start justify-between">
+                <div>
+                    <div class="flex items-center gap-3">
+                        <h2 class="text-xl font-bold text-gray-900">
+                            <a href="/organizations/{{ lead.organization_id }}" class="text-brand-600 hover:underline">{{ org_name }}</a>
+                        </h2>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                            {% if lead.rating == 'exploratory' %}bg-gray-100 text-gray-800
+                            {% elif lead.rating == 'radar' %}bg-blue-100 text-blue-800
+                            {% elif lead.rating == 'focus' %}bg-yellow-100 text-yellow-800
+                            {% elif lead.rating == 'verbal_mandate' %}bg-purple-100 text-purple-800
+                            {% elif lead.rating == 'won' %}bg-green-100 text-green-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ stage_labels.get(lead.rating, lead.rating | replace('_', ' ') | title) }}
+                        </span>
+                    </div>
+                    {% if lead.summary %}
+                    <p class="mt-1 text-sm text-gray-500">{{ lead.summary }}</p>
+                    {% endif %}
+                </div>
+                <div class="flex gap-2">
+                    <a href="/leads/{{ lead.id }}/edit"
+                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm">
+                        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        Edit
+                    </a>
+                    {% if user.role == 'admin' %}
+                    <button hx-post="/leads/{{ lead.id }}/archive" hx-confirm="Are you sure you want to archive this lead?"
+                            class="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 shadow-sm">
+                        Archive
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Stage Progress Bar -->
+            <div class="mt-6">
+                {% set current_stage = stage_order.get(lead.rating, 1) %}
+                {% set stages = [('exploratory', 'Exploratory', 1), ('radar', 'Radar', 2), ('focus', 'Focus', 3), ('verbal_mandate', 'Verbal Mandate', 4)] %}
+                <div class="flex items-center gap-1">
+                    {% for val, label, order in stages %}
+                    <div class="flex-1">
+                        <div class="h-2 rounded-full {{ 'bg-brand-500' if current_stage >= order else 'bg-gray-200' }}"></div>
+                        <p class="mt-1 text-xs {{ 'text-brand-600 font-medium' if lead.rating == val else 'text-gray-400' }}">{{ label }}</p>
+                    </div>
+                    {% endfor %}
+                    <div class="flex-1">
+                        {% if lead.rating == 'won' %}
+                        <div class="h-2 rounded-full bg-green-500"></div>
+                        <p class="mt-1 text-xs text-green-600 font-medium">Won</p>
+                        {% elif lead.rating in ('lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired') %}
+                        <div class="h-2 rounded-full bg-red-500"></div>
+                        <p class="mt-1 text-xs text-red-600 font-medium">Lost</p>
+                        {% else %}
+                        <div class="h-2 rounded-full bg-gray-200"></div>
+                        <p class="mt-1 text-xs text-gray-400">Outcome</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key fields grid -->
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Start Date</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.start_date or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">End Date</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.end_date or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Relationship</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ (lead.relationship or '—') | replace('_', ' ') | title }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Aksia Owner</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ owner_name }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Service Type</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ (lead.service_type or '—') | replace('_', ' ') | title }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Source</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.source or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Created</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.created_at[:10] if lead.created_at else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Last Updated</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.updated_at[:10] if lead.updated_at else '—' }}</dd>
+                </div>
+            </div>
+
+            <!-- Asset Classes -->
+            {% if lead.asset_classes %}
+            <div class="mt-4">
+                <dt class="text-xs font-medium text-gray-500 uppercase mb-2">Asset Classes</dt>
+                <div class="flex flex-wrap gap-1.5">
+                    {% for ac in lead.asset_classes %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700">
+                        {{ ac_labels.get(ac, ac) }}
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Focus+ Fields (only show if stage >= focus) -->
+    {% set current_stage = stage_order.get(lead.rating, 1) %}
+    {% if current_stage >= 3 %}
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Pipeline Details</h3>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Pricing Proposal</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ (lead.pricing_proposal or '—') | replace('_', ' ') | title }}</dd>
+                </div>
+                {% if lead.pricing_proposal_details %}
+                <div class="lg:col-span-2">
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Pricing Details</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.pricing_proposal_details }}</dd>
+                </div>
+                {% endif %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Expected Decision Date</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.expected_decision_date or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Expected Revenue</dt>
+                    <dd class="mt-1 text-sm text-gray-900 font-medium">
+                        {% if lead.expected_revenue is not none %}${{ '{:,.0f}'.format(lead.expected_revenue) }}{% else %}—{% endif %}
+                    </dd>
+                </div>
+                {% if lead.expected_revenue_notes %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Revenue Notes</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.expected_revenue_notes }}</dd>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- FLAR fields -->
+            <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Yr 1 FLAR</dt>
+                    <dd class="mt-1 text-sm text-gray-900 font-medium">
+                        {% if lead.expected_yr1_flar is not none %}${{ '{:,.0f}'.format(lead.expected_yr1_flar) }}{% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Long-term FLAR</dt>
+                    <dd class="mt-1 text-sm text-gray-900 font-medium">
+                        {% if lead.expected_longterm_flar is not none %}${{ '{:,.0f}'.format(lead.expected_longterm_flar) }}{% else %}—{% endif %}
+                    </dd>
+                </div>
+                {% if lead.previous_flar is not none %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Previous FLAR</dt>
+                    <dd class="mt-1 text-sm text-gray-900">${{ '{:,.0f}'.format(lead.previous_flar) }}</dd>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- RFP section -->
+            <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">RFP Status</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ (lead.rfp_status or '—') | replace('_', ' ') | title }}</dd>
+                </div>
+                {% if lead.rfp_expected_date %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">RFP Expected Date</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.rfp_expected_date }}</dd>
+                </div>
+                {% endif %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Risk Weight</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ (lead.risk_weight or '—') | replace('_', ' ') | title }}</dd>
+                </div>
+            </div>
+
+            <!-- Next Steps -->
+            {% if lead.next_steps or lead.next_steps_date %}
+            <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Next Steps</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.next_steps or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Next Steps Date</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.next_steps_date or '—' }}</dd>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Verbal Mandate+ Fields (only show if stage >= verbal_mandate) -->
+    {% if current_stage >= 4 %}
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Verbal Mandate Details</h3>
+        </div>
+        <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Legacy Onboarding</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ 'Yes' if lead.legacy_onboarding else 'No' }}</dd>
+            </div>
+            {% if lead.legacy_onboarding and lead.legacy_onboarding_holdings %}
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Legacy Holdings Details</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ lead.legacy_onboarding_holdings }}</dd>
+            </div>
+            {% endif %}
+            {% if lead.potential_coverage %}
+            <div class="md:col-span-2">
+                <dt class="text-xs font-medium text-gray-500 uppercase">Potential Coverage</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ lead.potential_coverage }}</dd>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Contract (if won and contract exists) -->
+    {% if contract %}
+    <div class="bg-white rounded-lg shadow border-l-4 border-green-400">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-green-800 uppercase tracking-wider">Contract Created</h3>
+        </div>
+        <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Contract Start Date</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ contract.start_date }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Service Type</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ (contract.service_type or '') | replace('_', ' ') | title }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium text-gray-500 uppercase">Actual Revenue</dt>
+                <dd class="mt-1 text-sm text-gray-900 font-medium">
+                    {% if contract.actual_revenue is not none %}${{ '{:,.0f}'.format(contract.actual_revenue) }}{% else %}—{% endif %}
+                </dd>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Related Tasks -->
+    {% if related_tasks %}
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+                Related Tasks
+                <span class="ml-1 text-xs text-gray-400 font-normal">({{ related_tasks | length }})</span>
+            </h3>
+        </div>
+        <div class="p-6">
+            <ul class="space-y-2">
+                {% for task in related_tasks %}
+                <li class="flex items-center gap-2 text-sm">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                        {% if task.status == 'complete' %}bg-green-100 text-green-800
+                        {% elif task.status == 'in_progress' %}bg-blue-100 text-blue-800
+                        {% elif task.status == 'cancelled' %}bg-gray-100 text-gray-500
+                        {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                        {{ task.status | replace('_', ' ') | title }}
+                    </span>
+                    <span class="text-gray-700">{{ task.title }}</span>
+                    {% if task.due_date %}
+                    <span class="text-xs text-gray-400">Due: {{ task.due_date }}</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Back link -->
+    <div>
+        <a href="/leads" class="text-sm text-brand-600 hover:underline">&larr; Back to Advisory Pipeline</a>
+    </div>
+
 </div>
 {% endblock %}

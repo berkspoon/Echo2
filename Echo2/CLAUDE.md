@@ -143,7 +143,7 @@ BASE_URL=http://localhost:8000
 - [x] Organizations module (router logic, templates, HTMX partials, duplicate detection)
 - [x] People module (router logic, templates, HTMX org autocomplete, DNC enforcement, duplicate detection)
 - [x] Activities module (router logic, templates, HTMX org/person autocomplete, follow-up task generation, fund tags)
-- [ ] Leads module (router logic)
+- [x] Leads module (router logic, templates, stage-gated validation, Lead→Contract promotion, next-steps task generation)
 - [ ] Contracts module (router logic)
 - [ ] Fund Prospects module (router logic)
 - [ ] Distribution Lists module (router logic)
@@ -233,3 +233,18 @@ _Use this section to track decisions made during Claude Code sessions:_
 - Color-coded type badges: call=blue, meeting=purple, email=green, note=gray, conference=yellow, webinar=indigo
 - Notification/email feature deferred to Phase 2 (field stored but not sent)
 - Next step: Leads module
+
+### Session 5 — March 12, 2026
+- Built full Leads module: router (CRUD, search, filters, pagination, audit logging, soft delete, stage-gated validation, Lead→Contract promotion, next-steps task auto-generation), 5 templates (list, detail, form, list table partial)
+- Stage-gated field validation: fields required based on lead stage (Exploratory → Radar → Focus → Verbal Mandate → Inactive). Validation enforced server-side; visibility controlled client-side via JavaScript
+- Stage hierarchy: exploratory=1, radar=2, focus=3, verbal_mandate=4, won/lost=5. Each stage unlocks additional required fields
+- Lead → Contract promotion: when rating changes to "won", system auto-sets end_date=today and creates a Contract record inheriting organization_id, service_type, asset_classes, expected_revenue→actual_revenue, potential_coverage→client_coverage
+- Next Steps Date auto-task: when next_steps_date is set or changed, creates a Task assigned to aksia_owner_id with due_date=next_steps_date, linked_record_type="lead"
+- Organization linked via HTMX single-select autocomplete (different from Activities' multi-select pattern)
+- Added `risk_weight` reference_data category (high/medium/low) to schema.sql — per rule that dropdowns must never be hardcoded
+- Conditional field visibility: previous_flar shown only for Extension/Re-Up relationships; pricing_proposal_details shown when proposal != no_proposal; rfp_expected_date shown when rfp_status != not_applicable; legacy_onboarding_holdings shown when legacy_onboarding=true
+- Color-coded stage badges: exploratory=gray, radar=blue, focus=yellow, verbal_mandate=purple, won=green, lost=red
+- Stage progress bar on detail page showing visual pipeline progression
+- List page filters: search (org name + summary), stage, owner, service type, relationship, date range; sortable columns; pagination
+- Currency formatting for revenue and FLAR fields using Jinja `'{:,.0f}'.format()` pattern
+- Next step: Contracts module

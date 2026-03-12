@@ -147,6 +147,12 @@ INSERT INTO reference_data (category, value, label, display_order) VALUES
     ('rfp_status', 'submitted', 'Submitted', 3),
     ('rfp_status', 'not_applicable', 'Not Applicable', 4);
 
+-- Seed: Risk Weight
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('risk_weight', 'high', 'High', 1),
+    ('risk_weight', 'medium', 'Medium', 2),
+    ('risk_weight', 'low', 'Low', 3);
+
 -- Seed: Fee Arrangement Frequency
 INSERT INTO reference_data (category, value, label, display_order) VALUES
     ('fee_frequency', 'monthly', 'Monthly', 1),

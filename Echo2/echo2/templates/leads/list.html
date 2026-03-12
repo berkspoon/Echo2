@@ -1,15 +1,112 @@
 {% extends "base.html" %}
 {% block title %}Leads — Echo 2.0{% endblock %}
-{% block page_title %}Leads{% endblock %}
+{% block page_title %}Advisory Pipeline{% endblock %}
 
 {% block content %}
-<div class="bg-white rounded-lg shadow">
-    <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-gray-900">Advisory Pipeline — All Leads</h2>
-        <a href="/leads/new" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600">+ New Lead</a>
+<div class="space-y-4">
+
+    <!-- Header row -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-semibold text-gray-900">All Leads</h2>
+            <p class="text-sm text-gray-500">{{ total_count }} lead{{ 's' if total_count != 1 else '' }}</p>
+        </div>
+        <a href="/leads/new"
+           class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            New Lead
+        </a>
     </div>
-    <div id="leads-table" class="p-6">
-        <p class="text-sm text-gray-500">Loading...</p>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <form id="filter-form" hx-get="/leads" hx-target="#leads-list-container" hx-push-url="true" class="flex flex-wrap items-end gap-4">
+            <!-- Search -->
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Search</label>
+                <input type="text" name="q" value="{{ search }}"
+                       placeholder="Search by org name or summary..."
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/leads" hx-trigger="keyup changed delay:400ms" hx-target="#leads-list-container" hx-push-url="true" hx-include="#filter-form">
+            </div>
+
+            <!-- Stage -->
+            <div class="w-48">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Stage</label>
+                <select name="stage"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Stages</option>
+                    {% for s in lead_stages %}
+                    <option value="{{ s.value }}" {{ 'selected' if rating == s.value else '' }}>{{ s.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Aksia Owner -->
+            <div class="w-44">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Aksia Owner</label>
+                <select name="owner"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Owners</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}" {{ 'selected' if owner_id == u.id|string else '' }}>{{ u.display_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Service Type -->
+            <div class="w-40">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Service Type</label>
+                <select name="service"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Services</option>
+                    {% for st in service_types %}
+                    <option value="{{ st.value }}" {{ 'selected' if service_type == st.value else '' }}>{{ st.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Relationship -->
+            <div class="w-44">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Relationship</label>
+                <select name="rel"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Types</option>
+                    {% for rt in relationship_types %}
+                    <option value="{{ rt.value }}" {{ 'selected' if relationship == rt.value else '' }}>{{ rt.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Date From -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">From</label>
+                <input type="date" name="from" value="{{ date_from }}"
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+            </div>
+
+            <!-- Date To -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">To</label>
+                <input type="date" name="to" value="{{ date_to }}"
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+            </div>
+
+            <input type="hidden" name="sort_by" value="{{ sort_by }}">
+            <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
+        </form>
     </div>
+
+    <!-- Table -->
+    <div id="leads-list-container">
+        {% include "leads/_list_table.html" %}
+    </div>
+
 </div>
 {% endblock %}
