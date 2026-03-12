@@ -1,0 +1,34 @@
+<!-- Person distribution lists tab partial (read-only) -->
+{% if person.do_not_contact %}
+<div class="rounded-md bg-red-50 border border-red-200 p-4">
+    <p class="text-sm text-red-700">This person is flagged as Do Not Contact. All distribution list memberships have been removed.</p>
+</div>
+{% elif distribution_lists %}
+<table class="min-w-full divide-y divide-gray-200">
+    <thead class="bg-gray-50">
+        <tr>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">List Name</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Asset Class</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Joined</th>
+        </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-200">
+        {% for item in distribution_lists %}
+        {% set dl = item.distribution_list if item.distribution_list else item %}
+        <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3 text-sm">
+                <a href="/distribution-lists/{{ dl.id }}" class="font-medium text-brand-600 hover:underline">{{ dl.list_name }}</a>
+            </td>
+            <td class="px-4 py-3 text-sm text-gray-600">{{ (dl.list_type or '') | replace('_', ' ') | title }}</td>
+            <td class="px-4 py-3 text-sm text-gray-600">{{ (dl.asset_class or '') | upper }}</td>
+            <td class="px-4 py-3 text-sm text-gray-600">{{ item.joined_at[:10] if item.joined_at else '&mdash;' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p class="mt-3 text-xs text-gray-400">Distribution list membership is managed from the Distribution Lists module. This is a read-only view.</p>
+{% else %}
+<p class="text-sm text-gray-500">This person is not a member of any distribution lists.</p>
+<p class="mt-2 text-xs text-gray-400">Distribution list membership is managed from the Distribution Lists module.</p>
+{% endif %}

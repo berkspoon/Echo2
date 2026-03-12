@@ -723,6 +723,33 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- =============================================================================
+-- HELPER: Fuzzy duplicate detection for people
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION check_person_name_similarity(
+    search_first TEXT,
+    search_last TEXT,
+    similarity_threshold FLOAT DEFAULT 0.4
+)
+RETURNS TABLE(id UUID, first_name TEXT, last_name TEXT, email TEXT, job_title TEXT, org_name TEXT)
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT p.id, p.first_name, p.last_name, p.email, p.job_title,
+           (SELECT o.company_name
+            FROM person_organization_links pol
+            JOIN organizations o ON o.id = pol.organization_id
+            WHERE pol.person_id = p.id AND pol.link_type = 'primary'
+            LIMIT 1) AS org_name
+    FROM people p
+    WHERE p.is_archived = FALSE
+      AND similarity(p.first_name || ' ' || p.last_name, search_first || ' ' || search_last) > similarity_threshold
+    ORDER BY similarity(p.first_name || ' ' || p.last_name, search_first || ' ' || search_last) DESC
+    LIMIT 10;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =============================================================================
 -- HELPER: Auto-update updated_at timestamp
 -- =============================================================================
 

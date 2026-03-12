@@ -141,7 +141,7 @@ BASE_URL=http://localhost:8000
 - [x] Router stubs — all 10 modules with TODO placeholders
 - [x] Template stubs — list/detail/form for all modules, 3 dashboard views, admin views
 - [x] Organizations module (router logic, templates, HTMX partials, duplicate detection)
-- [ ] People module (router logic)
+- [x] People module (router logic, templates, HTMX org autocomplete, DNC enforcement, duplicate detection)
 - [ ] Activities module (router logic)
 - [ ] Leads module (router logic)
 - [ ] Contracts module (router logic)
@@ -204,3 +204,18 @@ _Use this section to track decisions made during Claude Code sessions:_
 - Coverage rollup: computed from linked people + leads, never stored at org level
 - Client Questionnaire: conditionally visible when relationship_type = client, with disclosure toggle
 - Next step: People module
+
+### Session 3 — March 12, 2026
+- Built full People module: router (CRUD, search, filters, pagination, audit logging, duplicate detection, soft delete, DNC enforcement), 8 templates (list, detail, form, 3 tab partials, list table partial, duplicate warning partial)
+- Added `check_person_name_similarity()` PostgreSQL function to schema.sql for fuzzy person name matching via pg_trgm (includes primary org name in results)
+- HTMX-powered org autocomplete on person form (search-orgs endpoint returns clickable dropdown)
+- Primary Organization is required on person create; stored in `person_organization_links` with link_type = primary
+- When primary org changes, old org automatically marked as "former" (per PRD Section 4.3)
+- Do Not Contact toggle: confirmation dialog, removes from all `distribution_list_members`, each removal logged to audit_log
+- Legal & Compliance Notices field hidden when DNC is enabled
+- Asset Classes of Interest: multi-select checkboxes from reference_data table
+- Coverage Owner defaults to record creator when not specified
+- Person form can be pre-filled with org via `?org=<org_id>` query param (for "Add Person" from org detail page)
+- Added `backstop_company_id` and `ostrako_id` to Pydantic model (PRD Table 7 legacy fields)
+- Distribution list membership tab is read-only for now — add/remove will be built with the Distribution Lists module
+- Next step: Activities module

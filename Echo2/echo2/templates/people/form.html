@@ -1,9 +1,239 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if person else 'New' }} Person — Echo 2.0{% endblock %}
-{% block page_title %}{{ 'Edit' if person else 'New' }} Person{% endblock %}
+{% block title %}{{ 'Edit' if person and person.id is defined else 'New' }} Person — Echo 2.0{% endblock %}
+{% block page_title %}{{ 'Edit ' + person.first_name + ' ' + person.last_name if person and person.id is defined else 'New Person' }}{% endblock %}
 
 {% block content %}
-<form class="bg-white rounded-lg shadow p-6 space-y-6" method="post">
-    <p class="text-sm text-gray-500">Person form — stub</p>
+<form class="space-y-6" method="post"
+      action="{{ '/people/' + person.id|string if person and person.id is defined else '/people/' }}">
+
+    {% if errors is defined and errors %}
+    <div class="rounded-md bg-red-50 border border-red-200 p-4">
+        <ul class="list-disc list-inside text-sm text-red-700">
+            {% for err in errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if duplicates is defined and duplicates %}
+    <div class="rounded-md bg-yellow-50 border border-yellow-200 p-4">
+        <h3 class="text-sm font-medium text-yellow-800 mb-2">Potential duplicates found</h3>
+        <ul class="text-sm text-yellow-700 space-y-1">
+            {% for dupe in duplicates %}
+            <li>
+                <a href="/people/{{ dupe.id }}" target="_blank" class="underline hover:text-yellow-900">
+                    {{ dupe.first_name }} {{ dupe.last_name }}
+                </a>
+                {% if dupe.email %} &mdash; {{ dupe.email }}{% endif %}
+                {% if dupe.org_name %} @ {{ dupe.org_name }}{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        <p class="mt-2 text-sm text-yellow-700">If this is not a duplicate, click "Save Anyway" below.</p>
+    </div>
+    {% endif %}
+
+    <div id="duplicate-check-results"></div>
+
+    <!-- Basic Information -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Basic Information</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <div>
+                <label for="first_name" class="block text-sm font-medium text-gray-700">First Name <span class="text-red-500">*</span></label>
+                <input type="text" name="first_name" id="first_name" required
+                       value="{{ person.first_name if person and person.first_name else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/people/check-duplicates"
+                       hx-trigger="keyup changed delay:600ms"
+                       hx-target="#duplicate-check-results"
+                       hx-include="[name='last_name'], [name='email']{% if person and person.id is defined %}, [name='exclude_id']{% endif %}">
+            </div>
+
+            <div>
+                <label for="last_name" class="block text-sm font-medium text-gray-700">Last Name <span class="text-red-500">*</span></label>
+                <input type="text" name="last_name" id="last_name" required
+                       value="{{ person.last_name if person and person.last_name else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/people/check-duplicates"
+                       hx-trigger="keyup changed delay:600ms"
+                       hx-target="#duplicate-check-results"
+                       hx-include="[name='first_name'], [name='email']{% if person and person.id is defined %}, [name='exclude_id']{% endif %}">
+            </div>
+
+            {% if person and person.id is defined %}
+            <input type="hidden" name="exclude_id" value="{{ person.id }}">
+            {% endif %}
+
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                <input type="email" name="email" id="email"
+                       value="{{ person.email if person and person.email else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/people/check-duplicates"
+                       hx-trigger="keyup changed delay:600ms"
+                       hx-target="#duplicate-check-results"
+                       hx-include="[name='first_name'], [name='last_name']{% if person and person.id is defined %}, [name='exclude_id']{% endif %}">
+            </div>
+
+            <div>
+                <label for="phone" class="block text-sm font-medium text-gray-700">Phone</label>
+                <input type="text" name="phone" id="phone"
+                       value="{{ person.phone if person and person.phone else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <div>
+                <label for="job_title" class="block text-sm font-medium text-gray-700">Job Title</label>
+                <input type="text" name="job_title" id="job_title"
+                       value="{{ person.job_title if person and person.job_title else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <div>
+                <label for="coverage_owner" class="block text-sm font-medium text-gray-700">Coverage Owner</label>
+                <select name="coverage_owner" id="coverage_owner"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">Defaults to you</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}" {{ 'selected' if person and person.coverage_owner is not none and person.coverage_owner|string == u.id|string else '' }}>{{ u.display_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Primary Organization (autocomplete) -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Primary Organization <span class="text-red-500">*</span></h3>
+
+        <input type="hidden" name="primary_organization_id" id="primary_organization_id"
+               value="{{ pre_org.id if pre_org else '' }}">
+
+        <div class="relative">
+            <input type="text" id="org-search-input"
+                   placeholder="Start typing to search organizations..."
+                   value="{{ pre_org.company_name if pre_org else '' }}"
+                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'hidden' if pre_org else '' }}"
+                   hx-get="/people/search-orgs"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-target="#org-search-results"
+                   name="q"
+                   autocomplete="off">
+
+            <div id="selected-org-display" class="{{ 'hidden' if not pre_org else '' }} flex items-center gap-2 bg-brand-50 rounded-md px-3 py-2">
+                <span id="selected-org-name" class="text-sm font-medium text-brand-700">{{ pre_org.company_name if pre_org else '' }}</span>
+                <button type="button" onclick="clearOrg()" class="ml-auto text-brand-400 hover:text-brand-600">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <div id="org-search-results" class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"></div>
+        </div>
+
+        <div class="mt-4">
+            <label for="primary_job_title_at_org" class="block text-sm font-medium text-gray-700">Job Title at This Organization</label>
+            <input type="text" name="primary_job_title_at_org" id="primary_job_title_at_org"
+                   value="{% for link in person_org_links %}{% if link.link_type == 'primary' %}{{ link.job_title_at_org or '' }}{% endif %}{% endfor %}"
+                   class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+        </div>
+    </div>
+
+    <!-- Asset Classes of Interest -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Asset Classes of Interest</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {% set selected_acs = (person.asset_classes_of_interest or []) if person else [] %}
+            {% for ac in asset_classes %}
+            <label class="flex items-center gap-2">
+                <input type="checkbox" name="asset_classes_of_interest" value="{{ ac.value }}"
+                       {{ 'checked' if ac.value in selected_acs else '' }}
+                       class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                <span class="text-sm text-gray-700">{{ ac.label }}</span>
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Contact Preferences -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Contact Preferences</h3>
+        <div class="space-y-3">
+            <label class="flex items-center gap-3">
+                <input type="checkbox" name="do_not_contact" id="do_not_contact"
+                       {{ 'checked' if person and person.do_not_contact else '' }}
+                       class="h-4 w-4 rounded border-gray-300 text-red-500 focus:ring-red-500"
+                       onchange="confirmDNC(this)">
+                <span class="text-sm font-medium text-red-700">Do Not Contact</span>
+                <span class="text-xs text-gray-400">Removes from all distribution lists and suppresses future sends</span>
+            </label>
+
+            <div id="legal-notices-field" class="{{ 'hidden' if person and person.do_not_contact else '' }}">
+                <label class="flex items-center gap-3">
+                    <input type="checkbox" name="legal_compliance_notices"
+                           {{ 'checked' if person and person.legal_compliance_notices else '' }}
+                           class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                    <span class="text-sm font-medium text-gray-700">Legal &amp; Compliance Notices</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="flex items-center justify-end gap-3">
+        <a href="{{ '/people/' + person.id|string if person and person.id is defined else '/people' }}"
+           class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            Cancel
+        </a>
+        {% if duplicates is defined and duplicates %}
+        <input type="hidden" name="confirm_duplicate" value="yes">
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-yellow-600 rounded-md hover:bg-yellow-700 shadow-sm">
+            Save Anyway
+        </button>
+        {% else %}
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            {{ 'Save Changes' if person and person.id is defined else 'Create Person' }}
+        </button>
+        {% endif %}
+    </div>
+
 </form>
+
+{% block scripts %}
+<script>
+function selectOrg(orgId, orgName) {
+    document.getElementById('primary_organization_id').value = orgId;
+    document.getElementById('org-search-input').value = orgName;
+    document.getElementById('selected-org-name').textContent = orgName;
+    document.getElementById('selected-org-display').classList.remove('hidden');
+    document.getElementById('org-search-results').innerHTML = '';
+    document.getElementById('org-search-input').classList.add('hidden');
+}
+
+function clearOrg() {
+    document.getElementById('primary_organization_id').value = '';
+    document.getElementById('org-search-input').value = '';
+    document.getElementById('org-search-input').classList.remove('hidden');
+    document.getElementById('selected-org-display').classList.add('hidden');
+    document.getElementById('org-search-results').innerHTML = '';
+    document.getElementById('org-search-input').focus();
+}
+
+function confirmDNC(checkbox) {
+    if (checkbox.checked) {
+        if (!confirm('Enabling Do Not Contact will remove this person from ALL distribution lists. This action is logged and cannot be easily undone. Continue?')) {
+            checkbox.checked = false;
+            return;
+        }
+        document.getElementById('legal-notices-field').classList.add('hidden');
+    } else {
+        document.getElementById('legal-notices-field').classList.remove('hidden');
+    }
+}
+</script>
+{% endblock %}
 {% endblock %}

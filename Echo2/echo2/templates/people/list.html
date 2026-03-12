@@ -3,13 +3,67 @@
 {% block page_title %}People{% endblock %}
 
 {% block content %}
-<div class="bg-white rounded-lg shadow">
-    <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-gray-900">All People</h2>
-        <a href="/people/new" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600">+ New Person</a>
+<div class="space-y-4">
+
+    <!-- Header row -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-semibold text-gray-900">All People</h2>
+            <p class="text-sm text-gray-500">{{ total_count }} contact{{ 's' if total_count != 1 else '' }}</p>
+        </div>
+        <a href="/people/new"
+           class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            New Person
+        </a>
     </div>
-    <div id="people-table" class="p-6">
-        <p class="text-sm text-gray-500">Loading...</p>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <form id="filter-form" hx-get="/people" hx-target="#people-list-container" hx-push-url="true" class="flex flex-wrap items-end gap-4">
+            <!-- Search -->
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Search</label>
+                <input type="text" name="q" value="{{ search }}"
+                       placeholder="Search by name or email..."
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/people" hx-trigger="keyup changed delay:400ms" hx-target="#people-list-container" hx-push-url="true" hx-include="#filter-form">
+            </div>
+
+            <!-- Asset Class -->
+            <div class="w-40">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Asset Class</label>
+                <select name="ac"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/people" hx-trigger="change" hx-target="#people-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All</option>
+                    {% for ac in asset_classes %}
+                    <option value="{{ ac.value }}" {{ 'selected' if asset_class == ac.value else '' }}>{{ ac.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- DNC Filter -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Do Not Contact</label>
+                <select name="dnc"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/people" hx-trigger="change" hx-target="#people-list-container" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All</option>
+                    <option value="yes" {{ 'selected' if dnc == 'yes' else '' }}>DNC Only</option>
+                    <option value="no" {{ 'selected' if dnc == 'no' else '' }}>Active Only</option>
+                </select>
+            </div>
+
+            <input type="hidden" name="sort_by" value="{{ sort_by }}">
+            <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
+        </form>
     </div>
+
+    <!-- Table -->
+    <div id="people-list-container">
+        {% include "people/_list_table.html" %}
+    </div>
+
 </div>
 {% endblock %}
