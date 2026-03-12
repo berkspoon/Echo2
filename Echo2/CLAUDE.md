@@ -140,7 +140,7 @@ BASE_URL=http://localhost:8000
 - [x] Pydantic models — Create/Update/Response for all 10 entities
 - [x] Router stubs — all 10 modules with TODO placeholders
 - [x] Template stubs — list/detail/form for all modules, 3 dashboard views, admin views
-- [ ] Organizations module (router logic)
+- [x] Organizations module (router logic, templates, HTMX partials, duplicate detection)
 - [ ] People module (router logic)
 - [ ] Activities module (router logic)
 - [ ] Leads module (router logic)
@@ -194,3 +194,13 @@ _Use this section to track decisions made during Claude Code sessions:_
 - schema.sql approved and ready to apply to Supabase
 - .env created locally with Supabase credentials (Entra ID still placeholder)
 - Supabase was down — schema not yet applied. Next step: apply schema.sql, verify 20 tables, run uvicorn
+
+### Session 2 — March 12, 2026
+- Built full Organizations module: router (CRUD, search, filters, pagination, audit logging, duplicate detection, soft delete), 11 templates (list, detail, form, 6 tab partials, list table partial, duplicate warning partial)
+- Created `dependencies.py` with `get_current_user` (dev stub returning admin user) and `require_role` helper — to be replaced with real MSAL auth later
+- Added `check_org_name_similarity()` PostgreSQL function to schema.sql for fuzzy org name matching via pg_trgm
+- Route ordering: `/new` and `/check-duplicates` placed before `/{org_id}` to avoid path conflicts
+- RFP Hold permission enforcement: only admin and rfp_team can toggle; warning banner on detail page
+- Coverage rollup: computed from linked people + leads, never stored at org level
+- Client Questionnaire: conditionally visible when relationship_type = client, with disclosure toggle
+- Next step: People module

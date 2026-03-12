@@ -705,6 +705,24 @@ CREATE INDEX idx_audit_user ON audit_log (changed_by);
 CREATE INDEX idx_audit_time ON audit_log (changed_at DESC);
 
 -- =============================================================================
+-- HELPER: Fuzzy duplicate detection for organizations
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION check_org_name_similarity(search_name TEXT, similarity_threshold FLOAT DEFAULT 0.4)
+RETURNS TABLE(id UUID, company_name TEXT, website TEXT, organization_type TEXT, relationship_type TEXT)
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT o.id, o.company_name, o.website, o.organization_type, o.relationship_type
+    FROM organizations o
+    WHERE o.is_archived = FALSE
+      AND similarity(o.company_name, search_name) > similarity_threshold
+    ORDER BY similarity(o.company_name, search_name) DESC
+    LIMIT 10;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =============================================================================
 -- HELPER: Auto-update updated_at timestamp
 -- =============================================================================
 

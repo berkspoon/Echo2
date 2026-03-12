@@ -1,27 +1,241 @@
 {% extends "base.html" %}
-{% block title %}{{ org.company_name if org else 'Organization' }} — Echo 2.0{% endblock %}
-{% block page_title %}{{ org.company_name if org else 'Organization Detail' }}{% endblock %}
+{% block title %}{{ org.company_name }} — Echo 2.0{% endblock %}
+{% block page_title %}{{ org.company_name }}{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
-    <!-- Organization header -->
-    <div class="bg-white rounded-lg shadow p-6">
-        <p class="text-sm text-gray-500">Organization detail view — stub</p>
+
+    <!-- RFP Hold Warning Banner -->
+    {% if org.rfp_hold %}
+    <div class="rounded-md bg-red-50 border border-red-200 p-4">
+        <div class="flex">
+            <svg class="h-5 w-5 text-red-400 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+            <div>
+                <h3 class="text-sm font-medium text-red-800">RFP Hold Active</h3>
+                <p class="mt-1 text-sm text-red-700">All contacts at this organization are suppressed from distribution list sends.</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Organization Header Card -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="p-6">
+            <div class="flex items-start justify-between">
+                <div>
+                    <div class="flex items-center gap-3">
+                        <h2 class="text-xl font-bold text-gray-900">{{ org.company_name }}</h2>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                            {% if org.relationship_type == 'client' %}bg-green-100 text-green-800
+                            {% elif org.relationship_type == 'prospect' %}bg-blue-100 text-blue-800
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ org.relationship_type | replace('_', ' ') | title }}
+                        </span>
+                    </div>
+                    {% if org.short_name %}
+                    <p class="text-sm text-gray-500 mt-1">{{ org.short_name }}</p>
+                    {% endif %}
+                    <p class="text-sm text-gray-500 mt-1">{{ org.organization_type | replace('_', ' ') | title }}</p>
+                </div>
+                <div class="flex gap-2">
+                    <a href="/organizations/{{ org.id }}/edit"
+                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm">
+                        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        Edit
+                    </a>
+                    {% if user.role == 'admin' %}
+                    <button hx-post="/organizations/{{ org.id }}/archive" hx-confirm="Are you sure you want to archive this organization?"
+                            class="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 shadow-sm">
+                        Archive
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Key fields grid -->
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Country</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ org.country | replace('_', ' ') | title if org.country else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">City</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ org.city or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">AUM (mn)</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ '${:,.0f}'.format(org.aum_mn) if org.aum_mn else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Website</dt>
+                    <dd class="mt-1 text-sm">
+                        {% if org.website %}
+                        <a href="{{ org.website }}" target="_blank" class="text-brand-600 hover:underline">{{ org.website }}</a>
+                        {% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Coverage</dt>
+                    <dd class="mt-1 text-sm text-gray-900">
+                        {% if coverage_names %}
+                            {{ coverage_names | map(attribute='display_name') | join(', ') }}
+                        {% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Last Contact</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ last_contact_date or '—' }}</dd>
+                </div>
+                {% if org.relationship_type == 'client' and org.team_distribution_email %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Team Email</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ org.team_distribution_email }}</dd>
+                </div>
+                {% endif %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">NDA</dt>
+                    <dd class="mt-1 text-sm text-gray-900">
+                        {% if org.nda_signed %}Signed{% if org.nda_expiration_date %} (expires {{ org.nda_expiration_date }}){% endif %}
+                        {% else %}Not signed{% endif %}
+                    </dd>
+                </div>
+            </div>
+
+            <!-- Address -->
+            {% if org.street_address or org.state_province or org.postal_code %}
+            <div class="mt-4">
+                <dt class="text-xs font-medium text-gray-500 uppercase">Address</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    {{ org.street_address or '' }}{% if org.city %}, {{ org.city }}{% endif %}{% if org.state_province %}, {{ org.state_province }}{% endif %} {{ org.postal_code or '' }}
+                </dd>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Client Questionnaire (collapsed by default, only when Client) -->
+        {% if org.relationship_type == 'client' %}
+        <div class="border-t border-gray-200">
+            <details {% if not org.questionnaire_date %}open{% endif %}>
+                <summary class="px-6 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Client Questionnaire
+                    {% if org.questionnaire_date %}
+                    <span class="ml-2 text-xs text-gray-400">Completed {{ org.questionnaire_date }}</span>
+                    {% else %}
+                    <span class="ml-2 text-xs text-yellow-600">Not completed</span>
+                    {% endif %}
+                </summary>
+                <div class="px-6 pb-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <dt class="text-xs font-medium text-gray-500">Client Discloses Info?</dt>
+                        <dd class="mt-1 text-sm">{{ 'Yes' if org.client_discloses_info else 'No' }}</dd>
+                    </div>
+                    {% if org.client_discloses_info %}
+                    <div>
+                        <dt class="text-xs font-medium text-gray-500">Overall AUM (mn)</dt>
+                        <dd class="mt-1 text-sm">{{ '${:,.0f}'.format(org.overall_aum_mn) if org.overall_aum_mn else '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-gray-500">AUM as of</dt>
+                        <dd class="mt-1 text-sm">{{ org.aum_as_of_date or '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-gray-500">AUM Source</dt>
+                        <dd class="mt-1 text-sm">{{ org.aum_source or '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-gray-500">HF Target %</dt>
+                        <dd class="mt-1 text-sm">{{ org.hf_target_allocation_pct or '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-gray-500">PE Target %</dt>
+                        <dd class="mt-1 text-sm">{{ org.pe_target_allocation_pct or '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-gray-500">PC Target %</dt>
+                        <dd class="mt-1 text-sm">{{ org.pc_target_allocation_pct or '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-gray-500">RE Target %</dt>
+                        <dd class="mt-1 text-sm">{{ org.re_target_allocation_pct or '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-gray-500">RA Target %</dt>
+                        <dd class="mt-1 text-sm">{{ org.ra_target_allocation_pct or '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-gray-500">Target Allocation Source</dt>
+                        <dd class="mt-1 text-sm">{{ org.target_allocation_source or '—' }}</dd>
+                    </div>
+                    {% endif %}
+                </div>
+            </details>
+        </div>
+        {% endif %}
+
+        <!-- Relationship Type History -->
+        {% if relationship_history %}
+        <div class="border-t border-gray-200">
+            <details>
+                <summary class="px-6 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Relationship History ({{ relationship_history | length }} change{{ 's' if relationship_history | length != 1 else '' }})
+                </summary>
+                <div class="px-6 pb-4">
+                    <ul class="space-y-2">
+                        {% for h in relationship_history %}
+                        <li class="text-sm text-gray-600">
+                            <span class="font-medium">{{ h.old_value | replace('_', ' ') | title }}</span>
+                            &rarr;
+                            <span class="font-medium">{{ h.new_value | replace('_', ' ') | title }}</span>
+                            <span class="text-xs text-gray-400 ml-2">{{ h.changed_at[:10] }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </details>
+        </div>
+        {% endif %}
+
+        <!-- Other IDs -->
+        {% if org.backstop_company_id or org.ostrako_id %}
+        <div class="border-t border-gray-200 px-6 py-3">
+            <div class="flex gap-6 text-xs text-gray-400">
+                {% if org.backstop_company_id %}
+                <span>Backstop ID: {{ org.backstop_company_id }}</span>
+                {% endif %}
+                {% if org.ostrako_id %}
+                <span>Ostrako ID: {{ org.ostrako_id }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Tabs: People, Activities, Leads, Contracts, Fund Prospects, Fee Arrangements -->
     <div class="bg-white rounded-lg shadow">
-        <nav class="flex border-b border-gray-200 px-6">
-            <button class="py-3 px-4 text-sm font-medium text-brand-500 border-b-2 border-brand-500">People</button>
-            <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Activities</button>
-            <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Leads</button>
-            <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Contracts</button>
-            <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Fund Prospects</button>
-            <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Fee Arrangements</button>
+        <nav class="flex border-b border-gray-200 px-6 overflow-x-auto">
+            {% set tabs = [
+                ("people", "People", people | length),
+                ("activities", "Activities", activities | length),
+                ("leads", "Leads", leads | length),
+                ("contracts", "Contracts", contracts | length),
+                ("fund_prospects", "Fund Prospects", fund_prospects | length),
+                ("fee_arrangements", "Fee Arrangements", fee_arrangements | length),
+            ] %}
+            {% for tab_id, tab_label, tab_count in tabs %}
+            <button class="py-3 px-4 text-sm font-medium whitespace-nowrap border-b-2 transition-colors
+                {% if active_tab == tab_id %}text-brand-500 border-brand-500{% else %}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{% endif %}"
+                hx-get="/organizations/{{ org.id }}?tab={{ tab_id }}"
+                hx-target="#org-tab-content"
+                hx-push-url="false">
+                {{ tab_label }}
+                <span class="ml-1 text-xs text-gray-400">({{ tab_count }})</span>
+            </button>
+            {% endfor %}
         </nav>
         <div class="p-6" id="org-tab-content">
-            <p class="text-sm text-gray-500">Tab content loads here</p>
+            {% include "organizations/_tab_" + active_tab + ".html" %}
         </div>
     </div>
+
 </div>
 {% endblock %}
