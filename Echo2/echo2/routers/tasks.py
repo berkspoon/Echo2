@@ -574,6 +574,28 @@ async def new_task_form(
         pre_linked["record_type"] = linked_type
         pre_linked["record_id"] = linked_id
 
+    # Suggest coverage owners from activity's linked orgs
+    suggested_assignees = []
+    if linked_type == "activity" and linked_id:
+        try:
+            # Get orgs linked to this activity
+            aol_resp = sb.table("activity_organization_links").select("organization_id").eq("activity_id", linked_id).execute()
+            org_ids = [r["organization_id"] for r in (aol_resp.data or [])]
+            if org_ids:
+                # Get people at those orgs
+                pol_resp = sb.table("person_organization_links").select("person_id").in_("organization_id", org_ids).in_("link_type", ["primary", "secondary"]).execute()
+                person_ids = list({r["person_id"] for r in (pol_resp.data or [])})
+                if person_ids:
+                    # Get coverage owners for those people
+                    people_resp = sb.table("people").select("coverage_owner").in_("id", person_ids).eq("is_archived", False).execute()
+                    coverage_owner_ids = list({str(p["coverage_owner"]) for p in (people_resp.data or []) if p.get("coverage_owner")})
+                    if coverage_owner_ids:
+                        # Get user details for those coverage owners
+                        owners_resp = sb.table("users").select("id, display_name").in_("id", coverage_owner_ids).eq("is_active", True).execute()
+                        suggested_assignees = owners_resp.data or []
+        except Exception:
+            pass  # Non-critical feature, don't break the form
+
     context = {
         "request": request,
         "user": current_user,
@@ -581,6 +603,7 @@ async def new_task_form(
         "users": users_resp.data or [],
         "statuses": statuses,
         "pre_linked": pre_linked,
+        "suggested_assignees": suggested_assignees,
     }
     return templates.TemplateResponse("tasks/form.html", context)
 

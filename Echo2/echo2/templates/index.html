@@ -49,7 +49,7 @@
         <div class="bg-white rounded-lg shadow p-6">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-base font-semibold text-gray-900">My Open Leads</h2>
-                <a href="/leads" class="text-xs text-brand-600 hover:underline">View All &rarr;</a>
+                <a href="/leads?owner_id={{ user.id if user is defined else '' }}" class="text-xs text-brand-600 hover:underline">View All &rarr;</a>
             </div>
             <div id="my-leads"
                  hx-get="/dashboards/personal/widgets/leads"
@@ -68,11 +68,56 @@
 
     </div>
 
+    <!-- 2-column grid: Coverage Overview + Missing Info -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- My Coverage Overview -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-semibold text-gray-900">My Coverage</h2>
+            </div>
+            <div id="my-coverage"
+                 hx-get="/dashboards/personal/widgets/my-coverage"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="grid grid-cols-2 gap-3">
+                    {% for i in range(4) %}
+                    <div class="animate-pulse bg-gray-50 rounded-lg p-3">
+                        <div class="h-3 bg-gray-200 rounded w-20 mb-2"></div>
+                        <div class="h-6 bg-gray-200 rounded w-10"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Missing Info Alerts -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-semibold text-gray-900">Missing Info Alerts</h2>
+            </div>
+            <div id="missing-info"
+                 hx-get="/dashboards/personal/widgets/missing-info"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="space-y-3">
+                    {% for i in range(3) %}
+                    <div class="animate-pulse flex items-center gap-3">
+                        <div class="h-3 w-3 bg-gray-200 rounded-full"></div>
+                        <div class="h-3 bg-gray-200 rounded flex-1"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+
     <!-- My Recent Activities (full width) -->
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-base font-semibold text-gray-900">My Recent Activities</h2>
-            <a href="/activities" class="text-xs text-brand-600 hover:underline">View All &rarr;</a>
+            <a href="/activities/my-activities" class="text-xs text-brand-600 hover:underline">View All &rarr;</a>
         </div>
         <div id="my-activities"
              hx-get="/dashboards/personal/widgets/activities"
@@ -84,6 +129,28 @@
                     <div class="h-3 bg-gray-200 rounded w-16"></div>
                     <div class="h-3 bg-gray-200 rounded w-12"></div>
                     <div class="h-3 bg-gray-200 rounded flex-1"></div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Stale Contacts (full width) -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-base font-semibold text-gray-900">Stale Contacts</h2>
+            <span class="text-xs text-gray-400">People with no activity in 90+ days</span>
+        </div>
+        <div id="stale-contacts"
+             hx-get="/dashboards/personal/widgets/stale-contacts"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="space-y-3">
+                {% for i in range(3) %}
+                <div class="animate-pulse flex items-center gap-3">
+                    <div class="h-3 bg-gray-200 rounded flex-1"></div>
+                    <div class="h-3 bg-gray-200 rounded w-20"></div>
+                    <div class="h-3 bg-gray-200 rounded w-16"></div>
                 </div>
                 {% endfor %}
             </div>

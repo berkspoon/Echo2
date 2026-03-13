@@ -47,4 +47,28 @@ Mark fixed items with `[x]`.
 
 ## Tasks (/tasks/my-tasks)
 
+## Power User Feedback — Round 3 (March 13, 2026)
+
+### Activities
+- [ ] [Activities] When linking an org, show that org's people for quick association; when linking a person, auto-add their primary org (severity: medium)
+- [ ] [Activities] Add "My Activities" view showing user's own activities + activities for orgs/people where user is assigned coverage (severity: high)
+
+### Tasks
+- [ ] [Tasks] Show suggested assignees (coverage owners) from linked activity's orgs when creating a task from an activity (severity: medium)
+- [ ] [Activities] Make follow-up notes required when follow-up required is checked (severity: medium)
+- [ ] [Dashboard] Show follow-up notes on personal dashboard tasks widget (severity: low)
+
+### Distribution Lists
+- [ ] [Distribution Lists] Add filters (country, client type, relationship type, fund) to member search on add-members page (severity: medium)
+
+### My [Module] Views
+- [ ] [Organizations] Add "My Organizations" view filtered by user's coverage (severity: high)
+- [ ] [People] Add "My People" view filtered by coverage_owner (severity: high)
+- [ ] [Fund Prospects] Add "My Fund Prospects" view filtered by aksia_owner (severity: high)
+
+### Dashboard
+- [ ] [Dashboard] Add "My Coverage Overview" widget showing counts of user's orgs/people/leads/fund prospects (severity: medium)
+- [ ] [Dashboard] Add "Missing Info Alerts" widget for covered people/leads missing key fields (severity: medium)
+- [ ] [Dashboard] Add "Stale Contacts" widget for covered people with no activity in 90+ days (severity: medium)
+
 ## Seed Data Issues

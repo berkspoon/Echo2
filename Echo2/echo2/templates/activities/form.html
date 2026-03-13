@@ -138,6 +138,9 @@
                    autocomplete="off">
             <div id="person-search-results" class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"></div>
         </div>
+
+        <!-- Quick-add suggestions from linked orgs -->
+        <div id="org-people-suggestions" class="mt-3"></div>
     </div>
 
     <!-- Activity Details -->
@@ -170,10 +173,11 @@
                                class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
                     </div>
                     <div>
-                        <label for="follow_up_notes" class="block text-sm font-medium text-gray-700">Follow-Up Notes</label>
+                        <label for="follow_up_notes" class="block text-sm font-medium text-gray-700">Follow-Up Notes <span id="follow-up-notes-required" class="text-red-500 {{ '' if activity and activity.follow_up_required else 'hidden' }}">*</span></label>
                         <input type="text" name="follow_up_notes" id="follow_up_notes"
                                value="{{ activity.follow_up_notes if activity and activity.follow_up_notes else '' }}"
                                placeholder="Pre-populates the task description"
+                               {{ 'required' if activity and activity.follow_up_required else '' }}
                                class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
                     </div>
                 </div>
@@ -236,10 +240,27 @@ function addOrg(orgId, orgName) {
     // Clear search
     document.getElementById('org-search-input').value = '';
     document.getElementById('org-search-results').innerHTML = '';
+
+    // Load people at this org as quick-add suggestions
+    loadOrgPeopleSuggestions();
 }
 
 function removeOrg(btn) {
     btn.closest('.org-chip').remove();
+    loadOrgPeopleSuggestions();
+}
+
+function loadOrgPeopleSuggestions() {
+    const orgChips = document.querySelectorAll('.org-chip');
+    const suggestionsDiv = document.getElementById('org-people-suggestions');
+    if (orgChips.length === 0) {
+        suggestionsDiv.innerHTML = '';
+        return;
+    }
+    // Load suggestions for the most recently added org (last chip)
+    const lastOrg = orgChips[orgChips.length - 1];
+    const orgId = lastOrg.dataset.orgId;
+    htmx.ajax('GET', '/activities/org-people?org_id=' + orgId, {target: '#org-people-suggestions', swap: 'innerHTML'});
 }
 
 /* --- Person multi-select autocomplete --- */
@@ -261,6 +282,16 @@ function addPerson(personId, personName) {
 
     document.getElementById('person-search-input').value = '';
     document.getElementById('person-search-results').innerHTML = '';
+
+    // Auto-add primary org for this person
+    fetch('/activities/person-primary-org?person_id=' + personId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.org_id && !document.querySelector(`.org-chip[data-org-id="${data.org_id}"]`)) {
+                addOrg(data.org_id, data.company_name);
+            }
+        })
+        .catch(() => {});
 }
 
 function removePerson(btn) {
@@ -283,10 +314,16 @@ function toggleSubtypeField(typeValue) {
 /* --- Follow-up toggle --- */
 function toggleFollowUp(checked) {
     const fields = document.getElementById('follow-up-fields');
+    const notesInput = document.getElementById('follow_up_notes');
+    const requiredStar = document.getElementById('follow-up-notes-required');
     if (checked) {
         fields.classList.remove('hidden');
+        notesInput.setAttribute('required', 'required');
+        requiredStar.classList.remove('hidden');
     } else {
         fields.classList.add('hidden');
+        notesInput.removeAttribute('required');
+        requiredStar.classList.add('hidden');
     }
 }
 </script>

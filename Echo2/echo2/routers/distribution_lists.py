@@ -324,43 +324,118 @@ async def search_people(
     request: Request,
     q: str = Query(""),
     list_id: str = Query(""),
+    country: str = Query(""),
+    rel_type: str = Query(""),
+    fund: str = Query(""),
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """HTMX endpoint: return person search results for member add autocomplete.
-    Excludes DNC people and people already active in the list."""
-    if not q or len(q) < 2:
+    Excludes DNC people and people already active in the list.
+    Supports optional filters: country, relationship type, fund."""
+    has_filters = bool(country or rel_type or fund)
+    if (not q or len(q) < 2) and not has_filters:
         return HTMLResponse("")
 
     sb = get_supabase()
-    resp = (
-        sb.table("people")
-        .select("id, first_name, last_name, email, do_not_contact")
-        .eq("is_archived", False)
-        .eq("do_not_contact", False)
-        .ilike("last_name", f"%{q}%")
-        .order("last_name")
-        .limit(15)
-        .execute()
-    )
-    # Also search by first name
-    resp2 = (
-        sb.table("people")
-        .select("id, first_name, last_name, email, do_not_contact")
-        .eq("is_archived", False)
-        .eq("do_not_contact", False)
-        .ilike("first_name", f"%{q}%")
-        .order("last_name")
-        .limit(15)
-        .execute()
-    )
 
-    # Merge and deduplicate
-    seen = set()
-    people = []
-    for p in (resp.data or []) + (resp2.data or []):
-        if p["id"] not in seen:
-            seen.add(p["id"])
-            people.append(p)
+    # --- Filter by org attributes if any filters are set ---
+    person_id_filter = None
+    if has_filters:
+        # Find orgs matching country / relationship_type filters
+        org_query = sb.table("organizations").select("id").eq("is_archived", False)
+        if country:
+            org_query = org_query.eq("country", country)
+        if rel_type:
+            org_query = org_query.eq("relationship_type", rel_type)
+        org_resp = org_query.execute()
+        filtered_org_ids = [o["id"] for o in (org_resp.data or [])]
+
+        # If fund filter, further restrict to orgs that have fund prospects for that fund
+        if fund and filtered_org_ids:
+            fp_resp = (
+                sb.table("fund_prospects")
+                .select("organization_id")
+                .eq("fund_id", fund)
+                .eq("is_archived", False)
+                .execute()
+            )
+            fp_org_ids = {str(fp["organization_id"]) for fp in (fp_resp.data or [])}
+            filtered_org_ids = [oid for oid in filtered_org_ids if str(oid) in fp_org_ids]
+        elif fund and not filtered_org_ids and not country and not rel_type:
+            # Fund filter only, no country/rel_type
+            fp_resp = (
+                sb.table("fund_prospects")
+                .select("organization_id")
+                .eq("fund_id", fund)
+                .eq("is_archived", False)
+                .execute()
+            )
+            filtered_org_ids = list({str(fp["organization_id"]) for fp in (fp_resp.data or [])})
+
+        if not filtered_org_ids:
+            return HTMLResponse('<div class="px-4 py-2 text-sm text-gray-400">No people match the selected filters</div>')
+
+        # Get person IDs at those orgs
+        pol_resp = (
+            sb.table("person_organization_links")
+            .select("person_id")
+            .in_("organization_id", filtered_org_ids)
+            .execute()
+        )
+        person_id_filter = list({str(r["person_id"]) for r in (pol_resp.data or [])})
+
+        if not person_id_filter:
+            return HTMLResponse('<div class="px-4 py-2 text-sm text-gray-400">No people match the selected filters</div>')
+
+    # --- Search people by name (or return all matching filter if q is empty) ---
+    if q and len(q) >= 2:
+        query1 = (
+            sb.table("people")
+            .select("id, first_name, last_name, email, do_not_contact")
+            .eq("is_archived", False)
+            .eq("do_not_contact", False)
+            .ilike("last_name", f"%{q}%")
+            .order("last_name")
+            .limit(15)
+        )
+        if person_id_filter:
+            query1 = query1.in_("id", person_id_filter)
+        resp = query1.execute()
+
+        # Also search by first name
+        query2 = (
+            sb.table("people")
+            .select("id, first_name, last_name, email, do_not_contact")
+            .eq("is_archived", False)
+            .eq("do_not_contact", False)
+            .ilike("first_name", f"%{q}%")
+            .order("last_name")
+            .limit(15)
+        )
+        if person_id_filter:
+            query2 = query2.in_("id", person_id_filter)
+        resp2 = query2.execute()
+
+        # Merge and deduplicate
+        seen = set()
+        people = []
+        for p in (resp.data or []) + (resp2.data or []):
+            if p["id"] not in seen:
+                seen.add(p["id"])
+                people.append(p)
+    else:
+        # No search text but filters are set — return people matching filters
+        query = (
+            sb.table("people")
+            .select("id, first_name, last_name, email, do_not_contact")
+            .eq("is_archived", False)
+            .eq("do_not_contact", False)
+            .in_("id", person_id_filter)
+            .order("last_name")
+            .limit(25)
+        )
+        resp = query.execute()
+        people = resp.data or []
 
     # Exclude people already active in this list
     if list_id and people:
@@ -657,6 +732,34 @@ async def get_distribution_list(
     # Reference data for type labels
     type_labels = {t["value"]: t["label"] for t in _get_reference_data("distribution_list_type")}
 
+    # Load filter options for member search
+    countries = (
+        sb.table("reference_data")
+        .select("value, label")
+        .eq("category", "country")
+        .eq("is_active", True)
+        .order("label")
+        .execute()
+        .data or []
+    )
+    relationship_types = (
+        sb.table("reference_data")
+        .select("value, label")
+        .eq("category", "relationship_type")
+        .eq("is_active", True)
+        .order("label")
+        .execute()
+        .data or []
+    )
+    funds = (
+        sb.table("funds")
+        .select("id, fund_name, ticker")
+        .eq("is_active", True)
+        .order("fund_name")
+        .execute()
+        .data or []
+    )
+
     context = {
         "request": request,
         "user": current_user,
@@ -675,6 +778,9 @@ async def get_distribution_list(
         "can_edit": _can_edit_list(dist_list, current_user),
         "can_manage": _can_manage_members(dist_list, current_user),
         "can_send": _can_send(dist_list, current_user),
+        "countries": countries,
+        "relationship_types": relationship_types,
+        "funds": funds,
     }
 
     # Only return tab partial for explicit HTMX tab clicks, not hx-boost page navigations
@@ -1197,6 +1303,34 @@ async def _render_members_tab(
         else:
             m["coverage_owner_name"] = None
 
+    # Load filter options for member search
+    countries = (
+        sb.table("reference_data")
+        .select("value, label")
+        .eq("category", "country")
+        .eq("is_active", True)
+        .order("label")
+        .execute()
+        .data or []
+    )
+    relationship_types = (
+        sb.table("reference_data")
+        .select("value, label")
+        .eq("category", "relationship_type")
+        .eq("is_active", True)
+        .order("label")
+        .execute()
+        .data or []
+    )
+    funds = (
+        sb.table("funds")
+        .select("id, fund_name, ticker")
+        .eq("is_active", True)
+        .order("fund_name")
+        .execute()
+        .data or []
+    )
+
     context = {
         "request": request,
         "user": current_user,
@@ -1207,5 +1341,8 @@ async def _render_members_tab(
         "m_page": m_page,
         "member_count": members_total,
         "can_manage": _can_manage_members(dist_list, current_user),
+        "countries": countries,
+        "relationship_types": relationship_types,
+        "funds": funds,
     }
     return templates.TemplateResponse("distribution_lists/_tab_members.html", context)

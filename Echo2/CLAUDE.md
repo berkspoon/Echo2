@@ -363,3 +363,48 @@ _Use this section to track decisions made during Claude Code sessions:_
 - Org type filter on advisory pipeline uses two-step query: first find matching org IDs, then filter leads
 - `not_.in_()` used for excluding inactive stages on leads widget (supabase-py syntax for NOT IN)
 - Next step: Admin module
+
+### Session 12 — March 13, 2026 (Power User Feedback Round)
+- Implemented 6 feature enhancements based on power user feedback, logged to feedback.md
+- **Activities — Org People Quick-Add + Auto-Add Primary Org:**
+  - New `GET /activities/org-people?org_id=X` endpoint returns people at an org as quick-add suggestion buttons (blue-styled)
+  - New `GET /activities/person-primary-org?person_id=X` endpoint returns JSON with primary org ID/name
+  - `addOrg()` JS now fires HTMX load of org's people into `#org-people-suggestions` panel
+  - `addPerson()` JS now auto-fetches and adds the person's primary org chip
+  - Route ordering: org-people and person-primary-org placed after search-people, before subtypes
+- **Activities — "My Activities" View:**
+  - New `GET /activities/my-activities` endpoint with multi-step coverage query: author activities UNION covered-people activities UNION covered-org activities
+  - Coverage query: people where `coverage_owner = user` → `activity_people_links`, leads where `aksia_owner_id = user` → org → `activity_organization_links`
+  - list.html updated with "My Activities" / "All Activities" toggle tabs using `view_mode` context var
+  - `_list_table.html` updated with `base_url` variable for correct HTMX target URLs
+- **Tasks — Coverage Owner Suggestions:**
+  - Task form (`GET /tasks/new`) with `?linked_type=activity` now looks up coverage owners at the activity's linked orgs
+  - Suggested assignees shown as clickable chips below "Assigned To" dropdown
+- **Activities — Follow-Up Notes Required:**
+  - Server-side validation in both `create_activity()` and `update_activity()`: follow_up_notes required when follow_up_required is checked
+  - Client-side: `toggleFollowUp()` toggles `required` attribute and red asterisk on notes label
+- **Dashboard — Follow-Up Notes Display:**
+  - Tasks widget now includes `notes` and `source` in query
+  - `_widget_tasks.html` shows truncated follow-up notes (80 chars) for activity_follow_up tasks
+- **Distribution Lists — Member Search Filters:**
+  - `search-people` endpoint now accepts `country`, `rel_type`, `fund` query params
+  - Two-step org filter: find matching org IDs → find person IDs at those orgs → filter people query
+  - Fund filter: cross-references `fund_prospects.fund_id` to find relevant orgs
+  - `_tab_members.html` has 3 filter dropdowns above search; filter change triggers HTMX refresh
+  - Filters work standalone (no search text required) or combined with name search
+- **"My [Module]" Views:**
+  - New `GET /organizations/my-organizations`: orgs via coverage on people + leads
+  - New `GET /people/my-people`: `.eq("coverage_owner", user.id)`
+  - New `GET /fund-prospects/my-fund-prospects`: `.eq("aksia_owner_id", user.id)`
+  - Each module's list.html has "My X" / "All X" toggle tabs with `view_mode` context
+  - Each `_list_table.html` uses `base_url` variable for HTMX URLs
+  - All `/my-*` routes ordered BEFORE `/{id}` routes
+  - Sidebar links updated: Organizations → /my-organizations, People → /my-people, Activities → /my-activities, Fund Prospects → /my-fund-prospects
+- **Dashboard — Personalized Coverage Insights (3 new widgets):**
+  - `GET /dashboards/personal/widgets/my-coverage`: 2x2 grid showing counts of orgs/people/leads/fund prospects under coverage, each linking to the "My" view
+  - `GET /dashboards/personal/widgets/missing-info`: people missing email/phone + leads missing revenue/service_type, top 5 each with edit links
+  - `GET /dashboards/personal/widgets/stale-contacts`: people with no activity in 90+ days, batched activity date lookup, sorted by staleness, primary org resolution
+  - 3 new widget templates: `_widget_my_coverage.html`, `_widget_missing_info.html`, `_widget_stale_contacts.html`
+  - `index.html` dashboard layout expanded: added "My Coverage + Missing Info" row and "Stale Contacts" row
+  - "View All" links on existing widgets updated to point to "My" module URLs
+- Next step: Admin module

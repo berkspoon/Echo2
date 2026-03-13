@@ -5,7 +5,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
@@ -236,6 +236,119 @@ async def search_people(
 
 
 # ---------------------------------------------------------------------------
+# ORG PEOPLE SUGGESTIONS — GET /activities/org-people
+# ---------------------------------------------------------------------------
+
+@router.get("/org-people", response_class=HTMLResponse)
+async def org_people(
+    request: Request,
+    org_id: str = Query(""),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """HTMX endpoint: return people at a given org as quick-add suggestions."""
+    if not org_id:
+        return HTMLResponse("")
+
+    sb = get_supabase()
+
+    # Get org name
+    org_resp = sb.table("organizations").select("company_name").eq("id", org_id).maybe_single().execute()
+    org_name = org_resp.data["company_name"] if org_resp.data else "Organization"
+
+    # Get people at org
+    links_resp = (
+        sb.table("person_organization_links")
+        .select("person_id")
+        .eq("organization_id", org_id)
+        .in_("link_type", ["primary", "secondary"])
+        .execute()
+    )
+    person_ids = [r["person_id"] for r in (links_resp.data or [])]
+
+    if not person_ids:
+        return HTMLResponse("")
+
+    people_resp = (
+        sb.table("people")
+        .select("id, first_name, last_name, email, job_title")
+        .in_("id", person_ids)
+        .eq("is_archived", False)
+        .order("last_name")
+        .limit(20)
+        .execute()
+    )
+    people = people_resp.data or []
+
+    if not people:
+        return HTMLResponse("")
+
+    html_parts = [
+        f'<div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">People at {org_name}</div>'
+    ]
+    for p in people:
+        safe_name = f"{p['first_name']} {p['last_name']}".replace("'", "&#39;").replace('"', "&quot;")
+        subtitle = p.get("job_title") or ""
+        if p.get("email"):
+            subtitle += (" — " + p["email"]) if subtitle else p["email"]
+        html_parts.append(
+            f'<button type="button" '
+            f'class="w-full text-left px-3 py-2 rounded-md bg-blue-50 hover:bg-blue-100 text-sm mb-1" '
+            f"onclick=\"addPerson('{p['id']}', '{safe_name}')\">"
+            f'<div class="font-medium text-gray-900">{p["first_name"]} {p["last_name"]}</div>'
+            f'<div class="text-xs text-gray-500">{subtitle}</div>'
+            f'</button>'
+        )
+    return HTMLResponse("\n".join(html_parts))
+
+
+# ---------------------------------------------------------------------------
+# PERSON PRIMARY ORG — GET /activities/person-primary-org
+# ---------------------------------------------------------------------------
+
+@router.get("/person-primary-org")
+async def person_primary_org(
+    request: Request,
+    person_id: str = Query(""),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Return the primary organization for a person as JSON."""
+    if not person_id:
+        return JSONResponse({"org_id": None})
+
+    sb = get_supabase()
+
+    # Find the primary org link
+    link_resp = (
+        sb.table("person_organization_links")
+        .select("organization_id")
+        .eq("person_id", person_id)
+        .eq("link_type", "primary")
+        .maybe_single()
+        .execute()
+    )
+
+    if not link_resp.data:
+        return JSONResponse({"org_id": None})
+
+    org_id = link_resp.data["organization_id"]
+
+    # Get org name
+    org_resp = (
+        sb.table("organizations")
+        .select("id, company_name")
+        .eq("id", org_id)
+        .eq("is_archived", False)
+        .maybe_single()
+        .execute()
+    )
+
+    if not org_resp.data:
+        return JSONResponse({"org_id": None})
+
+    return JSONResponse({"org_id": str(org_resp.data["id"]), "company_name": org_resp.data["company_name"]})
+
+
+# ---------------------------------------------------------------------------
 # SUBTYPES (HTMX) — GET /activities/subtypes
 # ---------------------------------------------------------------------------
 
@@ -257,6 +370,161 @@ async def get_subtypes(
     for st in subtypes:
         html += f'<option value="{st["value"]}">{st["label"]}</option>'
     return HTMLResponse(html)
+
+
+# ---------------------------------------------------------------------------
+# MY ACTIVITIES — GET /activities/my-activities
+# ---------------------------------------------------------------------------
+
+@router.get("/my-activities", response_class=HTMLResponse)
+async def my_activities(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=10, le=100),
+    search: str = Query("", alias="q"),
+    activity_type: str = Query("", alias="type"),
+    author_id: str = Query("", alias="author"),
+    org_id: str = Query("", alias="org"),
+    date_from: str = Query("", alias="from"),
+    date_to: str = Query("", alias="to"),
+    sort_by: str = Query("effective_date"),
+    sort_dir: str = Query("desc"),
+):
+    """List activities where user is author or has coverage over linked orgs/people."""
+    sb = get_supabase()
+
+    # Step 1: Activities where user is author
+    author_resp = sb.table("activities").select("id").eq("is_archived", False).eq("author_id", str(current_user.id)).execute()
+    my_activity_ids = {str(r["id"]) for r in (author_resp.data or [])}
+
+    # Step 2: Activities linked to people where user is coverage_owner
+    covered_people = sb.table("people").select("id").eq("coverage_owner", str(current_user.id)).eq("is_archived", False).execute()
+    person_ids = [str(p["id"]) for p in (covered_people.data or [])]
+    if person_ids:
+        apl_resp = sb.table("activity_people_links").select("activity_id").in_("person_id", person_ids).execute()
+        my_activity_ids |= {str(r["activity_id"]) for r in (apl_resp.data or [])}
+
+    # Step 3: Activities linked to orgs where user is aksia_owner on leads
+    owned_leads = sb.table("leads").select("organization_id").eq("aksia_owner_id", str(current_user.id)).eq("is_archived", False).execute()
+    lead_org_ids = list({str(l["organization_id"]) for l in (owned_leads.data or []) if l.get("organization_id")})
+    if lead_org_ids:
+        aol_resp = sb.table("activity_organization_links").select("activity_id").in_("organization_id", lead_org_ids).execute()
+        my_activity_ids |= {str(r["activity_id"]) for r in (aol_resp.data or [])}
+
+    # Convert to list for query
+    my_activity_ids_list = list(my_activity_ids)
+
+    if not my_activity_ids_list:
+        # No activities found for this user
+        activity_types = _get_reference_data("activity_type")
+        users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+        context = {
+            "request": request,
+            "user": current_user,
+            "activities": [],
+            "total_count": 0,
+            "page": 1,
+            "page_size": page_size,
+            "total_pages": 1,
+            "search": search,
+            "activity_type": activity_type,
+            "author_id": author_id,
+            "org_id": org_id,
+            "date_from": date_from,
+            "date_to": date_to,
+            "sort_by": sort_by,
+            "sort_dir": sort_dir,
+            "activity_types": activity_types,
+            "users": users_resp.data or [],
+            "view_mode": "my_activities",
+        }
+        if request.headers.get("HX-Request"):
+            return templates.TemplateResponse("activities/_list_table.html", context)
+        return templates.TemplateResponse("activities/list.html", context)
+
+    # Now query activities with those IDs, applying filters/pagination
+    query = (
+        sb.table("activities")
+        .select("id, title, effective_date, activity_type, subtype, author_id, details, follow_up_required, created_at", count="exact")
+        .eq("is_archived", False)
+        .in_("id", my_activity_ids_list)
+    )
+
+    # Apply the same filters as list_activities
+    if search:
+        query = query.or_(f"title.ilike.%{search}%,details.ilike.%{search}%")
+    if activity_type:
+        query = query.eq("activity_type", activity_type)
+    if author_id:
+        query = query.eq("author_id", author_id)
+    if date_from:
+        query = query.gte("effective_date", date_from)
+    if date_to:
+        query = query.lte("effective_date", date_to)
+
+    # Sorting
+    valid_sort_cols = ["effective_date", "title", "activity_type", "created_at"]
+    if sort_by not in valid_sort_cols:
+        sort_by = "effective_date"
+    desc = sort_dir.lower() == "desc"
+    query = query.order(sort_by, desc=desc)
+
+    # Pagination
+    offset = (page - 1) * page_size
+    query = query.range(offset, offset + page_size - 1)
+
+    resp = query.execute()
+    activities = resp.data or []
+    total_count = resp.count or 0
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+
+    # Same enrichment as list_activities
+    for act in activities:
+        if act.get("author_id"):
+            author_resp2 = sb.table("users").select("display_name").eq("id", str(act["author_id"])).maybe_single().execute()
+            act["author_name"] = author_resp2.data["display_name"] if author_resp2.data else "Unknown"
+        else:
+            act["author_name"] = "Unknown"
+
+        org_resp = (
+            sb.table("activity_organization_links")
+            .select("organization:organizations(id, company_name)")
+            .eq("activity_id", str(act["id"]))
+            .execute()
+        )
+        act["linked_orgs"] = [r["organization"] for r in (org_resp.data or []) if r.get("organization")]
+
+    if org_id:
+        activities = [a for a in activities if any(o["id"] == org_id for o in a.get("linked_orgs", []))]
+
+    activity_types_list = _get_reference_data("activity_type")
+    users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+
+    context = {
+        "request": request,
+        "user": current_user,
+        "activities": activities,
+        "total_count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "search": search,
+        "activity_type": activity_type,
+        "author_id": author_id,
+        "org_id": org_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        "sort_by": sort_by,
+        "sort_dir": sort_dir,
+        "activity_types": activity_types_list,
+        "users": users_resp.data or [],
+        "view_mode": "my_activities",
+    }
+
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse("activities/_list_table.html", context)
+    return templates.TemplateResponse("activities/list.html", context)
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +644,7 @@ async def list_activities(
         "sort_dir": sort_dir,
         "activity_types": activity_types,
         "users": users_resp.data or [],
+        "view_mode": "all_activities",
     }
 
     if request.headers.get("HX-Request"):
@@ -573,6 +842,8 @@ async def create_activity(
         errors.append("Author is required.")
     if not org_ids:
         errors.append("At least one Linked Organization is required.")
+    if activity_data.get("follow_up_required") and not activity_data.get("follow_up_notes"):
+        errors.append("Follow-Up Notes is required when Follow-Up Required is checked.")
 
     if errors:
         sb = get_supabase()
@@ -758,6 +1029,8 @@ async def update_activity(
         errors.append("Author is required.")
     if not org_ids:
         errors.append("At least one Linked Organization is required.")
+    if activity_data.get("follow_up_required") and not activity_data.get("follow_up_notes"):
+        errors.append("Follow-Up Notes is required when Follow-Up Required is checked.")
 
     if errors:
         users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()

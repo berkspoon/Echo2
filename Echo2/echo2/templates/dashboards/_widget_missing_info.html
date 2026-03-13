@@ -1,0 +1,55 @@
+{% if people_missing_count == 0 and leads_missing_count == 0 %}
+<div class="text-center py-4">
+    <svg class="mx-auto h-8 w-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <p class="mt-2 text-sm text-gray-500">All records look complete!</p>
+</div>
+{% else %}
+<div class="space-y-4">
+    {% if people_missing_count > 0 %}
+    <div>
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            People Missing Email/Phone
+            <span class="text-orange-600">({{ people_missing_count }})</span>
+        </p>
+        <div class="space-y-1">
+            {% for p in people_missing %}
+            <a href="/people/{{ p.id }}/edit" class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-orange-50 text-sm group">
+                <span class="text-gray-900">{{ p.first_name }} {{ p.last_name }}</span>
+                <span class="text-xs text-orange-500">
+                    {% if not p.email %}No email{% endif %}
+                    {% if not p.email and not p.phone %}, {% endif %}
+                    {% if not p.phone %}No phone{% endif %}
+                </span>
+            </a>
+            {% endfor %}
+            {% if people_missing_count > 5 %}
+            <p class="text-xs text-gray-400 pl-2">+ {{ people_missing_count - 5 }} more</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% if leads_missing_count > 0 %}
+    <div>
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Leads Missing Revenue/Service Type
+            <span class="text-orange-600">({{ leads_missing_count }})</span>
+        </p>
+        <div class="space-y-1">
+            {% for l in leads_missing %}
+            <a href="/leads/{{ l.id }}/edit" class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-orange-50 text-sm group">
+                <span class="text-gray-900">{{ l.org_name }}</span>
+                <span class="text-xs text-orange-500">
+                    {% if not l.service_type %}No service type{% endif %}
+                    {% if not l.service_type and not l.expected_revenue %}, {% endif %}
+                    {% if not l.expected_revenue %}No revenue{% endif %}
+                </span>
+            </a>
+            {% endfor %}
+            {% if leads_missing_count > 5 %}
+            <p class="text-xs text-gray-400 pl-2">+ {{ leads_missing_count - 5 }} more</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}

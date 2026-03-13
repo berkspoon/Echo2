@@ -5,9 +5,14 @@
         <!-- Status dot -->
         <span class="flex-shrink-0 w-2.5 h-2.5 rounded-full {{ 'bg-yellow-400' if task.status == 'open' else 'bg-blue-400' }}"></span>
         <!-- Title -->
-        <a href="/tasks/{{ task.id }}" class="text-sm text-gray-900 hover:text-brand-600 truncate flex-1">
-            {{ task.title }}
-        </a>
+        <div class="flex-1 min-w-0">
+            <a href="/tasks/{{ task.id }}" class="text-sm text-gray-900 hover:text-brand-600 truncate block">
+                {{ task.title }}
+            </a>
+            {% if task.source == 'activity_follow_up' and task.notes %}
+            <p class="text-xs text-gray-400 truncate" title="{{ task.notes }}">{{ task.notes[:80] }}{% if task.notes|length > 80 %}...{% endif %}</p>
+            {% endif %}
+        </div>
         <!-- Linked record -->
         {% if task.linked_info %}
         <a href="{{ task.linked_info.url }}" class="text-xs text-gray-400 hover:text-brand-600 truncate max-w-[120px]">

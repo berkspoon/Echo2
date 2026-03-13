@@ -1,11 +1,12 @@
 <!-- People list table partial (HTMX target) -->
+{% set base_url = '/people/my-people' if view_mode is defined and view_mode == 'my_people' else '/people' %}
 <div class="bg-white rounded-lg shadow overflow-hidden">
     <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
             <tr>
-                {% macro sort_header(col, label) %}
+                {% macro sort_header(col, label, base_url) %}
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    hx-get="/people?q={{ search }}&ac={{ asset_class }}&dnc={{ dnc }}&sort_by={{ col }}&sort_dir={{ 'desc' if sort_by == col and sort_dir == 'asc' else 'asc' }}"
+                    hx-get="{{ base_url }}?q={{ search }}&ac={{ asset_class }}&dnc={{ dnc }}&sort_by={{ col }}&sort_dir={{ 'desc' if sort_by == col and sort_dir == 'asc' else 'asc' }}"
                     hx-target="#people-list-container" hx-push-url="true">
                     <div class="flex items-center gap-1">
                         {{ label }}
@@ -16,11 +17,11 @@
                 </th>
                 {% endmacro %}
 
-                {{ sort_header("last_name", "Name") }}
+                {{ sort_header("last_name", "Name", base_url) }}
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>
-                {{ sort_header("job_title", "Job Title") }}
-                {{ sort_header("email", "Email") }}
-                {{ sort_header("phone", "Phone") }}
+                {{ sort_header("job_title", "Job Title", base_url) }}
+                {{ sort_header("email", "Email", base_url) }}
+                {{ sort_header("phone", "Phone", base_url) }}
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Actions</th>
             </tr>
@@ -79,7 +80,7 @@
         <div class="flex gap-1">
             {% if page > 1 %}
             <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
-                    hx-get="/people?q={{ search }}&ac={{ asset_class }}&dnc={{ dnc }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page - 1 }}"
+                    hx-get="{{ base_url }}?q={{ search }}&ac={{ asset_class }}&dnc={{ dnc }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page - 1 }}"
                     hx-target="#people-list-container" hx-push-url="true">Prev</button>
             {% endif %}
 
@@ -88,7 +89,7 @@
             <span class="px-3 py-1 text-sm rounded bg-brand-500 text-white">{{ p }}</span>
             {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
             <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
-                    hx-get="/people?q={{ search }}&ac={{ asset_class }}&dnc={{ dnc }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ p }}"
+                    hx-get="{{ base_url }}?q={{ search }}&ac={{ asset_class }}&dnc={{ dnc }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ p }}"
                     hx-target="#people-list-container" hx-push-url="true">{{ p }}</button>
             {% elif p == 4 or p == total_pages - 3 %}
             <span class="px-3 py-1 text-sm text-gray-400">…</span>
@@ -97,7 +98,7 @@
 
             {% if page < total_pages %}
             <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
-                    hx-get="/people?q={{ search }}&ac={{ asset_class }}&dnc={{ dnc }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page + 1 }}"
+                    hx-get="{{ base_url }}?q={{ search }}&ac={{ asset_class }}&dnc={{ dnc }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page + 1 }}"
                     hx-target="#people-list-container" hx-push-url="true">Next</button>
             {% endif %}
         </div>

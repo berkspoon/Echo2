@@ -368,6 +368,104 @@ async def list_people(
         "sort_by": sort_by,
         "sort_dir": sort_dir,
         "asset_classes": asset_classes,
+        "view_mode": "all_people",
+    }
+
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse("people/_list_table.html", context)
+    return templates.TemplateResponse("people/list.html", context)
+
+
+# ---------------------------------------------------------------------------
+# MY PEOPLE — GET /people/my-people
+# ---------------------------------------------------------------------------
+
+@router.get("/my-people", response_class=HTMLResponse)
+async def my_people(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=10, le=100),
+    search: str = Query("", alias="q"),
+    organization_id: str = Query("", alias="org"),
+    asset_class: str = Query("", alias="ac"),
+    dnc: str = Query("", alias="dnc"),
+    sort_by: str = Query("last_name"),
+    sort_dir: str = Query("asc"),
+):
+    """List people where the current user is the coverage owner."""
+    sb = get_supabase()
+    query = (
+        sb.table("people")
+        .select("id, first_name, last_name, email, phone, job_title, do_not_contact, coverage_owner, asset_classes_of_interest, created_at", count="exact")
+        .eq("is_archived", False)
+        .eq("coverage_owner", str(current_user.id))
+    )
+
+    # Search by name or email
+    if search:
+        query = query.or_(f"first_name.ilike.%{search}%,last_name.ilike.%{search}%,email.ilike.%{search}%")
+
+    # DNC filter
+    if dnc == "yes":
+        query = query.eq("do_not_contact", True)
+    elif dnc == "no":
+        query = query.eq("do_not_contact", False)
+
+    # Asset class filter
+    if asset_class:
+        query = query.contains("asset_classes_of_interest", [asset_class])
+
+    # Sorting
+    valid_sort_cols = ["first_name", "last_name", "email", "job_title", "phone", "created_at"]
+    if sort_by not in valid_sort_cols:
+        sort_by = "last_name"
+    desc = sort_dir.lower() == "desc"
+    query = query.order(sort_by, desc=desc)
+
+    # Pagination
+    offset = (page - 1) * page_size
+    query = query.range(offset, offset + page_size - 1)
+
+    resp = query.execute()
+    people = resp.data or []
+    total_count = resp.count or 0
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+
+    # Enrich with primary org info
+    for person in people:
+        link_resp = (
+            sb.table("person_organization_links")
+            .select("organization:organizations(id, company_name)")
+            .eq("person_id", str(person["id"]))
+            .eq("link_type", "primary")
+            .limit(1)
+            .execute()
+        )
+        if link_resp.data and link_resp.data[0].get("organization"):
+            person["primary_org"] = link_resp.data[0]["organization"]
+        else:
+            person["primary_org"] = None
+
+    # Reference data for filters
+    asset_classes = _get_reference_data("asset_class")
+
+    context = {
+        "request": request,
+        "user": current_user,
+        "people": people,
+        "total_count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "search": search,
+        "organization_id": organization_id,
+        "asset_class": asset_class,
+        "dnc": dnc,
+        "sort_by": sort_by,
+        "sort_dir": sort_dir,
+        "asset_classes": asset_classes,
+        "view_mode": "my_people",
     }
 
     if request.headers.get("HX-Request"):

@@ -481,6 +481,152 @@ async def list_fund_prospects(
         "stage_labels": stage_labels,
         "funds": funds_list,
         "users": users_resp.data or [],
+        "view_mode": "all_fund_prospects",
+    }
+
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse("fund_prospects/_list_table.html", context)
+    return templates.TemplateResponse("fund_prospects/list.html", context)
+
+
+# ---------------------------------------------------------------------------
+# MY FUND PROSPECTS — GET /fund-prospects/my-fund-prospects
+# ---------------------------------------------------------------------------
+
+@router.get("/my-fund-prospects", response_class=HTMLResponse)
+async def my_fund_prospects(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=10, le=100),
+    search: str = Query("", alias="q"),
+    fund_id: str = Query("", alias="fund"),
+    stage: str = Query("", alias="stage"),
+    share_class: str = Query("", alias="share_class"),
+    owner_id: str = Query("", alias="owner"),
+    date_from: str = Query("", alias="from"),
+    date_to: str = Query("", alias="to"),
+    sort_by: str = Query("created_at"),
+    sort_dir: str = Query("desc"),
+):
+    """List fund prospects where the current user is the Aksia owner."""
+    sb = get_supabase()
+
+    # If searching by org name, get matching org IDs first
+    org_id_filter = None
+    if search:
+        org_search_resp = (
+            sb.table("organizations")
+            .select("id")
+            .eq("is_archived", False)
+            .ilike("company_name", f"%{search}%")
+            .limit(100)
+            .execute()
+        )
+        org_id_filter = [o["id"] for o in (org_search_resp.data or [])]
+
+    query = (
+        sb.table("fund_prospects")
+        .select("id, organization_id, fund_id, share_class, stage, "
+                "aksia_owner_id, target_allocation_mn, probability_pct, "
+                "created_at", count="exact")
+        .eq("is_archived", False)
+        .eq("aksia_owner_id", str(current_user.id))
+    )
+
+    # Search: match org name via IDs
+    if search:
+        if org_id_filter:
+            query = query.in_("organization_id", org_id_filter)
+        else:
+            # No matching orgs — return empty
+            query = query.eq("organization_id", "00000000-0000-0000-0000-000000000000")
+
+    # Filters
+    if fund_id:
+        query = query.eq("fund_id", fund_id)
+    if stage:
+        query = query.eq("stage", stage)
+    if share_class:
+        query = query.eq("share_class", share_class)
+    if owner_id:
+        query = query.eq("aksia_owner_id", owner_id)
+    if date_from:
+        query = query.gte("created_at", date_from)
+    if date_to:
+        query = query.lte("created_at", date_to)
+
+    # Sorting
+    valid_sort_cols = ["created_at", "stage", "share_class", "target_allocation_mn", "probability_pct"]
+    if sort_by not in valid_sort_cols:
+        sort_by = "created_at"
+    desc = sort_dir.lower() == "desc"
+    query = query.order(sort_by, desc=desc)
+
+    # Pagination
+    offset = (page - 1) * page_size
+    query = query.range(offset, offset + page_size - 1)
+
+    resp = query.execute()
+    prospects = resp.data or []
+    total_count = resp.count or 0
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+
+    # Load all funds into a dict for O(1) enrichment
+    funds_resp = sb.table("funds").select("id, fund_name, ticker, brand").execute()
+    funds_dict = {f["id"]: f for f in (funds_resp.data or [])}
+
+    # Enrich each prospect
+    for fp in prospects:
+        if fp.get("organization_id"):
+            fp["org_name"] = _get_org_name(str(fp["organization_id"]))
+        else:
+            fp["org_name"] = "—"
+
+        if fp.get("aksia_owner_id"):
+            fp["owner_name"] = _get_user_name(str(fp["aksia_owner_id"]))
+        else:
+            fp["owner_name"] = "—"
+
+        fund = funds_dict.get(fp.get("fund_id"), {})
+        fp["fund_ticker"] = fund.get("ticker", "?")
+        fp["fund_name"] = fund.get("fund_name", "Unknown")
+
+    # Reference data for filter dropdowns and stage labels
+    stages = _get_reference_data("fund_prospect_stage")
+    stage_labels = {s["value"]: s["label"] for s in stages}
+    funds_list = [{"id": f["id"], "fund_name": f["fund_name"], "ticker": f["ticker"], "brand": f["brand"]}
+                  for f in (funds_resp.data or [])]
+    users_resp = (
+        sb.table("users")
+        .select("id, display_name")
+        .eq("is_active", True)
+        .order("display_name")
+        .execute()
+    )
+
+    context = {
+        "request": request,
+        "user": current_user,
+        "prospects": prospects,
+        "total_count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "search": search,
+        "fund_id": fund_id,
+        "stage": stage,
+        "share_class": share_class,
+        "owner_id": owner_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        "sort_by": sort_by,
+        "sort_dir": sort_dir,
+        "stages": stages,
+        "stage_labels": stage_labels,
+        "funds": funds_list,
+        "users": users_resp.data or [],
+        "view_mode": "my_fund_prospects",
     }
 
     if request.headers.get("HX-Request"):

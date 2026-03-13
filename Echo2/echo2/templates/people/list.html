@@ -3,12 +3,22 @@
 {% block page_title %}People{% endblock %}
 
 {% block content %}
+{% set base_url = '/people/my-people' if view_mode is defined and view_mode == 'my_people' else '/people' %}
 <div class="space-y-4">
 
     <!-- Header row -->
     <div class="flex items-center justify-between">
         <div>
-            <h2 class="text-lg font-semibold text-gray-900">All People</h2>
+            <div class="flex items-center gap-2 mb-1">
+                <a href="/people/my-people"
+                   class="text-sm font-medium px-3 py-1.5 rounded-md {{ 'bg-brand-500 text-white' if view_mode is defined and view_mode == 'my_people' else 'text-gray-600 hover:bg-gray-100' }}">
+                    My People
+                </a>
+                <a href="/people/"
+                   class="text-sm font-medium px-3 py-1.5 rounded-md {{ 'bg-brand-500 text-white' if view_mode is not defined or view_mode == 'all_people' else 'text-gray-600 hover:bg-gray-100' }}">
+                    All People
+                </a>
+            </div>
             <p class="text-sm text-gray-500">{{ total_count }} contact{{ 's' if total_count != 1 else '' }}</p>
         </div>
         <a href="/people/new"
@@ -20,14 +30,14 @@
 
     <!-- Filters -->
     <div class="bg-white rounded-lg shadow p-4">
-        <form id="filter-form" hx-get="/people" hx-target="#people-list-container" hx-push-url="true" class="flex flex-wrap items-end gap-4">
+        <form id="filter-form" hx-get="{{ base_url }}" hx-target="#people-list-container" hx-push-url="true" class="flex flex-wrap items-end gap-4">
             <!-- Search -->
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs font-medium text-gray-600 mb-1">Search</label>
                 <input type="text" name="q" value="{{ search }}"
                        placeholder="Search by name or email..."
                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                       hx-get="/people" hx-trigger="keyup changed delay:400ms" hx-target="#people-list-container" hx-push-url="true" hx-include="#filter-form">
+                       hx-get="{{ base_url }}" hx-trigger="keyup changed delay:400ms" hx-target="#people-list-container" hx-push-url="true" hx-include="#filter-form">
             </div>
 
             <!-- Asset Class -->
@@ -35,7 +45,7 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">Asset Class</label>
                 <select name="ac"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="/people" hx-trigger="change" hx-target="#people-list-container" hx-include="#filter-form" hx-push-url="true">
+                        hx-get="{{ base_url }}" hx-trigger="change" hx-target="#people-list-container" hx-include="#filter-form" hx-push-url="true">
                     <option value="">All</option>
                     {% for ac in asset_classes %}
                     <option value="{{ ac.value }}" {{ 'selected' if asset_class == ac.value else '' }}>{{ ac.label }}</option>
@@ -48,7 +58,7 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">Do Not Contact</label>
                 <select name="dnc"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="/people" hx-trigger="change" hx-target="#people-list-container" hx-include="#filter-form" hx-push-url="true">
+                        hx-get="{{ base_url }}" hx-trigger="change" hx-target="#people-list-container" hx-include="#filter-form" hx-push-url="true">
                     <option value="">All</option>
                     <option value="yes" {{ 'selected' if dnc == 'yes' else '' }}>DNC Only</option>
                     <option value="no" {{ 'selected' if dnc == 'no' else '' }}>Active Only</option>

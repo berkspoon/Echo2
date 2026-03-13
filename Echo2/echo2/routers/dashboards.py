@@ -248,7 +248,7 @@ async def widget_tasks(
     sb = get_supabase()
     resp = (
         sb.table("tasks")
-        .select("id, title, due_date, status, linked_record_type, linked_record_id")
+        .select("id, title, due_date, status, linked_record_type, linked_record_id, notes, source")
         .eq("is_archived", False)
         .eq("assigned_to", str(current_user.id))
         .in_("status", ["open", "in_progress"])
@@ -371,6 +371,178 @@ async def widget_activities(
         "activities": activities,
         "type_colors": type_colors,
     })
+
+
+@router.get("/personal/widgets/my-coverage", response_class=HTMLResponse)
+async def widget_my_coverage(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Widget: counts of orgs, people, leads, fund prospects under user's coverage."""
+    sb = get_supabase()
+
+    # Count people where coverage_owner = current user
+    people_resp = sb.table("people").select("id", count="exact").eq("is_archived", False).eq("coverage_owner", str(current_user.id)).execute()
+    people_count = people_resp.count or 0
+
+    # Count leads where aksia_owner = current user
+    leads_resp = sb.table("leads").select("id", count="exact").eq("is_archived", False).eq("aksia_owner_id", str(current_user.id)).execute()
+    leads_count = leads_resp.count or 0
+
+    # Count fund prospects where aksia_owner = current user
+    fp_resp = sb.table("fund_prospects").select("id", count="exact").eq("is_archived", False).eq("aksia_owner_id", str(current_user.id)).execute()
+    fp_count = fp_resp.count or 0
+
+    # Count orgs (via coverage on people + leads)
+    my_org_ids = set()
+    if people_count > 0:
+        covered_people = sb.table("people").select("id").eq("coverage_owner", str(current_user.id)).eq("is_archived", False).execute()
+        person_ids = [str(p["id"]) for p in (covered_people.data or [])]
+        if person_ids:
+            pol_resp = sb.table("person_organization_links").select("organization_id").in_("person_id", person_ids).execute()
+            my_org_ids |= {str(r["organization_id"]) for r in (pol_resp.data or [])}
+    if leads_count > 0:
+        owned_leads = sb.table("leads").select("organization_id").eq("aksia_owner_id", str(current_user.id)).eq("is_archived", False).execute()
+        my_org_ids |= {str(l["organization_id"]) for l in (owned_leads.data or []) if l.get("organization_id")}
+    org_count = len(my_org_ids)
+
+    context = {
+        "request": request,
+        "org_count": org_count,
+        "people_count": people_count,
+        "leads_count": leads_count,
+        "fp_count": fp_count,
+    }
+    return templates.TemplateResponse("dashboards/_widget_my_coverage.html", context)
+
+
+@router.get("/personal/widgets/missing-info", response_class=HTMLResponse)
+async def widget_missing_info(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Widget: people/leads under coverage missing key fields."""
+    sb = get_supabase()
+
+    # People missing email or phone
+    people_resp = sb.table("people").select("id, first_name, last_name, email, phone").eq("is_archived", False).eq("coverage_owner", str(current_user.id)).execute()
+    all_people = people_resp.data or []
+    people_missing = [p for p in all_people if not p.get("email") or not p.get("phone")]
+
+    # Leads missing expected_revenue or service_type
+    leads_resp = sb.table("leads").select("id, organization_id, service_type, expected_revenue, summary").eq("is_archived", False).eq("aksia_owner_id", str(current_user.id)).execute()
+    all_leads = leads_resp.data or []
+    leads_missing = [l for l in all_leads if not l.get("expected_revenue") or not l.get("service_type")]
+
+    # Resolve org names for leads
+    lead_org_ids = list({str(l["organization_id"]) for l in leads_missing if l.get("organization_id")})
+    org_names = {}
+    if lead_org_ids:
+        orgs_resp = sb.table("organizations").select("id, company_name").in_("id", lead_org_ids).execute()
+        org_names = {str(o["id"]): o["company_name"] for o in (orgs_resp.data or [])}
+
+    for lead in leads_missing:
+        lead["org_name"] = org_names.get(str(lead.get("organization_id")), "Unknown Org")
+
+    context = {
+        "request": request,
+        "people_missing": people_missing[:5],
+        "people_missing_count": len(people_missing),
+        "leads_missing": leads_missing[:5],
+        "leads_missing_count": len(leads_missing),
+    }
+    return templates.TemplateResponse("dashboards/_widget_missing_info.html", context)
+
+
+@router.get("/personal/widgets/stale-contacts", response_class=HTMLResponse)
+async def widget_stale_contacts(
+    request: Request,
+    days: int = Query(90),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Widget: people under coverage with no activity in X days."""
+    sb = get_supabase()
+    cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    # Get all covered people
+    people_resp = sb.table("people").select("id, first_name, last_name, email").eq("is_archived", False).eq("coverage_owner", str(current_user.id)).execute()
+    covered_people = people_resp.data or []
+
+    if not covered_people:
+        return templates.TemplateResponse("dashboards/_widget_stale_contacts.html", {
+            "request": request, "stale_contacts": [], "stale_count": 0
+        })
+
+    person_ids = [str(p["id"]) for p in covered_people]
+
+    # Get all activity links for these people
+    apl_resp = sb.table("activity_people_links").select("person_id, activity_id").in_("person_id", person_ids).execute()
+    person_activity_ids = {}
+    for link in (apl_resp.data or []):
+        pid = str(link["person_id"])
+        if pid not in person_activity_ids:
+            person_activity_ids[pid] = []
+        person_activity_ids[pid].append(str(link["activity_id"]))
+
+    # Get activity dates for all linked activities
+    all_activity_ids = []
+    for aids in person_activity_ids.values():
+        all_activity_ids.extend(aids)
+    all_activity_ids = list(set(all_activity_ids))
+
+    activity_dates = {}
+    if all_activity_ids:
+        # Batch in chunks of 100 to avoid query limits
+        for i in range(0, len(all_activity_ids), 100):
+            chunk = all_activity_ids[i:i+100]
+            act_resp = sb.table("activities").select("id, effective_date").in_("id", chunk).eq("is_archived", False).execute()
+            for a in (act_resp.data or []):
+                activity_dates[str(a["id"])] = a.get("effective_date")
+
+    # Find most recent activity date per person
+    stale_contacts = []
+    for person in covered_people:
+        pid = str(person["id"])
+        aids = person_activity_ids.get(pid, [])
+        if not aids:
+            # No activities at all
+            person["last_activity_date"] = None
+            person["days_since"] = None
+            stale_contacts.append(person)
+        else:
+            dates = [activity_dates.get(aid) for aid in aids if activity_dates.get(aid)]
+            if dates:
+                most_recent = max(dates)
+                if most_recent < cutoff_date:
+                    person["last_activity_date"] = most_recent
+                    delta = datetime.now() - datetime.strptime(most_recent[:10], "%Y-%m-%d")
+                    person["days_since"] = delta.days
+                    stale_contacts.append(person)
+            else:
+                person["last_activity_date"] = None
+                person["days_since"] = None
+                stale_contacts.append(person)
+
+    # Sort: no activity first, then oldest first
+    stale_contacts.sort(key=lambda x: x.get("last_activity_date") or "0000-00-00")
+
+    # Resolve primary orgs
+    stale_person_ids = [str(p["id"]) for p in stale_contacts[:10]]
+    if stale_person_ids:
+        pol_resp = sb.table("person_organization_links").select("person_id, organization:organizations(company_name)").in_("person_id", stale_person_ids).eq("link_type", "primary").execute()
+        org_map = {}
+        for r in (pol_resp.data or []):
+            if r.get("organization"):
+                org_map[str(r["person_id"])] = r["organization"]["company_name"]
+        for person in stale_contacts[:10]:
+            person["org_name"] = org_map.get(str(person["id"]), "")
+
+    context = {
+        "request": request,
+        "stale_contacts": stale_contacts[:10],
+        "stale_count": len(stale_contacts),
+    }
+    return templates.TemplateResponse("dashboards/_widget_stale_contacts.html", context)
 
 
 # ---------------------------------------------------------------------------

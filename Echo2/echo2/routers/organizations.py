@@ -221,9 +221,129 @@ async def list_organizations(
         "relationship_types": relationship_types,
         "organization_types": organization_types,
         "countries": countries,
+        "view_mode": "all_organizations",
     }
 
     # HTMX partial vs full page (hx-boost navigations get the full page)
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse("organizations/_list_table.html", context)
+    return templates.TemplateResponse("organizations/list.html", context)
+
+
+# ---------------------------------------------------------------------------
+# MY ORGANIZATIONS — GET /organizations/my-organizations
+# ---------------------------------------------------------------------------
+
+@router.get("/my-organizations", response_class=HTMLResponse)
+async def my_organizations(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=10, le=100),
+    search: str = Query("", alias="q"),
+    relationship_type: str = Query("", alias="relationship"),
+    organization_type: str = Query("", alias="type"),
+    country: str = Query("", alias="country"),
+    sort_by: str = Query("company_name"),
+    sort_dir: str = Query("asc"),
+):
+    """List organizations where the current user is a coverage owner (via people or leads)."""
+    sb = get_supabase()
+
+    # Find orgs where user is coverage_owner on linked people
+    covered_people = (
+        sb.table("people")
+        .select("id")
+        .eq("coverage_owner", str(current_user.id))
+        .eq("is_archived", False)
+        .execute()
+    )
+    person_ids = [str(p["id"]) for p in (covered_people.data or [])]
+    my_org_ids = set()
+    if person_ids:
+        pol_resp = (
+            sb.table("person_organization_links")
+            .select("organization_id")
+            .in_("person_id", person_ids)
+            .execute()
+        )
+        my_org_ids |= {str(r["organization_id"]) for r in (pol_resp.data or [])}
+
+    # Find orgs where user is aksia_owner on leads
+    owned_leads = (
+        sb.table("leads")
+        .select("organization_id")
+        .eq("aksia_owner_id", str(current_user.id))
+        .eq("is_archived", False)
+        .execute()
+    )
+    my_org_ids |= {str(l["organization_id"]) for l in (owned_leads.data or []) if l.get("organization_id")}
+
+    # If no matching orgs, return empty results
+    organizations = []
+    total_count = 0
+    total_pages = 1
+
+    if my_org_ids:
+        query = (
+            sb.table("organizations")
+            .select("id, company_name, short_name, relationship_type, organization_type, country, city, aum_mn, rfp_hold, website, created_at", count="exact")
+            .eq("is_archived", False)
+            .in_("id", list(my_org_ids))
+        )
+
+        # Filters
+        if search:
+            query = query.ilike("company_name", f"%{search}%")
+        if relationship_type:
+            query = query.eq("relationship_type", relationship_type)
+        if organization_type:
+            query = query.eq("organization_type", organization_type)
+        if country:
+            query = query.eq("country", country)
+
+        # Sorting
+        valid_sort_cols = ["company_name", "relationship_type", "organization_type", "country", "aum_mn", "created_at"]
+        if sort_by not in valid_sort_cols:
+            sort_by = "company_name"
+        desc = sort_dir.lower() == "desc"
+        query = query.order(sort_by, desc=desc)
+
+        # Pagination
+        offset = (page - 1) * page_size
+        query = query.range(offset, offset + page_size - 1)
+
+        resp = query.execute()
+        organizations = resp.data or []
+        total_count = resp.count or 0
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
+
+    # Reference data for filter dropdowns
+    relationship_types = _get_reference_data("relationship_type")
+    organization_types = _get_reference_data("organization_type")
+    countries = _get_reference_data("country")
+
+    context = {
+        "request": request,
+        "user": current_user,
+        "organizations": organizations,
+        "total_count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "search": search,
+        "relationship_type": relationship_type,
+        "organization_type": organization_type,
+        "country": country,
+        "sort_by": sort_by,
+        "sort_dir": sort_dir,
+        "relationship_types": relationship_types,
+        "organization_types": organization_types,
+        "countries": countries,
+        "view_mode": "my_organizations",
+    }
+
+    # HTMX partial vs full page
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse("organizations/_list_table.html", context)
     return templates.TemplateResponse("organizations/list.html", context)
