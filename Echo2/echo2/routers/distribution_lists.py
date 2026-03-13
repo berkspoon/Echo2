@@ -327,6 +327,7 @@ async def search_people(
     country: str = Query(""),
     rel_type: str = Query(""),
     fund: str = Query(""),
+    mode: str = Query("dropdown"),
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """HTMX endpoint: return person search results for member add autocomplete.
@@ -450,35 +451,81 @@ async def search_people(
         people = [p for p in people if p["id"] not in existing_ids]
 
     if not people:
+        if mode == "table":
+            return HTMLResponse('<p class="text-sm text-gray-400 py-4 text-center">No matching people found. Try adjusting your filters.</p>')
         return HTMLResponse('<div class="px-4 py-2 text-sm text-gray-400">No matching people found</div>')
 
-    # Enrich with primary org names
+    # Enrich with primary org names (batch lookup for efficiency)
+    person_ids_list = [p["id"] for p in people[:25]]
+    pol_resp = (
+        sb.table("person_organization_links")
+        .select("person_id, organization_id")
+        .in_("person_id", person_ids_list)
+        .eq("link_type", "primary")
+        .execute()
+    )
+    person_org_map = {str(r["person_id"]): str(r["organization_id"]) for r in (pol_resp.data or [])}
+    org_ids = list(set(person_org_map.values()))
+    org_names = {}
+    if org_ids:
+        orgs_resp = sb.table("organizations").select("id, company_name").in_("id", org_ids).execute()
+        org_names = {str(o["id"]): o["company_name"] for o in (orgs_resp.data or [])}
+
+    # --- TABLE MODE: return a full table for the people selector ---
+    if mode == "table":
+        rows = []
+        for p in people[:25]:
+            pid = str(p["id"])
+            org_id = person_org_map.get(pid)
+            org_name = org_names.get(org_id, "") if org_id else ""
+            full_name = f"{p['first_name']} {p['last_name']}"
+            email_str = p.get("email") or "—"
+
+            rows.append(
+                f'<tr class="hover:bg-gray-50" id="person-row-{pid}">'
+                f'<td class="px-4 py-2.5 text-sm font-medium text-gray-900">{full_name}</td>'
+                f'<td class="px-4 py-2.5 text-sm text-gray-600">{email_str}</td>'
+                f'<td class="px-4 py-2.5 text-sm text-gray-600">{org_name or "—"}</td>'
+                f'<td class="px-4 py-2.5 text-sm">'
+                f'<button type="button" '
+                f'hx-post="/distribution-lists/{list_id}/members/add" '
+                f'hx-vals=\'{{"person_id": "{pid}"}}\' '
+                f'hx-target="#person-row-{pid}" '
+                f'hx-swap="outerHTML" '
+                f'class="inline-flex items-center px-3 py-1 text-xs font-medium text-white bg-brand-500 rounded hover:bg-brand-600">'
+                f'+ Add</button>'
+                f'</td>'
+                f'</tr>'
+            )
+
+        count_note = f'<p class="text-xs text-gray-400 mt-2">Showing {min(len(people), 25)} of {len(people)} results</p>' if len(people) > 25 else f'<p class="text-xs text-gray-400 mt-2">{len(people)} result{"s" if len(people) != 1 else ""} found</p>'
+
+        table_html = (
+            f'<div class="overflow-x-auto border border-gray-200 rounded-lg">'
+            f'<table class="min-w-full divide-y divide-gray-200">'
+            f'<thead class="bg-gray-50">'
+            f'<tr>'
+            f'<th class="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>'
+            f'<th class="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>'
+            f'<th class="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>'
+            f'<th class="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>'
+            f'</tr>'
+            f'</thead>'
+            f'<tbody class="divide-y divide-gray-200">'
+            + "\n".join(rows)
+            + f'</tbody></table></div>'
+            + count_note
+        )
+        return HTMLResponse(table_html)
+
+    # --- DROPDOWN MODE (legacy): return autocomplete items ---
     html_parts = []
     for p in people[:10]:
-        # Quick org lookup
-        org_link = (
-            sb.table("person_organization_links")
-            .select("organization_id")
-            .eq("person_id", p["id"])
-            .eq("link_type", "primary")
-            .limit(1)
-            .execute()
-        )
-        org_name = ""
-        if org_link.data:
-            org_resp = (
-                sb.table("organizations")
-                .select("company_name")
-                .eq("id", org_link.data[0]["organization_id"])
-                .maybe_single()
-                .execute()
-            )
-            if org_resp.data:
-                org_name = org_resp.data["company_name"]
-
+        pid = str(p["id"])
+        org_id = person_org_map.get(pid)
+        org_name = org_names.get(org_id, "") if org_id else ""
         full_name = f"{p['first_name']} {p['last_name']}"
         email_str = p.get("email") or ""
-        safe_name = full_name.replace("'", "&#39;").replace('"', "&quot;")
 
         html_parts.append(
             f'<div class="flex items-center justify-between px-4 py-2 hover:bg-brand-50">'
@@ -1189,6 +1236,19 @@ async def add_member(
         None, f"{person['full_name']} ({person_id})",
         current_user.id,
     )
+
+    # If targeted at a specific person row (table mode), return an "Added" row
+    hx_target = request.headers.get("HX-Target", "")
+    if hx_target.startswith("person-row-"):
+        full_name = person["full_name"]
+        return HTMLResponse(
+            f'<tr class="bg-green-50">'
+            f'<td class="px-4 py-2.5 text-sm font-medium text-green-700">{full_name}</td>'
+            f'<td colspan="3" class="px-4 py-2.5 text-sm text-green-600">'
+            f'<svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+            f'Added to list</td>'
+            f'</tr>'
+        )
 
     # Return updated members tab content
     return await _render_members_tab(request, str(list_id), current_user, dist_list)
