@@ -370,7 +370,7 @@ async def list_people(
         "asset_classes": asset_classes,
     }
 
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
+    if request.headers.get("HX-Request"):
         return templates.TemplateResponse("people/_list_table.html", context)
     return templates.TemplateResponse("people/list.html", context)
 
@@ -523,7 +523,7 @@ async def get_person(
     }
 
     # Only return tab partial for explicit HTMX tab clicks, not hx-boost page navigations
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted") and tab:
+    if request.headers.get("HX-Request") and tab:
         return templates.TemplateResponse(f"people/_tab_{tab}.html", context)
     return templates.TemplateResponse("people/detail.html", context)
 

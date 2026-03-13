@@ -378,7 +378,7 @@ async def list_activities(
         "users": users_resp.data or [],
     }
 
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
+    if request.headers.get("HX-Request"):
         return templates.TemplateResponse("activities/_list_table.html", context)
     return templates.TemplateResponse("activities/list.html", context)
 

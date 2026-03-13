@@ -483,7 +483,7 @@ async def list_fund_prospects(
         "users": users_resp.data or [],
     }
 
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
+    if request.headers.get("HX-Request"):
         return templates.TemplateResponse("fund_prospects/_list_table.html", context)
     return templates.TemplateResponse("fund_prospects/list.html", context)
 

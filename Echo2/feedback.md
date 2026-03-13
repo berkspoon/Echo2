@@ -14,21 +14,22 @@ Mark fixed items with `[x]`.
 ---
 
 ## General / Layout
-- [x] Sidebar menu and header (page name + search) must appear on ALL pages — some pages are missing them (severity: high) — **Fixed: hx-boost was causing all navigations to return HTMX partials instead of full pages. Added HX-Boosted header check to all 10 router list/detail endpoints.**
+- [x] Sidebar menu and header (page name + search) must appear on ALL pages — some pages are missing them (severity: high) — **Fixed (round 2): Removed hx-boost="true" from body tag entirely. The HX-Boosted header check was unreliable — hx-boost was still intercepting navigations and returning partials. Without hx-boost, normal links do standard browser navigation (full page), while HTMX elements with explicit hx-get continue to work for partials. Simplified all router HX-Request checks by removing HX-Boosted logic.**
 - [x] Clicking "Dashboard" in sidebar should navigate to the homepage (severity: medium) — **Already works: sidebar Dashboard link points to "/" which is the homepage.**
 - [x] People and Organizations tabs should allow inline editing by clicking on the tab from the homepage (severity: medium) — **Fixed: Added Edit button column to both People and Organizations list tables.**
+- [x] Sort/filter column headers, pagination page numbers, and "Next" button not clickable on list pages (severity: high) — **Fixed (round 2): Caused by hx-boost intercepting HTMX element clicks and adding HX-Boosted header, which made routers return full pages instead of partials into the wrong target. Removing hx-boost from body resolved this.**
 
 ## Organizations (/organizations/)
-- [x] Cannot access individual organization detail page at all (severity: high) — **Fixed: hx-boost was returning the People tab partial instead of the full detail page. Added HX-Boosted check.**
+- [x] Cannot access individual organization detail page at all (severity: high) — **Fixed (round 2): Removed hx-boost entirely so org detail links do standard navigation and return full detail page.**
 - [x] All columns should be sortable and filterable (severity: medium) — **Already had sort on all direct columns + filter dropdowns for relationship, type, country. Added Actions column.**
 - [x] Former employees should show in their own tab (after "Fund Prospects" and "Fee Arrangements") (severity: medium) — **Fixed: Added "Former Employees" tab that filters people with link_type='former'. Created _tab_former_employees.html template.**
 
 ## People (/people/)
-- [x] Clicking on a person sometimes goes to their linked organizations tab instead of the person detail page (severity: high) — **Fixed: hx-boost was returning the Organizations tab partial. Added HX-Boosted check so full detail page is returned for page navigations.**
+- [x] Clicking on a person sometimes goes to their linked organizations tab instead of the person detail page (severity: high) — **Fixed (round 2): Removed hx-boost so person detail links do standard navigation.**
 - [x] All columns should be sortable and filterable (severity: medium) — **Fixed: Added sort on Phone column. All direct columns now sortable + filter dropdowns for asset class, DNC.**
 
 ## Activities (/activities/)
-- [x] Clicking on a link from an activity does not go to the associated detail page (severity: high) — **Fixed: hx-boost was intercepting link clicks and returning partials. Added HX-Boosted check to all endpoints.**
+- [x] Clicking on a link from an activity does not go to the associated detail page (severity: high) — **Fixed (round 2): Removed hx-boost so activity detail links (org, person) do standard navigation to full detail pages.**
 - [x] All columns should be sortable and filterable (severity: medium) — **Already had sort on date, title, type + filter dropdowns for type, author, date range.**
 
 ## Leads (/leads/)
@@ -42,7 +43,7 @@ Mark fixed items with `[x]`.
 - [x] Stage names should capitalize acronyms: "IC Review" (not "Ic Review") and "DDQ Materials Sent" (not "Ddq Materials Sent") (severity: low) — **Fixed: List table now uses stage_labels dict from reference_data instead of raw .title() filter.**
 
 ## Distribution Lists (/distribution-lists/)
-- [x] Only "Official" distribution lists should be shown to everyone in the main table. Below that, a separate "My Distribution Lists" table for the user's custom lists (severity: medium) — **Fixed: Split list page into two sections — "Official Distribution Lists" and "My Distribution Lists". Router now passes both official_lists and my_lists to template.**
+- [x] Only "Official" distribution lists should be shown to everyone in the main table. Below that, a separate "My Distribution Lists" table for the user's custom lists (severity: medium) — **Fixed (round 2): Template was already split into two sections, but hx-boost was causing the page to render the _list_table.html partial (single table with all lists) instead of the full list.html (two-section layout). Removing hx-boost ensures standard navigation renders the full page with Official and My Lists sections.**
 
 ## Tasks (/tasks/my-tasks)
 

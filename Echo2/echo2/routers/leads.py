@@ -457,7 +457,7 @@ async def list_leads(
         "users": users_resp.data or [],
     }
 
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
+    if request.headers.get("HX-Request"):
         return templates.TemplateResponse("leads/_list_table.html", context)
     return templates.TemplateResponse("leads/list.html", context)
 

@@ -544,7 +544,7 @@ async def my_tasks(
         "view_mode": "my_tasks",
     }
 
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
+    if request.headers.get("HX-Request"):
         return templates.TemplateResponse("tasks/_list_table.html", context)
     return templates.TemplateResponse("tasks/list.html", context)
 
@@ -691,7 +691,7 @@ async def list_tasks(
         "view_mode": "all_tasks",
     }
 
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
+    if request.headers.get("HX-Request"):
         return templates.TemplateResponse("tasks/_list_table.html", context)
     return templates.TemplateResponse("tasks/list.html", context)
 

@@ -224,7 +224,7 @@ async def list_organizations(
     }
 
     # HTMX partial vs full page (hx-boost navigations get the full page)
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
+    if request.headers.get("HX-Request"):
         return templates.TemplateResponse("organizations/_list_table.html", context)
     return templates.TemplateResponse("organizations/list.html", context)
 
@@ -435,7 +435,7 @@ async def get_organization(
     }
 
     # Only return tab partial for explicit HTMX tab clicks, not hx-boost page navigations
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted") and tab:
+    if request.headers.get("HX-Request") and tab:
         return templates.TemplateResponse(f"organizations/_tab_{tab}.html", context)
     return templates.TemplateResponse("organizations/detail.html", context)
 

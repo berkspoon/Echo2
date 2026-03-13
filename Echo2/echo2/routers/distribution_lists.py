@@ -546,7 +546,7 @@ async def list_distribution_lists(
         "asset_classes": asset_classes,
     }
 
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
+    if request.headers.get("HX-Request"):
         return templates.TemplateResponse("distribution_lists/_list_table.html", context)
     return templates.TemplateResponse("distribution_lists/list.html", context)
 
@@ -678,7 +678,7 @@ async def get_distribution_list(
     }
 
     # Only return tab partial for explicit HTMX tab clicks, not hx-boost page navigations
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted") and tab:
+    if request.headers.get("HX-Request") and tab:
         template_name = f"distribution_lists/_tab_{tab}.html"
         return templates.TemplateResponse(template_name, context)
     return templates.TemplateResponse("distribution_lists/detail.html", context)
