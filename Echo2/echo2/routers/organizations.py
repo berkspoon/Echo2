@@ -223,8 +223,8 @@ async def list_organizations(
         "countries": countries,
     }
 
-    # HTMX partial vs full page
-    if request.headers.get("HX-Request"):
+    # HTMX partial vs full page (hx-boost navigations get the full page)
+    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
         return templates.TemplateResponse("organizations/_list_table.html", context)
     return templates.TemplateResponse("organizations/list.html", context)
 
@@ -413,11 +413,16 @@ async def get_organization(
     )
     relationship_history = history_resp.data or []
 
+    # Separate former employees from current people
+    former_employees = [p for p in people if p.get("link_type") == "former"]
+    current_people = [p for p in people if p.get("link_type") != "former"]
+
     context = {
         "request": request,
         "user": current_user,
         "org": org,
-        "people": people,
+        "people": current_people,
+        "former_employees": former_employees,
         "activities": activities,
         "leads": leads,
         "contracts": contracts,
@@ -429,7 +434,8 @@ async def get_organization(
         "active_tab": tab,
     }
 
-    if request.headers.get("HX-Request") and tab:
+    # Only return tab partial for explicit HTMX tab clicks, not hx-boost page navigations
+    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted") and tab:
         return templates.TemplateResponse(f"organizations/_tab_{tab}.html", context)
     return templates.TemplateResponse("organizations/detail.html", context)
 

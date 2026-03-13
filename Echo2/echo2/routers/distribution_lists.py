@@ -515,6 +515,10 @@ async def list_distribution_lists(
         else:
             dl["owner_name"] = None
 
+    # Split into official and user's custom lists for the two-table layout
+    official_lists = [dl for dl in lists if dl.get("is_official")]
+    my_lists = [dl for dl in lists if not dl.get("is_official") and str(dl.get("owner_id", "")) == str(current_user.id)]
+
     # Reference data for filter dropdowns
     list_types = _get_reference_data("distribution_list_type")
     brands = _get_reference_data("brand")
@@ -524,6 +528,8 @@ async def list_distribution_lists(
         "request": request,
         "user": current_user,
         "lists": lists,
+        "official_lists": official_lists,
+        "my_lists": my_lists,
         "total_count": total_count,
         "page": page,
         "page_size": page_size,
@@ -540,7 +546,7 @@ async def list_distribution_lists(
         "asset_classes": asset_classes,
     }
 
-    if request.headers.get("HX-Request"):
+    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
         return templates.TemplateResponse("distribution_lists/_list_table.html", context)
     return templates.TemplateResponse("distribution_lists/list.html", context)
 
@@ -671,7 +677,8 @@ async def get_distribution_list(
         "can_send": _can_send(dist_list, current_user),
     }
 
-    if request.headers.get("HX-Request") and tab:
+    # Only return tab partial for explicit HTMX tab clicks, not hx-boost page navigations
+    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted") and tab:
         template_name = f"distribution_lists/_tab_{tab}.html"
         return templates.TemplateResponse(template_name, context)
     return templates.TemplateResponse("distribution_lists/detail.html", context)

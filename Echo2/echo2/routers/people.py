@@ -320,7 +320,7 @@ async def list_people(
         query = query.contains("asset_classes_of_interest", [asset_class])
 
     # Sorting
-    valid_sort_cols = ["first_name", "last_name", "email", "job_title", "created_at"]
+    valid_sort_cols = ["first_name", "last_name", "email", "job_title", "phone", "created_at"]
     if sort_by not in valid_sort_cols:
         sort_by = "last_name"
     desc = sort_dir.lower() == "desc"
@@ -370,7 +370,7 @@ async def list_people(
         "asset_classes": asset_classes,
     }
 
-    if request.headers.get("HX-Request"):
+    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
         return templates.TemplateResponse("people/_list_table.html", context)
     return templates.TemplateResponse("people/list.html", context)
 
@@ -522,7 +522,8 @@ async def get_person(
         "active_tab": tab,
     }
 
-    if request.headers.get("HX-Request") and tab:
+    # Only return tab partial for explicit HTMX tab clicks, not hx-boost page navigations
+    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted") and tab:
         return templates.TemplateResponse(f"people/_tab_{tab}.html", context)
     return templates.TemplateResponse("people/detail.html", context)
 

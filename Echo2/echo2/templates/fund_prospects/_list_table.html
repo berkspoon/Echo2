@@ -18,7 +18,7 @@
 
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fund</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Share Class</th>
+                {{ sort_header("share_class", "Share Class") }}
                 {{ sort_header("stage", "Stage") }}
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksia Owner</th>
                 {{ sort_header("target_allocation_mn", "Target ($mn)") }}
@@ -56,7 +56,7 @@
                         {% elif fp.stage == 'closed' %}bg-green-100 text-green-800
                         {% elif fp.stage == 'declined' %}bg-red-100 text-red-800
                         {% else %}bg-gray-100 text-gray-800{% endif %}">
-                        {{ fp.stage | replace('_', ' ') | title }}
+                        {{ stage_labels.get(fp.stage, fp.stage | replace('_', ' ') | title) }}
                     </span>
                 </td>
                 <td class="px-4 py-3 text-sm text-gray-600">{{ fp.owner_name or '—' }}</td>

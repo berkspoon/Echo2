@@ -394,7 +394,7 @@ async def list_leads(
         query = query.lte("start_date", date_to)
 
     # Sorting
-    valid_sort_cols = ["start_date", "rating", "expected_revenue",
+    valid_sort_cols = ["start_date", "rating", "service_type", "expected_revenue",
                        "expected_yr1_flar", "created_at"]
     if sort_by not in valid_sort_cols:
         sort_by = "start_date"
@@ -457,7 +457,7 @@ async def list_leads(
         "users": users_resp.data or [],
     }
 
-    if request.headers.get("HX-Request"):
+    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
         return templates.TemplateResponse("leads/_list_table.html", context)
     return templates.TemplateResponse("leads/list.html", context)
 

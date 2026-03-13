@@ -153,7 +153,7 @@ BASE_URL=http://localhost:8000
 - [ ] Reference Data management
 - [ ] SSO / Auth
 - [ ] Data migration
-- [ ] Dummy data test suite (10,000 rows)
+- [x] Dummy data seed script (`scripts/seed_data.py` — ~3,400 rows across all tables)
 
 ## Open Items (from PRD Section 15)
 1. Entra ID Tenant ID and SSO app registration — IT team
@@ -330,3 +330,21 @@ _Use this section to track decisions made during Claude Code sessions:_
 - No model or schema changes needed — `models/task.py` and the `tasks` table were already complete
 - Auto-task generation (activities/leads/fund_prospects) was already implemented in previous sessions — this module provides the CRUD layer to view and manage those tasks
 - Next step: Dashboards module
+
+### Session 10 — March 12, 2026
+- Built dummy data seed script: `scripts/seed_data.py` using Faker + supabase-py
+- Added `Faker==33.0.0` to requirements.txt
+- Created `scripts/__init__.py` and `scripts/seed_data.py`
+- Script is idempotent: checks for existing seed users (`*@aksia.test`), supports `--force` to re-seed
+- Fixed random seed (42) for reproducibility
+- Seeded 8 users (admin, legal, rfp_team, 4 standard, read_only) + dev user
+- Seeded ~3,400 rows: 200 orgs, 500 people, 619 person-org links, 500 activities, 750+563 activity links, 200 leads, 24 contracts (from won leads), 150 fund prospects, 24 distribution lists (14 official + 10 custom), 507 list members, 198 tasks, 50 fee arrangements
+- Fixed config.py: added `"extra": "ignore"` to model_config to allow extra .env vars (e.g. `database_url`)
+- Fixed None-safe string slicing in task title generation for leads and fund prospects
+- L2→L1 superset relationships set on publication distribution lists
+- Distribution list members skip DNC people
+- Tasks include overdue items (past due_date + open/in_progress status) for testing overdue highlighting
+- Run: `cd echo2 && python -m scripts.seed_data` (or `--force` to re-seed)
+- Server tested locally: `python -m uvicorn main:app --reload --port 8000`
+- Created `feedback.md` at project root for tracking testing feedback
+- Next step: Address feedback from testing, then Dashboards module

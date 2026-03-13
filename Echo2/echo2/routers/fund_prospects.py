@@ -412,7 +412,7 @@ async def list_fund_prospects(
         query = query.lte("created_at", date_to)
 
     # Sorting
-    valid_sort_cols = ["created_at", "stage", "target_allocation_mn", "probability_pct"]
+    valid_sort_cols = ["created_at", "stage", "share_class", "target_allocation_mn", "probability_pct"]
     if sort_by not in valid_sort_cols:
         sort_by = "created_at"
     desc = sort_dir.lower() == "desc"
@@ -447,8 +447,9 @@ async def list_fund_prospects(
         fp["fund_ticker"] = fund.get("ticker", "?")
         fp["fund_name"] = fund.get("fund_name", "Unknown")
 
-    # Reference data for filter dropdowns
+    # Reference data for filter dropdowns and stage labels
     stages = _get_reference_data("fund_prospect_stage")
+    stage_labels = {s["value"]: s["label"] for s in stages}
     funds_list = [{"id": f["id"], "fund_name": f["fund_name"], "ticker": f["ticker"], "brand": f["brand"]}
                   for f in (funds_resp.data or [])]
     users_resp = (
@@ -477,11 +478,12 @@ async def list_fund_prospects(
         "sort_by": sort_by,
         "sort_dir": sort_dir,
         "stages": stages,
+        "stage_labels": stage_labels,
         "funds": funds_list,
         "users": users_resp.data or [],
     }
 
-    if request.headers.get("HX-Request"):
+    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
         return templates.TemplateResponse("fund_prospects/_list_table.html", context)
     return templates.TemplateResponse("fund_prospects/list.html", context)
 

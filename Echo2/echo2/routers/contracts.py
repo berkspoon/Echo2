@@ -428,7 +428,7 @@ async def list_contracts(
         "service_types": service_types,
     }
 
-    if request.headers.get("HX-Request"):
+    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
         return templates.TemplateResponse("contracts/_list_table.html", context)
     return templates.TemplateResponse("contracts/list.html", context)
 

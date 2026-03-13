@@ -135,7 +135,7 @@
                 <dd class="mt-1 text-sm">
                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
                         {% if lead_info.rating == 'won' %}bg-green-100 text-green-800
-                        {% elif lead_info.rating starts with 'lost' %}bg-red-100 text-red-800
+                        {% elif lead_info.rating and lead_info.rating.startswith('lost') %}bg-red-100 text-red-800
                         {% else %}bg-gray-100 text-gray-800{% endif %}">
                         {{ stage_labels.get(lead_info.rating, lead_info.rating | replace('_', ' ') | title) }}
                     </span>

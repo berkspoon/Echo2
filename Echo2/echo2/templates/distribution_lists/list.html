@@ -3,12 +3,12 @@
 {% block page_title %}Distribution Lists{% endblock %}
 
 {% block content %}
-<div class="space-y-4">
+<div class="space-y-6">
 
     <!-- Header row -->
     <div class="flex items-center justify-between">
         <div>
-            <h2 class="text-lg font-semibold text-gray-900">All Distribution Lists</h2>
+            <h2 class="text-lg font-semibold text-gray-900">Distribution Lists</h2>
             <p class="text-sm text-gray-500">{{ total_count }} list{{ 's' if total_count != 1 else '' }}</p>
         </div>
         {% if user.role in ['admin', 'standard_user', 'rfp_team'] %}
@@ -71,27 +71,42 @@
                 </select>
             </div>
 
-            <!-- Official / Custom -->
-            <div class="w-36">
-                <label class="block text-xs font-medium text-gray-600 mb-1">Official</label>
-                <select name="official"
-                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="/distribution-lists" hx-trigger="change" hx-target="#dl-list-container" hx-include="#filter-form" hx-push-url="true">
-                    <option value="" {{ 'selected' if not official else '' }}>All</option>
-                    <option value="official" {{ 'selected' if official == 'official' else '' }}>Official Only</option>
-                    <option value="custom" {{ 'selected' if official == 'custom' else '' }}>Custom Only</option>
-                </select>
-            </div>
-
             <input type="hidden" name="sort_by" value="{{ sort_by }}">
             <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
         </form>
     </div>
 
-    <!-- Table -->
-    <div id="dl-list-container">
-        {% include "distribution_lists/_list_table.html" %}
+    <!-- Official Distribution Lists -->
+    <div>
+        <h3 class="text-base font-semibold text-gray-900 mb-3">
+            <span class="inline-flex items-center gap-2">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Official</span>
+                Official Distribution Lists
+            </span>
+        </h3>
+        <div id="dl-list-container">
+            {% with lists=official_lists %}
+            {% include "distribution_lists/_list_table.html" %}
+            {% endwith %}
+        </div>
     </div>
+
+    <!-- My Distribution Lists -->
+    {% if my_lists %}
+    <div>
+        <h3 class="text-base font-semibold text-gray-900 mb-3">
+            <span class="inline-flex items-center gap-2">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Custom</span>
+                My Distribution Lists
+            </span>
+        </h3>
+        <div>
+            {% with lists=my_lists %}
+            {% include "distribution_lists/_list_table.html" %}
+            {% endwith %}
+        </div>
+    </div>
+    {% endif %}
 
 </div>
 {% endblock %}
