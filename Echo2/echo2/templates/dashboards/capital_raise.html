@@ -4,19 +4,167 @@
 
 {% block content %}
 <div class="space-y-6">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <p class="text-xs text-gray-400">Last refreshed: {{ last_refreshed }}</p>
+        <span class="text-sm text-gray-500">{{ total_prospects }} prospect{{ 's' if total_prospects != 1 else '' }}</span>
+    </div>
+
+    <!-- Fund Selector Tabs -->
+    <div class="flex flex-wrap gap-2">
+        <a href="/dashboards/capital-raise"
+           class="px-4 py-2 text-sm font-medium rounded-md transition-colors {{ 'bg-brand-500 text-white' if not current_fund_ticker else 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50' }}">
+            All Funds
+        </a>
+        {% for fund in funds %}
+        <a href="/dashboards/capital-raise/{{ fund.ticker }}"
+           class="px-4 py-2 text-sm font-medium rounded-md transition-colors {{ 'bg-brand-500 text-white' if current_fund_ticker == fund.ticker else 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50' }}">
+            {{ fund.ticker }}
+            <span class="text-xs opacity-75">{{ fund.fund_name }}</span>
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- 1. Allocation Progress -->
     <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-base font-semibold text-gray-900 mb-4">Target Raise vs. Hard Circle to Date</h2>
-        <p class="text-sm text-gray-500">Progress bar — stub</p>
-    </div>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-base font-semibold text-gray-900 mb-4">Pipeline by Stage</h2>
-            <p class="text-sm text-gray-500">Stub</p>
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">Allocation Progress</h3>
+        {% if fund_target_fmt %}
+        <p class="text-xs text-gray-500 mb-3">Fund Target: ${{ fund_target_fmt }}M</p>
+        {% endif %}
+
+        <!-- Target Allocation bar -->
+        <div class="mb-3">
+            <div class="flex justify-between text-xs text-gray-600 mb-1">
+                <span>Target Allocation</span>
+                <span>${{ total_target_fmt }}M ({{ target_pct }}%)</span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-4">
+                <div class="bg-blue-400 h-4 rounded-full transition-all duration-300" style="width: {{ target_pct }}%"></div>
+            </div>
         </div>
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-base font-semibold text-gray-900 mb-4">By LP Type</h2>
-            <p class="text-sm text-gray-500">Stub</p>
+
+        <!-- Soft Circle bar -->
+        <div class="mb-3">
+            <div class="flex justify-between text-xs text-gray-600 mb-1">
+                <span>Soft Circle</span>
+                <span>${{ total_soft_fmt }}M ({{ soft_pct }}%)</span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-4">
+                <div class="bg-yellow-400 h-4 rounded-full transition-all duration-300" style="width: {{ soft_pct }}%"></div>
+            </div>
+        </div>
+
+        <!-- Hard Circle bar -->
+        <div class="mb-3">
+            <div class="flex justify-between text-xs text-gray-600 mb-1">
+                <span>Hard Circle</span>
+                <span>${{ total_hard_fmt }}M ({{ hard_pct }}%)</span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-4">
+                <div class="bg-green-400 h-4 rounded-full transition-all duration-300" style="width: {{ hard_pct }}%"></div>
+            </div>
+        </div>
+
+        <!-- Pace indicator -->
+        {% if fund_target and pace_label %}
+        <div class="mt-4 p-3 rounded-lg border {{ pace_bg }}">
+            <span class="text-sm font-medium {{ pace_text }}">
+                {{ pace_label }}: {{ pace_pct }}% of target raised (hard circle)
+            </span>
+        </div>
+        {% elif not fund_target and current_fund_ticker %}
+        <div class="mt-4 p-3 rounded-lg border bg-gray-50 border-gray-200">
+            <span class="text-sm text-gray-500">Fund target not set — pace-to-target unavailable.</span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 2. Pipeline by Stage -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">Pipeline by Stage</h3>
+        {% if fp_pipeline %}
+        <div class="space-y-3">
+            {% for item in fp_pipeline %}
+            <div class="flex items-center gap-3">
+                <div class="w-36 text-sm text-gray-600 truncate">{{ item.label }}</div>
+                <div class="flex-1 bg-gray-100 rounded-full h-6 relative overflow-hidden">
+                    <div class="h-6 rounded-full {{ item.color }} transition-all duration-300" style="width: {{ item.bar_pct }}%; min-width: {% if item.count > 0 %}2rem{% else %}0{% endif %};"></div>
+                    <span class="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-700">
+                        {{ item.count }} prospect{{ 's' if item.count != 1 else '' }} &middot; ${{ item.allocation_fmt }}M
+                    </span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-400">No prospects in pipeline.</p>
+        {% endif %}
+    </div>
+
+    <!-- 3. Investor Breakdown by Org Type -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">Investor Breakdown by LP Type</h3>
+        {% if investor_breakdown %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">LP Type</th>
+                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Count</th>
+                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Target ($M)</th>
+                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Soft Circle ($M)</th>
+                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Hard Circle ($M)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for row in investor_breakdown %}
+                    <tr>
+                        <td class="py-2 text-gray-900">{{ row.label }}</td>
+                        <td class="py-2 text-right text-gray-600">{{ row.count }}</td>
+                        <td class="py-2 text-right text-gray-600">${{ row.target_fmt }}</td>
+                        <td class="py-2 text-right text-gray-600">${{ row.soft_fmt }}</td>
+                        <td class="py-2 text-right text-gray-600">${{ row.hard_fmt }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-400">No investor data available.</p>
+        {% endif %}
+    </div>
+
+    <!-- 4. Declined Prospects -->
+    {% if declined %}
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">Declined Prospects ({{ declined|length }})</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Organization</th>
+                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Fund</th>
+                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Share Class</th>
+                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Decline Reason</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for row in declined %}
+                    <tr>
+                        <td class="py-2 text-gray-900">{{ row.org_name }}</td>
+                        <td class="py-2 text-gray-600">
+                            <span class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{{ row.fund_ticker }}</span>
+                        </td>
+                        <td class="py-2 text-gray-600">{{ row.share_class }}</td>
+                        <td class="py-2 text-gray-600">{{ row.decline_reason }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
+    {% endif %}
+
 </div>
 {% endblock %}

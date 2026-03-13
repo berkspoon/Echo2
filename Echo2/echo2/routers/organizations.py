@@ -299,7 +299,7 @@ async def get_organization(
         .select("*")
         .eq("id", str(org_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     org = resp.data
@@ -529,7 +529,7 @@ async def edit_organization_form(
         .select("*")
         .eq("id", str(org_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     org = resp.data
@@ -568,7 +568,7 @@ async def update_organization(
         .select("*")
         .eq("id", str(org_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     old_org = old_resp.data

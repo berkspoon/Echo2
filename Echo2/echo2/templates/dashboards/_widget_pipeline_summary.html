@@ -1,0 +1,15 @@
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    {% for item in stages %}
+    <div class="bg-white rounded-lg shadow p-4 border-l-4 border-l-2" style="border-left-color: var(--tw-border-opacity);">
+        <div class="flex items-center gap-2 mb-1">
+            <span class="inline-block w-2.5 h-2.5 rounded-full {{ item.color }}"></span>
+            <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">{{ item.stage_label }}</dt>
+        </div>
+        <dd class="text-2xl font-bold text-gray-900">${{ item.total_revenue_formatted }}</dd>
+        <dd class="text-sm text-gray-500">{{ item.count }} lead{{ 's' if item.count != 1 else '' }}</dd>
+    </div>
+    {% endfor %}
+</div>
+{% if not stages %}
+<p class="text-sm text-gray-400">No leads in your pipeline.</p>
+{% endif %}

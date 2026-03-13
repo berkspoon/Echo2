@@ -148,7 +148,7 @@ BASE_URL=http://localhost:8000
 - [x] Fund Prospects module (router logic, templates, stage progression, next-steps task generation)
 - [x] Distribution Lists module (router logic, templates, member management, send preview/history, L2 superset, DNC/RFP Hold suppression)
 - [x] Tasks module (router logic, templates, My Tasks/All Tasks views, HTMX status transitions, polymorphic record linking, overdue highlighting)
-- [ ] Dashboards module (router logic)
+- [x] Dashboards module (router logic, 4 dashboards: Personal/Advisory Pipeline/Capital Raise/Management, HTMX lazy-load widgets, CSS-only visualizations, HTMX filters)
 - [ ] Admin module (router logic)
 - [ ] Reference Data management
 - [ ] SSO / Auth
@@ -348,3 +348,18 @@ _Use this section to track decisions made during Claude Code sessions:_
 - Server tested locally: `python -m uvicorn main:app --reload --port 8000`
 - Created `feedback.md` at project root for tracking testing feedback
 - Next step: Address feedback from testing, then Dashboards module
+
+### Session 11 — March 12, 2026
+- Built full Dashboards module: router (9 routes, 4 dashboards, all aggregation logic), 10 templates (4 full pages, 4 widget partials, 2 content partials)
+- **Personal Dashboard** (homepage `/`): 4 HTMX lazy-loading widgets — Pipeline Summary (4 KPI cards by stage), My Open Tasks (10 items, overdue highlighting), My Open Leads (10 items, stage badges, revenue), My Recent Activities (10 items, type badges, linked orgs). All use `hx-trigger="load"` with skeleton loaders.
+- **Advisory Pipeline Dashboard** (`/dashboards/advisory-pipeline`): 6 sections — KPI summary row (active leads, pipeline revenue, yr1 FLAR, win rate), Pipeline by Stage (horizontal CSS bars), Revenue by Service Type (horizontal bars), FLAR Analysis by Asset Class (table), Win/Loss Funnel (visual), Owner Coverage (table). Full HTMX filter bar (service type, asset class, owner, org type, date range) with partial swap on `#pipeline-content`.
+- **Capital Raise Dashboard** (`/dashboards/capital-raise` and `/dashboards/capital-raise/{ticker}`): Fund selector tabs (All / APC / CAPIX / CAPVX / HEDGX), Allocation Progress (3 progress bars: target/soft/hard), Pace-to-Target indicator (green/yellow/red), Pipeline by Stage (10 stages), Investor Breakdown by LP Type (table), Declined Prospects (table). Handles NULL `target_raise_mn` gracefully.
+- **Management Dashboard** (`/dashboards/management`): Admin-only via `require_role`. 5 sections — Firm-Wide KPIs (advisory pipeline + fundraising + FLAR + contracts revenue), Per-Fund Progress (4 mini progress bars), Quarter-over-Quarter (leads/revenue/fund prospects with delta arrows), Team Activity (activities per user last 30d), Data Quality Alerts (missing fields on leads/contacts).
+- Updated `main.py` homepage route: added `current_user` dependency injection so personal dashboard widgets can filter by user
+- Updated `base.html` sidebar: added "Management" link visible only to admin role (`{% if user is defined and user.role == 'admin' %}`)
+- All visualizations are pure HTML + Tailwind CSS — no JavaScript charting libraries
+- Each router is self-contained — helpers (`_batch_resolve_users`, `_is_overdue`, etc.) replicated inside `dashboards.py`
+- Asset class filter on advisory pipeline uses post-query Python filtering (Supabase array contains is tricky with supabase-py)
+- Org type filter on advisory pipeline uses two-step query: first find matching org IDs, then filter leads
+- `not_.in_()` used for excluding inactive stages on leads widget (supabase-py syntax for NOT IN)
+- Next step: Admin module

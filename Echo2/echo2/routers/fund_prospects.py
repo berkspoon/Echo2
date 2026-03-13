@@ -204,14 +204,14 @@ def _create_next_steps_task(
 def _get_org_name(org_id: str) -> str:
     """Look up an org name by ID."""
     sb = get_supabase()
-    resp = sb.table("organizations").select("company_name").eq("id", org_id).single().execute()
+    resp = sb.table("organizations").select("company_name").eq("id", org_id).maybe_single().execute()
     return resp.data["company_name"] if resp.data else "Unknown"
 
 
 def _get_user_name(user_id: str) -> str:
     """Look up a user display_name by ID."""
     sb = get_supabase()
-    resp = sb.table("users").select("display_name").eq("id", user_id).single().execute()
+    resp = sb.table("users").select("display_name").eq("id", user_id).maybe_single().execute()
     return resp.data["display_name"] if resp.data else "Unknown"
 
 
@@ -222,7 +222,7 @@ def _get_fund_info(fund_id: str) -> dict:
         sb.table("funds")
         .select("id, fund_name, ticker, brand, asset_class")
         .eq("id", fund_id)
-        .single()
+        .maybe_single()
         .execute()
     )
     return resp.data if resp.data else {"fund_name": "Unknown", "ticker": "?", "brand": "", "asset_class": ""}
@@ -512,7 +512,7 @@ async def new_prospect_form(
             .select("id, company_name")
             .eq("id", org_id)
             .eq("is_archived", False)
-            .single()
+            .maybe_single()
             .execute()
         )
         if org_resp.data:
@@ -546,7 +546,7 @@ async def get_prospect(
         .select("*")
         .eq("id", str(prospect_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     prospect = resp.data
@@ -637,7 +637,7 @@ async def create_prospect(
                 sb.table("organizations")
                 .select("id, company_name")
                 .eq("id", prospect_data["organization_id"])
-                .single()
+                .maybe_single()
                 .execute()
             )
             if org_resp.data:
@@ -698,7 +698,7 @@ async def edit_prospect_form(
         .select("*")
         .eq("id", str(prospect_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     prospect = resp.data
@@ -712,7 +712,7 @@ async def edit_prospect_form(
             sb.table("organizations")
             .select("id, company_name")
             .eq("id", str(prospect["organization_id"]))
-            .single()
+            .maybe_single()
             .execute()
         )
         if org_resp.data:
@@ -743,7 +743,7 @@ async def update_prospect(
         .select("*")
         .eq("id", str(prospect_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     old_prospect = old_resp.data
@@ -763,7 +763,7 @@ async def update_prospect(
                 sb.table("organizations")
                 .select("id, company_name")
                 .eq("id", prospect_data["organization_id"])
-                .single()
+                .maybe_single()
                 .execute()
             )
             if org_resp.data:

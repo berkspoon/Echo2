@@ -1,40 +1,92 @@
 {% extends "base.html" %}
-
 {% block title %}Echo 2.0 — Dashboard{% endblock %}
 {% block page_title %}Personal Dashboard{% endblock %}
 
 {% block content %}
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<div class="space-y-6">
 
-    <!-- My Open Tasks -->
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-base font-semibold text-gray-900 mb-4">My Open Tasks</h2>
-        <div id="my-tasks">
-            <p class="text-sm text-gray-500">Loading tasks...</p>
+    <!-- Sales Pipeline Summary (full width) -->
+    <div id="pipeline-summary"
+         hx-get="/dashboards/personal/widgets/pipeline-summary"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {% for i in range(4) %}
+            <div class="bg-white rounded-lg shadow p-4 animate-pulse">
+                <div class="h-3 bg-gray-200 rounded w-24 mb-2"></div>
+                <div class="h-6 bg-gray-200 rounded w-16"></div>
+            </div>
+            {% endfor %}
         </div>
     </div>
 
-    <!-- My Overdue Contacts -->
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-base font-semibold text-gray-900 mb-4">My Overdue Contacts</h2>
-        <div id="my-overdue-contacts">
-            <p class="text-sm text-gray-500">Loading contacts...</p>
+    <!-- 2-column grid: Tasks + Leads -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- My Open Tasks -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-semibold text-gray-900">My Open Tasks</h2>
+                <a href="/tasks/my-tasks" class="text-xs text-brand-600 hover:underline">View All &rarr;</a>
+            </div>
+            <div id="my-tasks"
+                 hx-get="/dashboards/personal/widgets/tasks"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="space-y-3">
+                    {% for i in range(3) %}
+                    <div class="animate-pulse flex items-center gap-3">
+                        <div class="h-3 w-3 bg-gray-200 rounded-full"></div>
+                        <div class="h-3 bg-gray-200 rounded flex-1"></div>
+                        <div class="h-3 bg-gray-200 rounded w-16"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
+
+        <!-- My Open Leads -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-semibold text-gray-900">My Open Leads</h2>
+                <a href="/leads" class="text-xs text-brand-600 hover:underline">View All &rarr;</a>
+            </div>
+            <div id="my-leads"
+                 hx-get="/dashboards/personal/widgets/leads"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="space-y-3">
+                    {% for i in range(3) %}
+                    <div class="animate-pulse flex items-center gap-3">
+                        <div class="h-3 bg-gray-200 rounded flex-1"></div>
+                        <div class="h-3 bg-gray-200 rounded w-20"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
     </div>
 
-    <!-- My Open Leads -->
+    <!-- My Recent Activities (full width) -->
     <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-base font-semibold text-gray-900 mb-4">My Open Leads</h2>
-        <div id="my-leads">
-            <p class="text-sm text-gray-500">Loading leads...</p>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-base font-semibold text-gray-900">My Recent Activities</h2>
+            <a href="/activities" class="text-xs text-brand-600 hover:underline">View All &rarr;</a>
         </div>
-    </div>
-
-    <!-- My Recent Activities -->
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-base font-semibold text-gray-900 mb-4">My Recent Activities</h2>
-        <div id="my-activities">
-            <p class="text-sm text-gray-500">Loading activities...</p>
+        <div id="my-activities"
+             hx-get="/dashboards/personal/widgets/activities"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="space-y-3">
+                {% for i in range(3) %}
+                <div class="animate-pulse flex items-center gap-3">
+                    <div class="h-3 bg-gray-200 rounded w-16"></div>
+                    <div class="h-3 bg-gray-200 rounded w-12"></div>
+                    <div class="h-3 bg-gray-200 rounded flex-1"></div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 

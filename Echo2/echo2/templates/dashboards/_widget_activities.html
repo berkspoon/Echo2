@@ -1,0 +1,24 @@
+{% if activities %}
+<div class="divide-y divide-gray-100">
+    {% for act in activities %}
+    <div class="flex items-center gap-3 py-2">
+        <!-- Date -->
+        <span class="text-xs text-gray-400 flex-shrink-0 w-20">{{ (act.effective_date or '')[:10] }}</span>
+        <!-- Type badge -->
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 {{ type_colors.get(act.activity_type, 'bg-gray-100 text-gray-600') }}">
+            {{ (act.activity_type or '').replace('_', ' ').title() }}
+        </span>
+        <!-- Title -->
+        <a href="/activities/{{ act.id }}" class="text-sm text-gray-900 hover:text-brand-600 truncate flex-1">
+            {{ act.title or 'Untitled' }}
+        </a>
+        <!-- Linked orgs -->
+        {% if act.org_names %}
+        <span class="text-xs text-gray-400 truncate max-w-[200px]">{{ act.org_names }}</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-sm text-gray-400 py-4">No recent activities.</p>
+{% endif %}

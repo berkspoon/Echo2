@@ -1,0 +1,22 @@
+{% if leads %}
+<div class="divide-y divide-gray-100">
+    {% for lead in leads %}
+    <div class="flex items-center gap-3 py-2">
+        <!-- Org name -->
+        <a href="/leads/{{ lead.id }}" class="text-sm text-gray-900 hover:text-brand-600 truncate flex-1">
+            {{ lead.org_name }}
+        </a>
+        <!-- Stage badge -->
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ lead.stage_color.replace('bg-', 'bg-').replace('-400', '-100') }} {{ lead.stage_color.replace('bg-', 'text-').replace('-400', '-800') }}">
+            {{ lead.stage_label }}
+        </span>
+        <!-- Revenue -->
+        <span class="text-xs text-gray-500 flex-shrink-0 w-24 text-right">
+            {% if lead.revenue_formatted != '—' %}${{ lead.revenue_formatted }}{% else %}—{% endif %}
+        </span>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-sm text-gray-400 py-4">No open leads assigned to you.</p>
+{% endif %}

@@ -329,7 +329,7 @@ async def list_activities(
                 sb.table("users")
                 .select("display_name")
                 .eq("id", str(act["author_id"]))
-                .single()
+                .maybe_single()
                 .execute()
             )
             act["author_name"] = author_resp.data["display_name"] if author_resp.data else "Unknown"
@@ -407,7 +407,7 @@ async def new_activity_form(
             .select("id, company_name")
             .eq("id", org_id)
             .eq("is_archived", False)
-            .single()
+            .maybe_single()
             .execute()
         )
         if org_resp.data:
@@ -421,7 +421,7 @@ async def new_activity_form(
             .select("id, first_name, last_name")
             .eq("id", person_id)
             .eq("is_archived", False)
-            .single()
+            .maybe_single()
             .execute()
         )
         if person_resp.data:
@@ -464,7 +464,7 @@ async def get_activity(
         .select("*")
         .eq("id", str(activity_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     activity = resp.data
@@ -478,7 +478,7 @@ async def get_activity(
             sb.table("users")
             .select("display_name")
             .eq("id", str(activity["author_id"]))
-            .single()
+            .maybe_single()
             .execute()
         )
         if author_resp.data:
@@ -510,7 +510,7 @@ async def get_activity(
     fund_names = []
     if activity.get("fund_tags"):
         for fid in activity["fund_tags"]:
-            fund_resp = sb.table("funds").select("fund_name, ticker").eq("id", str(fid)).single().execute()
+            fund_resp = sb.table("funds").select("fund_name, ticker").eq("id", str(fid)).maybe_single().execute()
             if fund_resp.data:
                 fund_names.append(fund_resp.data)
 
@@ -582,12 +582,12 @@ async def create_activity(
         # Rebuild pre-selected orgs and people for re-rendering
         pre_orgs = []
         for oid in org_ids:
-            org_resp = sb.table("organizations").select("id, company_name").eq("id", oid).single().execute()
+            org_resp = sb.table("organizations").select("id, company_name").eq("id", oid).maybe_single().execute()
             if org_resp.data:
                 pre_orgs.append(org_resp.data)
         pre_people = []
         for pid in person_ids:
-            p_resp = sb.table("people").select("id, first_name, last_name").eq("id", pid).single().execute()
+            p_resp = sb.table("people").select("id, first_name, last_name").eq("id", pid).maybe_single().execute()
             if p_resp.data:
                 p = p_resp.data
                 p["display_name"] = f"{p['first_name']} {p['last_name']}"
@@ -657,7 +657,7 @@ async def edit_activity_form(
         .select("*")
         .eq("id", str(activity_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     activity = resp.data
@@ -729,7 +729,7 @@ async def update_activity(
         .select("*")
         .eq("id", str(activity_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     old_activity = old_resp.data
@@ -765,12 +765,12 @@ async def update_activity(
 
         pre_orgs = []
         for oid in org_ids:
-            org_resp = sb.table("organizations").select("id, company_name").eq("id", oid).single().execute()
+            org_resp = sb.table("organizations").select("id, company_name").eq("id", oid).maybe_single().execute()
             if org_resp.data:
                 pre_orgs.append(org_resp.data)
         pre_people = []
         for pid in person_ids:
-            p_resp = sb.table("people").select("id, first_name, last_name").eq("id", pid).single().execute()
+            p_resp = sb.table("people").select("id, first_name, last_name").eq("id", pid).maybe_single().execute()
             if p_resp.data:
                 p = p_resp.data
                 p["display_name"] = f"{p['first_name']} {p['last_name']}"

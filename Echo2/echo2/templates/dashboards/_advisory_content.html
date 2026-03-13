@@ -1,0 +1,165 @@
+<!-- Advisory Pipeline Content (HTMX partial) -->
+
+<!-- 1. KPI Summary Row -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-white rounded-lg shadow p-4">
+        <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">Active Leads</dt>
+        <dd class="mt-1 text-2xl font-bold text-gray-900">{{ total_active }}</dd>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">Pipeline Revenue</dt>
+        <dd class="mt-1 text-2xl font-bold text-gray-900">${{ total_pipeline_revenue }}</dd>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">Yr1 FLAR</dt>
+        <dd class="mt-1 text-2xl font-bold text-gray-900">${{ total_yr1_flar }}</dd>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">Win Rate</dt>
+        <dd class="mt-1 text-2xl font-bold text-gray-900">{{ win_rate }}%</dd>
+        <dd class="text-xs text-gray-400">{{ won_count }}W / {{ lost_count }}L</dd>
+    </div>
+</div>
+
+<!-- 2. Pipeline by Stage -->
+<div class="bg-white rounded-lg shadow p-6 mt-6">
+    <h3 class="text-sm font-semibold text-gray-900 mb-4">Pipeline by Stage</h3>
+    {% if pipeline_by_stage %}
+    <div class="space-y-3">
+        {% for item in pipeline_by_stage %}
+        <div class="flex items-center gap-3">
+            <div class="w-32 text-sm text-gray-600 truncate">{{ item.label }}</div>
+            <div class="flex-1 bg-gray-100 rounded-full h-6 relative overflow-hidden">
+                <div class="h-6 rounded-full {{ item.color }} transition-all duration-300" style="width: {{ item.bar_pct }}%; min-width: {% if item.count > 0 %}2rem{% else %}0{% endif %};"></div>
+                <span class="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-700">
+                    {{ item.count }} lead{{ 's' if item.count != 1 else '' }} &middot; ${{ item.revenue_fmt }}
+                </span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm text-gray-400">No leads in pipeline.</p>
+    {% endif %}
+</div>
+
+<!-- 3. Revenue Forecast by Service Type -->
+<div class="bg-white rounded-lg shadow p-6 mt-6">
+    <h3 class="text-sm font-semibold text-gray-900 mb-4">Revenue by Service Type</h3>
+    {% if revenue_by_service %}
+    <div class="space-y-3">
+        {% for item in revenue_by_service %}
+        <div class="flex items-center gap-3">
+            <div class="w-32 text-sm text-gray-600 truncate">{{ item.label }}</div>
+            <div class="flex-1 bg-gray-100 rounded-full h-6 relative overflow-hidden">
+                <div class="h-6 rounded-full bg-brand-400 transition-all duration-300" style="width: {{ item.bar_pct }}%; min-width: {% if item.count > 0 %}2rem{% else %}0{% endif %};"></div>
+                <span class="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-700">
+                    {{ item.count }} lead{{ 's' if item.count != 1 else '' }} &middot; ${{ item.revenue_fmt }}
+                </span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm text-gray-400">No active leads with service type.</p>
+    {% endif %}
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+
+    <!-- 4. FLAR Analysis -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">FLAR Analysis by Asset Class</h3>
+        {% if flar_analysis %}
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Asset Class</th>
+                    <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Yr1 FLAR</th>
+                    <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Long-term FLAR</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for item in flar_analysis %}
+                <tr>
+                    <td class="py-2 text-gray-900">{{ item.label }}</td>
+                    <td class="py-2 text-right text-gray-600">${{ item.yr1_fmt }}</td>
+                    <td class="py-2 text-right text-gray-600">${{ item.longterm_fmt }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-sm text-gray-400">No FLAR data available.</p>
+        {% endif %}
+    </div>
+
+    <!-- 5. Win/Loss Funnel -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">Conversion Funnel</h3>
+        {% if total_leads > 0 %}
+        <div class="space-y-2">
+            <div class="bg-blue-50 border border-blue-200 rounded p-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-medium text-blue-800">Total Leads</span>
+                    <span class="text-sm text-blue-600">{{ total_leads }}</span>
+                </div>
+            </div>
+            <div class="bg-gray-50 border border-gray-200 rounded p-3" style="width: {{ active_pct }}%; min-width: 40%;">
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-medium text-gray-700">Active</span>
+                    <span class="text-sm text-gray-600">{{ total_active_count }} ({{ active_pct }}%)</span>
+                </div>
+            </div>
+            <div class="bg-green-50 border border-green-200 rounded p-3" style="width: {{ won_pct }}%; min-width: 30%;">
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-medium text-green-800">Won</span>
+                    <span class="text-sm text-green-600">{{ won_count }} ({{ won_pct }}%)</span>
+                </div>
+            </div>
+            <div class="bg-red-50 border border-red-200 rounded p-3" style="width: {{ lost_pct }}%; min-width: 30%;">
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-medium text-red-800">Lost</span>
+                    <span class="text-sm text-red-600">{{ lost_count }} ({{ lost_pct }}%)</span>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-400">No leads to display.</p>
+        {% endif %}
+    </div>
+
+</div>
+
+<!-- 6. Owner Coverage Table -->
+<div class="bg-white rounded-lg shadow p-6 mt-6">
+    <h3 class="text-sm font-semibold text-gray-900 mb-4">Owner Coverage</h3>
+    {% if owner_coverage %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">BD Owner</th>
+                    <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Active Leads</th>
+                    <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Won</th>
+                    <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Pipeline Revenue</th>
+                    <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Avg Revenue</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for row in owner_coverage %}
+                <tr>
+                    <td class="py-2 text-gray-900 font-medium">{{ row.owner_name }}</td>
+                    <td class="py-2 text-right text-gray-600">{{ row.active }}</td>
+                    <td class="py-2 text-right text-gray-600">{{ row.won }}</td>
+                    <td class="py-2 text-right text-gray-600">${{ row.revenue_fmt }}</td>
+                    <td class="py-2 text-right text-gray-600">{% if row.avg_revenue != '—' %}${{ row.avg_revenue }}{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-gray-400">No owner data available.</p>
+    {% endif %}
+</div>

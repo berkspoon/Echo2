@@ -4,19 +4,96 @@
 
 {% block content %}
 <div class="space-y-6">
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-base font-semibold text-gray-900 mb-4">Open Leads by Stage</h2>
-        <p class="text-sm text-gray-500">Pipeline visualization — stub</p>
-    </div>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-base font-semibold text-gray-900 mb-4">Recently Won Mandates</h2>
-            <p class="text-sm text-gray-500">Stub</p>
-        </div>
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-base font-semibold text-gray-900 mb-4">Recently Lost Mandates</h2>
-            <p class="text-sm text-gray-500">Stub</p>
+
+    <!-- Header with timestamp -->
+    <div class="flex items-center justify-between">
+        <div>
+            <p class="text-xs text-gray-400">Last refreshed: {{ last_refreshed }}</p>
         </div>
     </div>
+
+    <!-- Filter bar -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <form id="ap-filter-form"
+              hx-get="/dashboards/advisory-pipeline"
+              hx-target="#pipeline-content"
+              hx-push-url="true"
+              class="flex flex-wrap items-end gap-4">
+
+            <!-- Service Type -->
+            <div class="w-40">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Service Type</label>
+                <select name="service"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/dashboards/advisory-pipeline" hx-trigger="change" hx-target="#pipeline-content" hx-include="#ap-filter-form" hx-push-url="true">
+                    <option value="">All Services</option>
+                    {% for st in service_types %}
+                    <option value="{{ st.value }}" {{ 'selected' if filter_service == st.value else '' }}>{{ st.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Asset Class -->
+            <div class="w-40">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Asset Class</label>
+                <select name="asset_class"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/dashboards/advisory-pipeline" hx-trigger="change" hx-target="#pipeline-content" hx-include="#ap-filter-form" hx-push-url="true">
+                    <option value="">All Classes</option>
+                    {% for ac in asset_classes %}
+                    <option value="{{ ac.value }}" {{ 'selected' if filter_asset_class == ac.value else '' }}>{{ ac.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Lead Owner -->
+            <div class="w-44">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Lead Owner</label>
+                <select name="owner"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/dashboards/advisory-pipeline" hx-trigger="change" hx-target="#pipeline-content" hx-include="#ap-filter-form" hx-push-url="true">
+                    <option value="">All Owners</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}" {{ 'selected' if filter_owner == u.id|string else '' }}>{{ u.display_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Org Type -->
+            <div class="w-44">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Org Type</label>
+                <select name="org_type"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/dashboards/advisory-pipeline" hx-trigger="change" hx-target="#pipeline-content" hx-include="#ap-filter-form" hx-push-url="true">
+                    <option value="">All Types</option>
+                    {% for ot in org_types %}
+                    <option value="{{ ot.value }}" {{ 'selected' if filter_org_type == ot.value else '' }}>{{ ot.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Date From -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">From</label>
+                <input type="date" name="from" value="{{ filter_date_from }}"
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/dashboards/advisory-pipeline" hx-trigger="change" hx-target="#pipeline-content" hx-include="#ap-filter-form" hx-push-url="true">
+            </div>
+
+            <!-- Date To -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">To</label>
+                <input type="date" name="to" value="{{ filter_date_to }}"
+                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                       hx-get="/dashboards/advisory-pipeline" hx-trigger="change" hx-target="#pipeline-content" hx-include="#ap-filter-form" hx-push-url="true">
+            </div>
+        </form>
+    </div>
+
+    <!-- Dashboard content (HTMX target) -->
+    <div id="pipeline-content">
+        {% include "dashboards/_advisory_content.html" %}
+    </div>
+
 </div>
 {% endblock %}

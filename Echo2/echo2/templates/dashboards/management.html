@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Management Dashboard — Echo 2.0{% endblock %}
+{% block page_title %}Management Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <p class="text-xs text-gray-400">Last refreshed: {{ last_refreshed }}</p>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Admin Only</span>
+    </div>
+
+    <!-- 1. Firm-Wide KPI Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-lg shadow p-4">
+            <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">Advisory Pipeline</dt>
+            <dd class="mt-1 text-2xl font-bold text-gray-900">${{ advisory_pipeline_rev }}</dd>
+            <dd class="text-xs text-gray-400">Active leads revenue</dd>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">Fund Raising</dt>
+            <dd class="mt-1 text-2xl font-bold text-gray-900">${{ fundraising_pipeline }}M</dd>
+            <dd class="text-xs text-gray-400">Target allocation</dd>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">Total FLAR</dt>
+            <dd class="mt-1 text-2xl font-bold text-gray-900">${{ total_flar }}</dd>
+            <dd class="text-xs text-gray-400">Yr1 + Long-term</dd>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">Contracts Revenue</dt>
+            <dd class="mt-1 text-2xl font-bold text-gray-900">${{ contracts_revenue }}</dd>
+            <dd class="text-xs text-gray-400">Active contracts</dd>
+        </div>
+    </div>
+
+    <!-- 2. Per-Fund Progress -->
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {% for fund in fund_progress %}
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center justify-between mb-2">
+                <h4 class="text-sm font-semibold text-gray-900">{{ fund.ticker }}</h4>
+                <span class="text-xs text-gray-400">{{ fund.pct }}%</span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-3">
+                <div class="h-3 rounded-full {{ fund.bar_color }} transition-all duration-300" style="width: {{ fund.pct }}%"></div>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">${{ fund.hard_circle }}M / ${{ fund.target }}M</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- 3. Quarter-over-Quarter -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">Quarter-over-Quarter</h3>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- New Leads -->
+            <div class="p-4 bg-gray-50 rounded-lg">
+                <dt class="text-xs font-medium text-gray-500 uppercase">New Leads</dt>
+                <dd class="mt-1 text-xl font-bold text-gray-900">{{ qoq.cur_leads }}</dd>
+                <dd class="text-xs {{ 'text-green-600' if qoq.leads_delta >= 0 else 'text-red-600' }}">
+                    {% if qoq.leads_delta >= 0 %}&uarr;{% else %}&darr;{% endif %} {{ qoq.leads_delta|abs }} vs last quarter ({{ qoq.prev_leads }})
+                </dd>
+            </div>
+            <!-- Pipeline Revenue -->
+            <div class="p-4 bg-gray-50 rounded-lg">
+                <dt class="text-xs font-medium text-gray-500 uppercase">Pipeline Revenue</dt>
+                <dd class="mt-1 text-xl font-bold text-gray-900">${{ qoq.cur_revenue }}</dd>
+                <dd class="text-xs {{ 'text-green-600' if qoq.revenue_delta >= 0 else 'text-red-600' }}">
+                    {% if qoq.revenue_delta >= 0 %}&uarr;{% else %}&darr;{% endif %} ${{ qoq.revenue_delta_fmt }} vs last quarter
+                </dd>
+            </div>
+            <!-- New Fund Prospects -->
+            <div class="p-4 bg-gray-50 rounded-lg">
+                <dt class="text-xs font-medium text-gray-500 uppercase">New Fund Prospects</dt>
+                <dd class="mt-1 text-xl font-bold text-gray-900">{{ qoq.cur_fps }}</dd>
+                <dd class="text-xs {{ 'text-green-600' if qoq.fps_delta >= 0 else 'text-red-600' }}">
+                    {% if qoq.fps_delta >= 0 %}&uarr;{% else %}&darr;{% endif %} {{ qoq.fps_delta|abs }} vs last quarter ({{ qoq.prev_fps }})
+                </dd>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Team Activity -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">Team Activity (Last 30 Days)</h3>
+        {% if team_activity %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Team Member</th>
+                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Activities (30d)</th>
+                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Active Leads</th>
+                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Pipeline Revenue</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for row in team_activity %}
+                    <tr>
+                        <td class="py-2 text-gray-900 font-medium">{{ row.name }}</td>
+                        <td class="py-2 text-right text-gray-600">{{ row.activities_30d }}</td>
+                        <td class="py-2 text-right text-gray-600">{{ row.active_leads }}</td>
+                        <td class="py-2 text-right text-gray-600">${{ row.pipeline_revenue }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-400">No team activity data.</p>
+        {% endif %}
+    </div>
+
+    <!-- 5. Data Quality Alerts -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">Data Quality</h3>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="p-4 rounded-lg border {{ 'bg-yellow-50 border-yellow-200' if leads_missing > 0 else 'bg-green-50 border-green-200' }}">
+                <span class="text-sm font-medium {{ 'text-yellow-800' if leads_missing > 0 else 'text-green-800' }}">
+                    {% if leads_missing > 0 %}
+                    {{ leads_missing }} active lead{{ 's' if leads_missing != 1 else '' }} missing key fields (service type, asset classes, or owner)
+                    {% else %}
+                    All active leads have complete key fields
+                    {% endif %}
+                </span>
+            </div>
+            <div class="p-4 rounded-lg border {{ 'bg-yellow-50 border-yellow-200' if contacts_missing > 0 else 'bg-green-50 border-green-200' }}">
+                <span class="text-sm font-medium {{ 'text-yellow-800' if contacts_missing > 0 else 'text-green-800' }}">
+                    {% if contacts_missing > 0 %}
+                    {{ contacts_missing }} contact{{ 's' if contacts_missing != 1 else '' }} missing email or phone
+                    {% else %}
+                    All contacts have email and phone
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

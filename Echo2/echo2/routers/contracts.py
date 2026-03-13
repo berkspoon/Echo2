@@ -71,14 +71,14 @@ def _audit_changes(
 def _get_org_name(org_id: str) -> str:
     """Look up an org name by ID."""
     sb = get_supabase()
-    resp = sb.table("organizations").select("company_name").eq("id", org_id).single().execute()
+    resp = sb.table("organizations").select("company_name").eq("id", org_id).maybe_single().execute()
     return resp.data["company_name"] if resp.data else "Unknown"
 
 
 def _get_user_name(user_id: str) -> str:
     """Look up a user display_name by ID."""
     sb = get_supabase()
-    resp = sb.table("users").select("display_name").eq("id", user_id).single().execute()
+    resp = sb.table("users").select("display_name").eq("id", user_id).maybe_single().execute()
     return resp.data["display_name"] if resp.data else "Unknown"
 
 
@@ -200,7 +200,7 @@ async def edit_fee_arrangement_form(
         .select("*")
         .eq("id", str(fa_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     fa = resp.data
@@ -238,7 +238,7 @@ async def update_fee_arrangement(
         .select("*")
         .eq("id", str(fa_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     old_fa = old_resp.data
@@ -312,7 +312,7 @@ async def archive_fee_arrangement(
         sb.table("fee_arrangements")
         .select("organization_id")
         .eq("id", str(fa_id))
-        .single()
+        .maybe_single()
         .execute()
     )
     org_id = fa_resp.data["organization_id"] if fa_resp.data else ""
@@ -451,7 +451,7 @@ async def get_contract(
         .select("*")
         .eq("id", str(contract_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     contract = resp.data
@@ -468,7 +468,7 @@ async def get_contract(
             sb.table("leads")
             .select("id, rating, summary, relationship")
             .eq("id", str(contract["originating_lead_id"]))
-            .single()
+            .maybe_single()
             .execute()
         )
         lead_info = lead_resp.data
@@ -537,7 +537,7 @@ async def edit_contract_form(
         .select("*")
         .eq("id", str(contract_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     contract = resp.data
@@ -554,7 +554,7 @@ async def edit_contract_form(
             sb.table("leads")
             .select("id, summary, rating")
             .eq("id", str(contract["originating_lead_id"]))
-            .single()
+            .maybe_single()
             .execute()
         )
         lead_summary = lead_resp.data
@@ -592,7 +592,7 @@ async def update_contract(
         .select("*")
         .eq("id", str(contract_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     old_contract = old_resp.data
@@ -634,7 +634,7 @@ async def update_contract(
                 sb.table("leads")
                 .select("id, summary, rating")
                 .eq("id", str(old_contract["originating_lead_id"]))
-                .single()
+                .maybe_single()
                 .execute()
             )
             lead_summary = lead_resp.data

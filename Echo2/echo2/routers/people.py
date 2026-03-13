@@ -396,7 +396,7 @@ async def new_person_form(
             .select("id, company_name")
             .eq("id", org_id)
             .eq("is_archived", False)
-            .single()
+            .maybe_single()
             .execute()
         )
         pre_org = org_resp.data
@@ -462,7 +462,7 @@ async def get_person(
         .select("*")
         .eq("id", str(person_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     person = resp.data
@@ -505,7 +505,7 @@ async def get_person(
             sb.table("users")
             .select("display_name")
             .eq("id", str(person["coverage_owner"]))
-            .single()
+            .maybe_single()
             .execute()
         )
         if user_resp.data:
@@ -581,7 +581,7 @@ async def create_person(
             users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
             pre_org = None
             if primary_org_id:
-                org_resp = sb.table("organizations").select("id, company_name").eq("id", primary_org_id).single().execute()
+                org_resp = sb.table("organizations").select("id, company_name").eq("id", primary_org_id).maybe_single().execute()
                 pre_org = org_resp.data
             context = {
                 "request": request,
@@ -642,7 +642,7 @@ async def edit_person_form(
         .select("*")
         .eq("id", str(person_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     person = resp.data
@@ -699,7 +699,7 @@ async def update_person(
         .select("*")
         .eq("id", str(person_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     old_person = old_resp.data

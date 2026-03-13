@@ -86,17 +86,17 @@ def _resolve_linked_record(linked_record_type: str, linked_record_id: str) -> di
 
     try:
         if linked_record_type == "activity":
-            resp = sb.table("activities").select("id, title").eq("id", linked_record_id).single().execute()
+            resp = sb.table("activities").select("id, title").eq("id", linked_record_id).maybe_single().execute()
             if resp.data:
                 info["name"] = resp.data.get("title") or "Untitled Activity"
                 info["url"] = f"/activities/{linked_record_id}"
 
         elif linked_record_type == "lead":
-            resp = sb.table("leads").select("id, organization_id, summary").eq("id", linked_record_id).single().execute()
+            resp = sb.table("leads").select("id, organization_id, summary").eq("id", linked_record_id).maybe_single().execute()
             if resp.data:
                 org_name = "Unknown Org"
                 if resp.data.get("organization_id"):
-                    org_resp = sb.table("organizations").select("company_name").eq("id", str(resp.data["organization_id"])).single().execute()
+                    org_resp = sb.table("organizations").select("company_name").eq("id", str(resp.data["organization_id"])).maybe_single().execute()
                     if org_resp.data:
                         org_name = org_resp.data["company_name"]
                 info["name"] = org_name
@@ -104,29 +104,29 @@ def _resolve_linked_record(linked_record_type: str, linked_record_id: str) -> di
                 info["url"] = f"/leads/{linked_record_id}"
 
         elif linked_record_type == "fund_prospect":
-            resp = sb.table("fund_prospects").select("id, organization_id, fund_id").eq("id", linked_record_id).single().execute()
+            resp = sb.table("fund_prospects").select("id, organization_id, fund_id").eq("id", linked_record_id).maybe_single().execute()
             if resp.data:
                 org_name = "Unknown Org"
                 ticker = "?"
                 if resp.data.get("organization_id"):
-                    org_resp = sb.table("organizations").select("company_name").eq("id", str(resp.data["organization_id"])).single().execute()
+                    org_resp = sb.table("organizations").select("company_name").eq("id", str(resp.data["organization_id"])).maybe_single().execute()
                     if org_resp.data:
                         org_name = org_resp.data["company_name"]
                 if resp.data.get("fund_id"):
-                    fund_resp = sb.table("funds").select("ticker").eq("id", str(resp.data["fund_id"])).single().execute()
+                    fund_resp = sb.table("funds").select("ticker").eq("id", str(resp.data["fund_id"])).maybe_single().execute()
                     if fund_resp.data:
                         ticker = fund_resp.data["ticker"]
                 info["name"] = f"{org_name} ({ticker})"
                 info["url"] = f"/fund-prospects/{linked_record_id}"
 
         elif linked_record_type == "organization":
-            resp = sb.table("organizations").select("id, company_name").eq("id", linked_record_id).single().execute()
+            resp = sb.table("organizations").select("id, company_name").eq("id", linked_record_id).maybe_single().execute()
             if resp.data:
                 info["name"] = resp.data["company_name"]
                 info["url"] = f"/organizations/{linked_record_id}"
 
         elif linked_record_type == "person":
-            resp = sb.table("people").select("id, first_name, last_name").eq("id", linked_record_id).single().execute()
+            resp = sb.table("people").select("id, first_name, last_name").eq("id", linked_record_id).maybe_single().execute()
             if resp.data:
                 info["name"] = f"{resp.data['first_name']} {resp.data['last_name']}"
                 info["url"] = f"/people/{linked_record_id}"
@@ -777,7 +777,7 @@ async def update_task_status(
         .select("*")
         .eq("id", str(task_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     task = resp.data
@@ -845,7 +845,7 @@ async def edit_task_form(
         .select("*")
         .eq("id", str(task_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     task = resp.data
@@ -896,7 +896,7 @@ async def update_task(
         .select("*")
         .eq("id", str(task_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     old_task = old_resp.data
@@ -972,7 +972,7 @@ async def get_task(
         .select("*")
         .eq("id", str(task_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     task = resp.data
@@ -982,14 +982,14 @@ async def get_task(
     # Resolve assigned_to name
     assigned_to_name = "Unknown"
     if task.get("assigned_to"):
-        user_resp = sb.table("users").select("display_name").eq("id", str(task["assigned_to"])).single().execute()
+        user_resp = sb.table("users").select("display_name").eq("id", str(task["assigned_to"])).maybe_single().execute()
         if user_resp.data:
             assigned_to_name = user_resp.data["display_name"]
 
     # Resolve created_by name
     created_by_name = "Unknown"
     if task.get("created_by"):
-        cb_resp = sb.table("users").select("display_name").eq("id", str(task["created_by"])).single().execute()
+        cb_resp = sb.table("users").select("display_name").eq("id", str(task["created_by"])).maybe_single().execute()
         if cb_resp.data:
             created_by_name = cb_resp.data["display_name"]
 

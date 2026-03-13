@@ -251,14 +251,14 @@ def _create_next_steps_task(lead: dict, org_name: str, changed_by: UUID) -> None
 def _get_org_name(org_id: str) -> str:
     """Look up an org name by ID."""
     sb = get_supabase()
-    resp = sb.table("organizations").select("company_name").eq("id", org_id).single().execute()
+    resp = sb.table("organizations").select("company_name").eq("id", org_id).maybe_single().execute()
     return resp.data["company_name"] if resp.data else "Unknown"
 
 
 def _get_user_name(user_id: str) -> str:
     """Look up a user display_name by ID."""
     sb = get_supabase()
-    resp = sb.table("users").select("display_name").eq("id", user_id).single().execute()
+    resp = sb.table("users").select("display_name").eq("id", user_id).maybe_single().execute()
     return resp.data["display_name"] if resp.data else "Unknown"
 
 
@@ -485,7 +485,7 @@ async def new_lead_form(
             .select("id, company_name")
             .eq("id", org_id)
             .eq("is_archived", False)
-            .single()
+            .maybe_single()
             .execute()
         )
         if org_resp.data:
@@ -514,7 +514,7 @@ async def get_lead(
         .select("*")
         .eq("id", str(lead_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     lead = resp.data
@@ -602,7 +602,7 @@ async def create_lead(
                 sb.table("organizations")
                 .select("id, company_name")
                 .eq("id", lead_data["organization_id"])
-                .single()
+                .maybe_single()
                 .execute()
             )
             if org_resp.data:
@@ -666,7 +666,7 @@ async def edit_lead_form(
         .select("*")
         .eq("id", str(lead_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     lead = resp.data
@@ -680,7 +680,7 @@ async def edit_lead_form(
             sb.table("organizations")
             .select("id, company_name")
             .eq("id", str(lead["organization_id"]))
-            .single()
+            .maybe_single()
             .execute()
         )
         if org_resp.data:
@@ -711,7 +711,7 @@ async def update_lead(
         .select("*")
         .eq("id", str(lead_id))
         .eq("is_archived", False)
-        .single()
+        .maybe_single()
         .execute()
     )
     old_lead = old_resp.data
@@ -732,7 +732,7 @@ async def update_lead(
                 sb.table("organizations")
                 .select("id, company_name")
                 .eq("id", lead_data["organization_id"])
-                .single()
+                .maybe_single()
                 .execute()
             )
             if org_resp.data:

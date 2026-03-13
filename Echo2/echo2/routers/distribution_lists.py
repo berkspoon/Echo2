@@ -70,7 +70,7 @@ def _audit_changes(
 def _get_user_name(user_id: str) -> str:
     """Look up a user display_name by ID."""
     sb = get_supabase()
-    resp = sb.table("users").select("display_name").eq("id", user_id).single().execute()
+    resp = sb.table("users").select("display_name").eq("id", user_id).maybe_single().execute()
     return resp.data["display_name"] if resp.data else "Unknown"
 
 
@@ -81,7 +81,7 @@ def _get_person_with_org(person_id: str) -> dict | None:
         sb.table("people")
         .select("id, first_name, last_name, email, do_not_contact, is_archived, coverage_owner")
         .eq("id", person_id)
-        .single()
+        .maybe_single()
         .execute()
     )
     if not person_resp.data:
@@ -104,7 +104,7 @@ def _get_person_with_org(person_id: str) -> dict | None:
             sb.table("organizations")
             .select("company_name, rfp_hold")
             .eq("id", org_link_resp.data[0]["organization_id"])
-            .single()
+            .maybe_single()
             .execute()
         )
         if org_resp.data:
@@ -208,7 +208,7 @@ def _build_send_preview(list_id: str) -> dict:
         sb.table("distribution_lists")
         .select("*")
         .eq("id", list_id)
-        .single()
+        .maybe_single()
         .execute()
         .data
     )
@@ -395,7 +395,7 @@ async def search_people(
                 sb.table("organizations")
                 .select("company_name")
                 .eq("id", org_link.data[0]["organization_id"])
-                .single()
+                .maybe_single()
                 .execute()
             )
             if org_resp.data:
@@ -571,7 +571,7 @@ async def get_distribution_list(
         .select("*")
         .eq("id", str(list_id))
         .eq("is_active", True)
-        .single()
+        .maybe_single()
         .execute()
     )
     dist_list = resp.data
@@ -588,7 +588,7 @@ async def get_distribution_list(
             sb.table("distribution_lists")
             .select("id, list_name")
             .eq("id", dist_list["l2_superset_of"])
-            .single()
+            .maybe_single()
             .execute()
         )
         l1_list = l1_resp.data if l1_resp.data else None
@@ -701,7 +701,7 @@ async def send_preview(
         .select("*")
         .eq("id", str(list_id))
         .eq("is_active", True)
-        .single()
+        .maybe_single()
         .execute()
         .data
     )
@@ -738,7 +738,7 @@ async def execute_send(
         .select("*")
         .eq("id", str(list_id))
         .eq("is_active", True)
-        .single()
+        .maybe_single()
         .execute()
         .data
     )
@@ -813,7 +813,7 @@ async def get_send_detail(
         .select("*")
         .eq("id", str(send_id))
         .eq("distribution_list_id", str(list_id))
-        .single()
+        .maybe_single()
         .execute()
     )
     send = resp.data
@@ -915,7 +915,7 @@ async def edit_list_form(
         .select("*")
         .eq("id", str(list_id))
         .eq("is_active", True)
-        .single()
+        .maybe_single()
         .execute()
     )
     dist_list = resp.data
@@ -948,7 +948,7 @@ async def update_distribution_list(
         .select("*")
         .eq("id", str(list_id))
         .eq("is_active", True)
-        .single()
+        .maybe_single()
         .execute()
     )
     old_list = old_resp.data
@@ -1022,7 +1022,7 @@ async def add_member(
         .select("*")
         .eq("id", str(list_id))
         .eq("is_active", True)
-        .single()
+        .maybe_single()
         .execute()
         .data
     )
@@ -1107,7 +1107,7 @@ async def remove_member(
         .select("*")
         .eq("id", str(list_id))
         .eq("is_active", True)
-        .single()
+        .maybe_single()
         .execute()
         .data
     )
@@ -1124,7 +1124,7 @@ async def remove_member(
         .eq("id", str(member_id))
         .eq("distribution_list_id", str(list_id))
         .eq("is_active", True)
-        .single()
+        .maybe_single()
         .execute()
     )
     if not member_resp.data:

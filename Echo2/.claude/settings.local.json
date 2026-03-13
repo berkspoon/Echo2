@@ -7,7 +7,18 @@
       "Bash(python:*)",
       "Bash(grep -n \"export\\\\|Export\\\\|CSV\\\\|csv\" \"y:/VibeCode/Echo2/echo2/routers/\"*.py)",
       "Bash(grep -c \"def list_\" routers/*.py)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/dashboards/advisory-pipeline)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/dashboards/capital-raise)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/dashboards/management)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/dashboards/personal/widgets/pipeline-summary)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/dashboards/personal/widgets/tasks)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/dashboards/personal/widgets/leads)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/dashboards/personal/widgets/activities)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/dashboards/capital-raise/APC)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //F //PID 97100)",
+      "Bash(taskkill //F //PID 82476)"
     ]
   }
 }

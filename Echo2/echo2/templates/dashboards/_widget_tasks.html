@@ -1,0 +1,28 @@
+{% if tasks %}
+<div class="divide-y divide-gray-100">
+    {% for task in tasks %}
+    <div class="flex items-center gap-3 py-2 {{ 'bg-red-50 -mx-2 px-2 rounded' if task.is_overdue else '' }}">
+        <!-- Status dot -->
+        <span class="flex-shrink-0 w-2.5 h-2.5 rounded-full {{ 'bg-yellow-400' if task.status == 'open' else 'bg-blue-400' }}"></span>
+        <!-- Title -->
+        <a href="/tasks/{{ task.id }}" class="text-sm text-gray-900 hover:text-brand-600 truncate flex-1">
+            {{ task.title }}
+        </a>
+        <!-- Linked record -->
+        {% if task.linked_info %}
+        <a href="{{ task.linked_info.url }}" class="text-xs text-gray-400 hover:text-brand-600 truncate max-w-[120px]">
+            {{ task.linked_info.name }}
+        </a>
+        {% endif %}
+        <!-- Due date -->
+        {% if task.due_date %}
+        <span class="text-xs flex-shrink-0 {{ 'text-red-600 font-semibold' if task.is_overdue else 'text-gray-400' }}">
+            {{ task.due_date[:10] }}{% if task.is_overdue %} (overdue){% endif %}
+        </span>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-sm text-gray-400 py-4">No open tasks. You're all caught up!</p>
+{% endif %}
