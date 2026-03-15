@@ -1,0 +1,20 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Start Echo 2.0 Server",
+            "type": "shell",
+            "command": "python",
+            "args": ["-m", "uvicorn", "main:app", "--reload", "--port", "8000"],
+            "options": {
+                "cwd": "${workspaceFolder}/Echo2/echo2"
+            },
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        }
+    ]
+}

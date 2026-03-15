@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+   
+            "name": "Echo 2.0 Server",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["main:app", "--reload", "--port", "8000"],
+            "cwd": "${workspaceFolder}/Echo2/echo2",
+            "console": "integratedTerminal",
+            "env": {},
+            "justMyCode": true
+        }
+    ]
+}
