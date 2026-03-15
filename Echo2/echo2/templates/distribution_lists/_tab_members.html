@@ -48,7 +48,7 @@
                        name="q"
                        autocomplete="off">
             </div>
-            <div>
+            <div class="flex gap-2">
                 <button type="button" id="people-search-btn"
                         hx-get="/distribution-lists/search-people?list_id={{ dist_list.id }}&mode=table"
                         hx-trigger="click"
@@ -59,9 +59,23 @@
                     <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                     Search
                 </button>
+                <button type="button" id="add-all-btn"
+                        hx-post="/distribution-lists/{{ dist_list.id }}/add-filtered"
+                        hx-trigger="click"
+                        hx-target="#add-all-result-container"
+                        hx-swap="innerHTML"
+                        hx-include="#member-filter-country, #member-filter-reltype, #member-filter-fund, #person-search-input"
+                        hx-confirm="Add all people matching the current filters to this list? DNC contacts and existing members will be skipped."
+                        class="inline-flex items-center px-4 py-1.5 text-sm font-medium text-brand-700 bg-brand-50 border border-brand-300 rounded-md hover:bg-brand-100 shadow-sm">
+                    <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                    Add All Matching
+                </button>
             </div>
         </div>
     </div>
+
+    <!-- Add All Result (populated via HTMX) -->
+    <div id="add-all-result-container"></div>
 
     <!-- People Selector Results (table populated via HTMX) -->
     <div id="people-selector-results">

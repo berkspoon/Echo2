@@ -1,0 +1,63 @@
+{#
+    Dynamic form section macro.
+    Renders a section card with a group of fields using the field renderer.
+
+    Usage:
+        {% from "components/_form_section.html" import render_section %}
+        {{ render_section("Basic Information", fields, record, users) }}
+
+    Parameters:
+        section_name - display name for the section header
+        fields       - list of field definition dicts for this section
+        record       - current record dict for pre-filling
+        users        - list of user dicts for lookup fields
+        errors       - list of error strings
+        readonly     - boolean, render all fields as read-only
+        columns      - number of grid columns (default 2)
+#}
+
+{% from "components/_field_renderer.html" import render_field %}
+
+{% macro render_section(section_name, fields, record=None, users=None, errors=None, readonly=False, columns=2) %}
+{% set vis_rules_for_section = {} %}
+{# Check if ALL fields in section share the same visibility rule — if so, apply to section container #}
+{% set section_vis_attrs = '' %}
+{% if fields and fields | length > 0 %}
+    {% set first_vis = fields[0].visibility_rules or {} %}
+    {% if first_vis.get('when') %}
+        {% set all_same = true %}
+        {% for fd in fields %}
+            {% if (fd.visibility_rules or {}).get('when') != first_vis.get('when') or (fd.visibility_rules or {}).get('equals') != first_vis.get('equals') %}
+                {% set all_same = false %}
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+{% endif %}
+
+<div class="bg-white rounded-lg shadow p-6 form-section" data-section="{{ section_name }}">
+    <h3 class="text-base font-semibold text-gray-900 mb-4">{{ section_name }}</h3>
+    <div class="grid grid-cols-1 md:grid-cols-{{ columns }} gap-4">
+        {% for fd in fields %}
+            {# Full-width for textarea fields #}
+            {% if fd.field_type in ('textarea',) %}
+            <div class="md:col-span-{{ columns }}">
+                {{ render_field(fd, record, users, errors, readonly) }}
+            </div>
+            {% else %}
+            {{ render_field(fd, record, users, errors, readonly) }}
+            {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endmacro %}
+
+
+{% macro render_all_sections(sections, record=None, users=None, errors=None, readonly=False, columns=2) %}
+{#
+    Render all sections at once.
+    sections: dict of {section_name: [field_defs]}
+#}
+{% for section_name, fields in sections.items() %}
+    {{ render_section(section_name, fields, record, users, errors, readonly, columns) }}
+{% endfor %}
+{% endmacro %}

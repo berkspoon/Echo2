@@ -2,9 +2,13 @@
 {% block title %}{{ 'Edit' if lead and lead.id is defined else 'New' }} Lead — Echo 2.0{% endblock %}
 {% block page_title %}{{ 'Edit Lead' if lead and lead.id is defined else 'New Lead' }}{% endblock %}
 
+{% set current_lead_type = lead_type | default('advisory') %}
+{% set is_fundraise = current_lead_type in ('fundraise', 'product') %}
+{% set is_editing = lead and lead.id is defined %}
+
 {% block content %}
 <form class="space-y-6" method="post"
-      action="{{ '/leads/' + lead.id|string if lead and lead.id is defined else '/leads/' }}">
+      action="{{ '/leads/' + lead.id|string if is_editing else '/leads/' }}">
 
     {% if errors is defined and errors %}
     <div class="rounded-md bg-red-50 border border-red-200 p-4">
@@ -15,6 +19,29 @@
         </ul>
     </div>
     {% endif %}
+
+    <!-- ===== Section 0: Lead Type Selection ===== -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Lead Type</h3>
+        <div class="flex gap-4">
+            {% for lt in lead_types %}
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="lead_type" value="{{ lt.value }}"
+                       {{ 'checked' if current_lead_type == lt.value else '' }}
+                       {{ 'disabled' if is_editing else '' }}
+                       onchange="toggleLeadType(this.value)"
+                       class="h-4 w-4 border-gray-300 text-brand-500 focus:ring-brand-500">
+                <span class="text-sm font-medium text-gray-700">{{ lt.label }}</span>
+            </label>
+            {% endfor %}
+            {% if is_editing %}
+            <input type="hidden" name="lead_type" value="{{ current_lead_type }}">
+            {% endif %}
+        </div>
+        {% if is_editing %}
+        <p class="text-xs text-gray-400 mt-2">Lead type cannot be changed after creation.</p>
+        {% endif %}
+    </div>
 
     <!-- ===== Section 1: Basic Information (Always visible) ===== -->
     <div class="bg-white rounded-lg shadow p-6">
@@ -69,8 +96,8 @@
                 </select>
             </div>
 
-            <!-- Relationship -->
-            <div>
+            <!-- Relationship (advisory only) -->
+            <div id="field-relationship" class="{{ 'hidden' if is_fundraise else '' }}">
                 <label for="relationship" class="block text-sm font-medium text-gray-700">Relationship <span class="text-red-500">*</span></label>
                 <select name="relationship" id="relationship"
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
@@ -82,19 +109,21 @@
                 </select>
             </div>
 
-            <!-- Aksia Owner -->
-            <div>
-                <label for="aksia_owner_id" class="block text-sm font-medium text-gray-700">Aksia Owner <span class="text-red-500">*</span></label>
-                <select name="aksia_owner_id" id="aksia_owner_id"
-                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
-                    <option value="">— Select —</option>
+            <!-- Lead Owners (multi-select) -->
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Lead Owners <span class="text-red-500">*</span></label>
+                <p class="text-xs text-gray-400 mb-2">Select one or more owners. The first checked owner is the primary.</p>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
+                    {% set sel_ids = selected_owner_ids if selected_owner_ids is defined else [] %}
                     {% for u in users %}
-                    <option value="{{ u.id }}"
-                        {{ 'selected' if (lead and lead.aksia_owner_id and lead.aksia_owner_id|string == u.id|string) or (not lead and user.id|string == u.id|string) else '' }}>
-                        {{ u.display_name }}
-                    </option>
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" name="owner_ids[]" value="{{ u.id }}"
+                               {{ 'checked' if u.id|string in sel_ids or (sel_ids | length == 0 and not lead and user.id|string == u.id|string) else '' }}
+                               class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                        <span class="text-sm text-gray-700">{{ u.display_name }}</span>
+                    </label>
                     {% endfor %}
-                </select>
+                </div>
             </div>
 
             <!-- Summary -->
@@ -108,8 +137,98 @@
         </div>
     </div>
 
-    <!-- ===== Section 2: Radar+ Fields ===== -->
-    <div id="section-radar" class="bg-white rounded-lg shadow p-6" data-stage-min="2">
+    <!-- ===== FUNDRAISE-SPECIFIC: Fund & Allocation Section ===== -->
+    <div id="section-fundraise" class="bg-white rounded-lg shadow p-6 {{ '' if is_fundraise else 'hidden' }}">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Fund & Allocation</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+            <!-- Fund -->
+            <div>
+                <label for="fund_id" class="block text-sm font-medium text-gray-700">Fund <span class="text-red-500">*</span></label>
+                <select name="fund_id" id="fund_id"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select Fund —</option>
+                    {% for f in funds %}
+                    <option value="{{ f.id }}" {{ 'selected' if lead and lead.fund_id == f.id else '' }}>{{ f.ticker }} — {{ f.fund_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Share Class -->
+            <div>
+                <label for="share_class" class="block text-sm font-medium text-gray-700">Share Class <span class="text-red-500">*</span></label>
+                <select name="share_class" id="share_class"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    <option value="domestic" {{ 'selected' if lead and lead.share_class == 'domestic' else '' }}>Domestic</option>
+                    <option value="offshore" {{ 'selected' if lead and lead.share_class == 'offshore' else '' }}>Offshore</option>
+                </select>
+            </div>
+
+            <!-- Probability -->
+            <div>
+                <label for="probability_pct" class="block text-sm font-medium text-gray-700">Probability (%)</label>
+                <input type="number" name="probability_pct" id="probability_pct" min="0" max="100"
+                       value="{{ lead.probability_pct if lead and lead.probability_pct is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Target Allocation -->
+            <div>
+                <label for="target_allocation_mn" class="block text-sm font-medium text-gray-700">Target Allocation ($mn)</label>
+                <input type="number" name="target_allocation_mn" id="target_allocation_mn" step="0.01" min="0"
+                       value="{{ lead.target_allocation_mn if lead and lead.target_allocation_mn is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Soft Circle -->
+            <div>
+                <label for="soft_circle_mn" class="block text-sm font-medium text-gray-700">Soft Circle ($mn)</label>
+                <input type="number" name="soft_circle_mn" id="soft_circle_mn" step="0.01" min="0"
+                       value="{{ lead.soft_circle_mn if lead and lead.soft_circle_mn is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Hard Circle -->
+            <div>
+                <label for="hard_circle_mn" class="block text-sm font-medium text-gray-700">Hard Circle ($mn)</label>
+                <input type="number" name="hard_circle_mn" id="hard_circle_mn" step="0.01" min="0"
+                       value="{{ lead.hard_circle_mn if lead and lead.hard_circle_mn is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Decline Reason (conditional on stage=declined) -->
+            <div id="decline-reason-wrapper" class="{{ '' if lead and lead.rating == 'declined' else 'hidden' }}">
+                <label for="decline_reason" class="block text-sm font-medium text-gray-700">Decline Reason <span class="text-red-500">*</span></label>
+                <select name="decline_reason" id="decline_reason"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for dr in decline_reasons %}
+                    <option value="{{ dr.value }}" {{ 'selected' if lead and lead.decline_reason == dr.value else '' }}>{{ dr.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- Next Steps (fundraise) -->
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label for="next_steps_fr" class="block text-sm font-medium text-gray-700">Next Steps</label>
+                <textarea name="next_steps" id="next_steps_fr" rows="2"
+                          class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ lead.next_steps if lead and lead.next_steps else '' }}</textarea>
+            </div>
+            <div>
+                <label for="next_steps_date_fr" class="block text-sm font-medium text-gray-700">Next Steps Date</label>
+                <input type="date" name="next_steps_date" id="next_steps_date_fr"
+                       value="{{ lead.next_steps_date if lead and lead.next_steps_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                <p class="mt-1 text-xs text-gray-400">Setting a date auto-generates a task assigned to the Lead Owner.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ADVISORY: Radar+ Fields ===== -->
+    <div id="section-radar" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-min="2">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Service & Classification
             <span class="text-xs text-gray-400 font-normal ml-2">Radar+</span>
         </h3>
@@ -154,8 +273,8 @@
         </div>
     </div>
 
-    <!-- ===== Section 3: Focus+ Fields ===== -->
-    <div id="section-focus" class="bg-white rounded-lg shadow p-6" data-stage-min="3">
+    <!-- ===== ADVISORY: Focus+ Fields ===== -->
+    <div id="section-focus" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-min="3">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Pipeline Details
             <span class="text-xs text-gray-400 font-normal ml-2">Focus+</span>
         </h3>
@@ -266,7 +385,7 @@
             </div>
         </div>
 
-        <!-- Next Steps -->
+        <!-- Next Steps (advisory) -->
         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label for="next_steps" class="block text-sm font-medium text-gray-700">Next Steps</label>
@@ -283,8 +402,8 @@
         </div>
     </div>
 
-    <!-- ===== Section 4: Verbal Mandate+ Fields ===== -->
-    <div id="section-verbal" class="bg-white rounded-lg shadow p-6" data-stage-min="4">
+    <!-- ===== ADVISORY: Verbal Mandate+ Fields ===== -->
+    <div id="section-verbal" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-min="4">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Verbal Mandate Details
             <span class="text-xs text-gray-400 font-normal ml-2">Verbal Mandate+</span>
         </h3>
@@ -320,8 +439,8 @@
         </div>
     </div>
 
-    <!-- ===== Section 5: Closure Fields (Inactive stages) ===== -->
-    <div id="section-inactive" class="bg-white rounded-lg shadow p-6" data-stage-inactive>
+    <!-- ===== ADVISORY: Closure Fields (Inactive stages) ===== -->
+    <div id="section-inactive" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-inactive>
         <h3 class="text-base font-semibold text-gray-900 mb-4">Closure</h3>
 
         <!-- Won banner -->
@@ -348,13 +467,13 @@
 
     <!-- Submit -->
     <div class="flex items-center justify-end gap-3">
-        <a href="{{ '/leads/' + lead.id|string if lead and lead.id is defined else '/leads' }}"
+        <a href="{{ '/leads/' + lead.id|string if is_editing else '/leads' }}"
            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
             Cancel
         </a>
         <button type="submit"
                 class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
-            {{ 'Save Changes' if lead and lead.id is defined else 'Create Lead' }}
+            {{ 'Save Changes' if is_editing else 'Create Lead' }}
         </button>
     </div>
 
@@ -362,19 +481,45 @@
 
 {% block scripts %}
 <script>
-/* --- Stage visibility mapping --- */
-const STAGE_ORDER = {
+/* --- Lead type toggle --- */
+const isFundraise = {{ 'true' if is_fundraise else 'false' }};
+
+const ADVISORY_STAGE_ORDER = {
     exploratory: 1, radar: 2, focus: 3, verbal_mandate: 4,
     won: 5, lost_dropped_out: 5, lost_selected_other: 5, lost_nobody_hired: 5
 };
-const INACTIVE = ['won', 'lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired'];
-const LOST = ['lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired'];
+const ADVISORY_INACTIVE = ['won', 'lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired'];
+const ADVISORY_LOST = ['lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired'];
+
+function toggleLeadType(val) {
+    const fr = (val === 'fundraise' || val === 'product');
+    document.getElementById('section-fundraise').classList.toggle('hidden', !fr);
+    document.getElementById('section-radar').classList.toggle('hidden', fr);
+    document.getElementById('section-focus').classList.toggle('hidden', fr);
+    document.getElementById('section-verbal').classList.toggle('hidden', fr);
+    document.getElementById('section-inactive').classList.toggle('hidden', fr);
+    document.getElementById('field-relationship').classList.toggle('hidden', fr);
+
+    // Update decline reason visibility for fundraise
+    if (fr) {
+        const rating = document.getElementById('rating').value;
+        const drw = document.getElementById('decline-reason-wrapper');
+        if (drw) drw.classList.toggle('hidden', rating !== 'declined');
+    }
+}
 
 function updateStageVisibility(rating) {
-    const stage = STAGE_ORDER[rating] || 1;
-    const isInactive = INACTIVE.includes(rating);
+    if (isFundraise) {
+        // Fundraise: show decline reason when declined
+        const drw = document.getElementById('decline-reason-wrapper');
+        if (drw) drw.classList.toggle('hidden', rating !== 'declined');
+        return;
+    }
+
+    const stage = ADVISORY_STAGE_ORDER[rating] || 1;
+    const isInactive = ADVISORY_INACTIVE.includes(rating);
     const isWon = rating === 'won';
-    const isLost = LOST.includes(rating);
+    const isLost = ADVISORY_LOST.includes(rating);
 
     // Show/hide stage-gated sections
     document.getElementById('section-radar').classList.toggle('hidden', stage < 2);
@@ -391,24 +536,35 @@ function updateStageVisibility(rating) {
 }
 
 function updateConditionalFields() {
+    if (isFundraise) return;
+
     // Previous FLAR: show when relationship is extension or re-up
-    const rel = document.getElementById('relationship').value;
-    document.getElementById('previous-flar-wrapper').classList.toggle('hidden',
-        rel !== 'contract_extension' && rel !== 're_up');
+    const rel = document.getElementById('relationship');
+    if (rel) {
+        const pw = document.getElementById('previous-flar-wrapper');
+        if (pw) pw.classList.toggle('hidden', rel.value !== 'contract_extension' && rel.value !== 're_up');
+    }
 
-    // Pricing Proposal Details: show when proposal != no_proposal
-    const pp = document.getElementById('pricing_proposal').value;
-    document.getElementById('pricing-details-wrapper').classList.toggle('hidden',
-        !pp || pp === 'no_proposal');
+    // Pricing Proposal Details
+    const pp = document.getElementById('pricing_proposal');
+    if (pp) {
+        const pdw = document.getElementById('pricing-details-wrapper');
+        if (pdw) pdw.classList.toggle('hidden', !pp.value || pp.value === 'no_proposal');
+    }
 
-    // RFP Expected Date: show when status != not_applicable
-    const rfp = document.getElementById('rfp_status').value;
-    document.getElementById('rfp-date-wrapper').classList.toggle('hidden',
-        !rfp || rfp === 'not_applicable');
+    // RFP Expected Date
+    const rfp = document.getElementById('rfp_status');
+    if (rfp) {
+        const rdw = document.getElementById('rfp-date-wrapper');
+        if (rdw) rdw.classList.toggle('hidden', !rfp.value || rfp.value === 'not_applicable');
+    }
 
-    // Legacy Onboarding Holdings: show when legacy_onboarding is checked
-    const legacy = document.getElementById('legacy_onboarding').checked;
-    document.getElementById('legacy-holdings-wrapper').classList.toggle('hidden', !legacy);
+    // Legacy Onboarding Holdings
+    const legacy = document.getElementById('legacy_onboarding');
+    if (legacy) {
+        const lhw = document.getElementById('legacy-holdings-wrapper');
+        if (lhw) lhw.classList.toggle('hidden', !legacy.checked);
+    }
 }
 
 /* --- Org single-select autocomplete --- */

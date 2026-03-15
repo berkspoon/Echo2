@@ -8,8 +8,26 @@
         <h2 class="text-base font-semibold text-gray-900">Reference Tables</h2>
         <p class="mt-1 text-sm text-gray-500">Manage dropdown values, lookup lists, and configurable field options.</p>
     </div>
-    <div id="reference-data-content" class="p-6">
-        <p class="text-sm text-gray-500">Loading...</p>
+    <div class="grid grid-cols-4 divide-x divide-gray-200">
+        <!-- Category sidebar -->
+        <div class="col-span-1 p-4 space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto">
+            {% for cat_key, cat_info in categories.items() %}
+            <button
+                hx-get="/admin/reference-data/{{ cat_key }}"
+                hx-target="#rd-values-panel"
+                hx-push-url="false"
+                class="w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between hover:bg-gray-100 {% if active_category == cat_key %}bg-brand-50 text-brand-700 font-medium{% else %}text-gray-700{% endif %}"
+                onclick="document.querySelectorAll('[data-cat-btn]').forEach(b => { b.classList.remove('bg-brand-50','text-brand-700','font-medium'); b.classList.add('text-gray-700'); }); this.classList.remove('text-gray-700'); this.classList.add('bg-brand-50','text-brand-700','font-medium')"
+                data-cat-btn>
+                <span>{{ cat_info.label }}</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">{{ cat_info.count }}</span>
+            </button>
+            {% endfor %}
+        </div>
+        <!-- Values panel -->
+        <div id="rd-values-panel" class="col-span-3 p-6 min-h-[400px]">
+            <p class="text-sm text-gray-500">Select a category from the left to view and manage its values.</p>
+        </div>
     </div>
 </div>
 {% endblock %}

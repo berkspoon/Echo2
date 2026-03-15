@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Leads — Echo 2.0{% endblock %}
-{% block page_title %}Advisory Pipeline{% endblock %}
+{% block page_title %}
+{% if lead_type_filter == 'fundraise' %}Fundraise Pipeline
+{% elif lead_type_filter == 'product' %}Product Pipeline
+{% elif lead_type_filter == 'advisory' %}Advisory Pipeline
+{% else %}All Leads{% endif %}
+{% endblock %}
 
 {% block content %}
 <div class="space-y-4">
@@ -8,26 +13,51 @@
     <!-- Header row -->
     <div class="flex items-center justify-between">
         <div>
-            <h2 class="text-lg font-semibold text-gray-900">All Leads</h2>
+            <h2 class="text-lg font-semibold text-gray-900">
+                {% if view == 'my' %}My Leads{% else %}All Leads{% endif %}
+            </h2>
             <p class="text-sm text-gray-500">{{ total_count }} lead{{ 's' if total_count != 1 else '' }}</p>
         </div>
-        <a href="/leads/new"
-           class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
-            <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            New Lead
-        </a>
+        <div class="flex items-center gap-2">
+            {% if lead_type_filter in ('fundraise', 'product') %}
+            <a href="/leads/new?type={{ lead_type_filter }}"
+               class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                New {{ lead_type_filter | title }} Lead
+            </a>
+            {% else %}
+            <a href="/leads/new"
+               class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                New Lead
+            </a>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Filters -->
     <div class="bg-white rounded-lg shadow p-4">
-        <form id="filter-form" hx-get="/leads" hx-target="#leads-list-container" hx-push-url="true" class="flex flex-wrap items-end gap-4">
+        <form id="filter-form" hx-get="/leads" hx-target="#{{ grid_container_id }}" hx-push-url="true" class="flex flex-wrap items-end gap-4">
             <!-- Search -->
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs font-medium text-gray-600 mb-1">Search</label>
                 <input type="text" name="q" value="{{ search }}"
                        placeholder="Search by org name or summary..."
                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                       hx-get="/leads" hx-trigger="keyup changed delay:400ms" hx-target="#leads-list-container" hx-push-url="true" hx-include="#filter-form">
+                       hx-get="/leads" hx-trigger="keyup changed delay:400ms" hx-target="#{{ grid_container_id }}" hx-push-url="true" hx-include="#filter-form">
+            </div>
+
+            <!-- Lead Type -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Lead Type</label>
+                <select name="lead_type"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/leads" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Types</option>
+                    {% for lt in lead_types %}
+                    <option value="{{ lt.value }}" {{ 'selected' if lead_type_filter == lt.value else '' }}>{{ lt.label }}</option>
+                    {% endfor %}
+                </select>
             </div>
 
             <!-- Stage -->
@@ -35,7 +65,7 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">Stage</label>
                 <select name="stage"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+                        hx-get="/leads" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
                     <option value="">All Stages</option>
                     {% for s in lead_stages %}
                     <option value="{{ s.value }}" {{ 'selected' if rating == s.value else '' }}>{{ s.label }}</option>
@@ -48,7 +78,7 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">Aksia Owner</label>
                 <select name="owner"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+                        hx-get="/leads" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
                     <option value="">All Owners</option>
                     {% for u in users %}
                     <option value="{{ u.id }}" {{ 'selected' if owner_id == u.id|string else '' }}>{{ u.display_name }}</option>
@@ -56,38 +86,42 @@
                 </select>
             </div>
 
-            <!-- Service Type -->
+            <!-- Service Type (only for advisory) -->
+            {% if lead_type_filter != 'fundraise' and lead_type_filter != 'product' %}
             <div class="w-40">
                 <label class="block text-xs font-medium text-gray-600 mb-1">Service Type</label>
                 <select name="service"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+                        hx-get="/leads" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
                     <option value="">All Services</option>
                     {% for st in service_types %}
                     <option value="{{ st.value }}" {{ 'selected' if service_type == st.value else '' }}>{{ st.label }}</option>
                     {% endfor %}
                 </select>
             </div>
+            {% endif %}
 
-            <!-- Relationship -->
-            <div class="w-44">
-                <label class="block text-xs font-medium text-gray-600 mb-1">Relationship</label>
-                <select name="rel"
+            <!-- Fund filter (only for fundraise/product) -->
+            {% if lead_type_filter in ('fundraise', 'product') %}
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Fund</label>
+                <select name="fund"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
-                    <option value="">All Types</option>
-                    {% for rt in relationship_types %}
-                    <option value="{{ rt.value }}" {{ 'selected' if relationship == rt.value else '' }}>{{ rt.label }}</option>
+                        hx-get="/leads" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
+                    <option value="">All Funds</option>
+                    {% for f in funds_list %}
+                    <option value="{{ f.id }}" {{ 'selected' if fund_filter == f.id|string else '' }}>{{ f.ticker }}</option>
                     {% endfor %}
                 </select>
             </div>
+            {% endif %}
 
             <!-- Date From -->
             <div class="w-36">
                 <label class="block text-xs font-medium text-gray-600 mb-1">From</label>
                 <input type="date" name="from" value="{{ date_from }}"
                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                       hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+                       hx-get="/leads" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
             </div>
 
             <!-- Date To -->
@@ -95,18 +129,17 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">To</label>
                 <input type="date" name="to" value="{{ date_to }}"
                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                       hx-get="/leads" hx-trigger="change" hx-target="#leads-list-container" hx-include="#filter-form" hx-push-url="true">
+                       hx-get="/leads" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
             </div>
 
             <input type="hidden" name="sort_by" value="{{ sort_by }}">
             <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
+            {% if view %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
         </form>
     </div>
 
     <!-- Table -->
-    <div id="leads-list-container">
-        {% include "leads/_list_table.html" %}
-    </div>
+    {% include "components/_grid.html" %}
 
 </div>
 {% endblock %}

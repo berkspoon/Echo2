@@ -1,0 +1,114 @@
+<!-- HTMX partial: Reference data create/edit form -->
+<div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between mb-3">
+        <h4 class="text-sm font-semibold text-gray-900">
+            {% if rd and rd.id is defined and rd.id %}Edit Value{% else %}New Value{% endif %}
+            — {{ category_label }}
+        </h4>
+        <button
+            onclick="document.getElementById('rd-form-panel').innerHTML = ''"
+            class="text-gray-400 hover:text-gray-600" title="Cancel">
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+    </div>
+
+    {% if errors %}
+    <div class="mb-3 bg-red-50 border border-red-200 rounded-md p-3">
+        <ul class="list-disc list-inside text-sm text-red-700">
+            {% for error in errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <form
+        {% if rd and rd.id is defined and rd.id %}
+        hx-post="/admin/reference-data/{{ category }}/{{ rd.id }}"
+        {% else %}
+        hx-post="/admin/reference-data/{{ category }}"
+        {% endif %}
+        hx-target="#rd-values-panel"
+        hx-swap="innerHTML"
+        class="space-y-3">
+
+        <div class="grid grid-cols-2 gap-4">
+            <!-- Value (code) -->
+            <div>
+                <label for="rd-value" class="block text-sm font-medium text-gray-700">Value (Code) <span class="text-red-500">*</span></label>
+                {% if rd and rd.id is defined and rd.id %}
+                <input type="text" id="rd-value" name="value" value="{{ rd.value }}" readonly
+                    class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 text-gray-500 shadow-sm text-sm px-3 py-2 cursor-not-allowed"
+                    title="Value cannot be changed after creation">
+                {% else %}
+                <input type="text" id="rd-value" name="value" value="{{ rd.value if rd else '' }}"
+                    placeholder="e.g. some_value"
+                    pattern="[a-z0-9_]+"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 text-sm px-3 py-2">
+                <p class="mt-1 text-xs text-gray-400">Lowercase, numbers, underscores only (snake_case)</p>
+                {% endif %}
+            </div>
+
+            <!-- Label -->
+            <div>
+                <label for="rd-label" class="block text-sm font-medium text-gray-700">Label <span class="text-red-500">*</span></label>
+                <input type="text" id="rd-label" name="label" value="{{ rd.label if rd else '' }}"
+                    placeholder="Display label"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 text-sm px-3 py-2">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4">
+            {% if is_hierarchical %}
+            <!-- Parent value (for hierarchical categories) -->
+            <div>
+                <label for="rd-parent" class="block text-sm font-medium text-gray-700">
+                    Parent ({{ parent_category | replace('_', ' ') | title }}) <span class="text-red-500">*</span>
+                </label>
+                <select id="rd-parent" name="parent_value"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 text-sm px-3 py-2">
+                    <option value="">— Select parent —</option>
+                    {% for pv in parent_values %}
+                    <option value="{{ pv.value }}" {% if rd and rd.parent_value == pv.value %}selected{% endif %}>{{ pv.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+
+            <!-- Display order -->
+            <div>
+                <label for="rd-order" class="block text-sm font-medium text-gray-700">Display Order</label>
+                <input type="number" id="rd-order" name="display_order"
+                    value="{{ rd.display_order if rd and rd.display_order is defined else '' }}"
+                    placeholder="Auto"
+                    min="0"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 text-sm px-3 py-2">
+                <p class="mt-1 text-xs text-gray-400">Leave blank for auto (append to end)</p>
+            </div>
+
+            {% if rd and rd.id is defined and rd.id %}
+            <!-- Is Active (only on edit) -->
+            <div class="flex items-end pb-1">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="is_active" {% if rd.is_active %}checked{% endif %}
+                        class="rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                    <span class="text-sm font-medium text-gray-700">Active</span>
+                </label>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-3 pt-2">
+            <button type="submit"
+                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-brand-500 hover:bg-brand-600 transition-colors">
+                {% if rd and rd.id is defined and rd.id %}Update{% else %}Create{% endif %}
+            </button>
+            <button type="button"
+                onclick="document.getElementById('rd-form-panel').innerHTML = ''"
+                class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+                Cancel
+            </button>
+        </div>
+    </form>
+</div>

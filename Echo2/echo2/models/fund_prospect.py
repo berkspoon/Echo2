@@ -22,7 +22,7 @@ class FundProspectCreate(BaseModel):
     next_steps_date: Optional[date] = None
     notes: Optional[str] = None
     stage_entry_date: date
-    is_archived: bool = False
+    is_deleted: bool = False
     created_by: Optional[UUID] = None
 
 
@@ -42,7 +42,7 @@ class FundProspectUpdate(BaseModel):
     next_steps_date: Optional[date] = None
     notes: Optional[str] = None
     stage_entry_date: Optional[date] = None
-    is_archived: Optional[bool] = None
+    is_deleted: Optional[bool] = None
 
 
 class FundProspectResponse(BaseModel):
@@ -64,7 +64,7 @@ class FundProspectResponse(BaseModel):
     next_steps_date: Optional[date] = None
     notes: Optional[str] = None
     stage_entry_date: date
-    is_archived: bool
+    is_deleted: bool
     created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime

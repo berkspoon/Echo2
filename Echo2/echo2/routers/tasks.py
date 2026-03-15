@@ -9,7 +9,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
+from db.helpers import get_reference_data, log_field_change, audit_changes, batch_resolve_users, is_overdue
+from db.field_service import get_field_definitions, enrich_field_definitions
 from dependencies import CurrentUser, get_current_user, require_role
+from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup
+from services.grid_service import build_grid_context
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 templates = Jinja2Templates(directory="templates")
@@ -18,66 +22,6 @@ templates = Jinja2Templates(directory="templates")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _get_reference_data(category: str) -> list[dict]:
-    """Fetch active reference data for a dropdown category."""
-    sb = get_supabase()
-    return (
-        sb.table("reference_data")
-        .select("value, label")
-        .eq("category", category)
-        .eq("is_active", True)
-        .order("display_order")
-        .execute()
-        .data or []
-    )
-
-
-def _log_field_change(
-    record_type: str,
-    record_id: str,
-    field_name: str,
-    old_value,
-    new_value,
-    changed_by: UUID,
-) -> None:
-    """Write a single field change to the audit_log table."""
-    sb = get_supabase()
-    sb.table("audit_log").insert({
-        "record_type": record_type,
-        "record_id": record_id,
-        "field_name": field_name,
-        "old_value": str(old_value) if old_value is not None else None,
-        "new_value": str(new_value) if new_value is not None else None,
-        "changed_by": str(changed_by),
-    }).execute()
-
-
-def _audit_changes(
-    record_id: str,
-    old_record: dict,
-    new_data: dict,
-    changed_by: UUID,
-) -> None:
-    """Compare old record with new data and log every changed field."""
-    for field, new_val in new_data.items():
-        old_val = old_record.get(field)
-        if str(old_val) != str(new_val) and not (old_val is None and new_val is None):
-            _log_field_change("task", record_id, field, old_val, new_val, changed_by)
-
-
-def _is_overdue(task: dict) -> bool:
-    """Return True if task is past due and still open/in-progress."""
-    if task.get("status") not in ("open", "in_progress"):
-        return False
-    if not task.get("due_date"):
-        return False
-    try:
-        due = date_type.fromisoformat(str(task["due_date"])[:10])
-        return due < date_type.today()
-    except (ValueError, TypeError):
-        return False
-
 
 def _resolve_linked_record(linked_record_type: str, linked_record_id: str) -> dict:
     """Resolve a polymorphic linked record to display info (single record)."""
@@ -104,7 +48,11 @@ def _resolve_linked_record(linked_record_type: str, linked_record_id: str) -> di
                 info["url"] = f"/leads/{linked_record_id}"
 
         elif linked_record_type == "fund_prospect":
-            resp = sb.table("fund_prospects").select("id, organization_id, fund_id").eq("id", linked_record_id).maybe_single().execute()
+            # Legacy type — migrated records are now in leads table
+            resp = sb.table("leads").select("id, organization_id, fund_id, lead_type").eq("id", linked_record_id).maybe_single().execute()
+            if not resp.data:
+                # Fallback to fund_prospects table for unmigrated records
+                resp = sb.table("fund_prospects").select("id, organization_id, fund_id").eq("id", linked_record_id).maybe_single().execute()
             if resp.data:
                 org_name = "Unknown Org"
                 ticker = "?"
@@ -117,7 +65,7 @@ def _resolve_linked_record(linked_record_type: str, linked_record_id: str) -> di
                     if fund_resp.data:
                         ticker = fund_resp.data["ticker"]
                 info["name"] = f"{org_name} ({ticker})"
-                info["url"] = f"/fund-prospects/{linked_record_id}"
+                info["url"] = f"/leads/{linked_record_id}"
 
         elif linked_record_type == "organization":
             resp = sb.table("organizations").select("id, company_name").eq("id", linked_record_id).maybe_single().execute()
@@ -178,10 +126,18 @@ def _batch_resolve_linked_records(tasks: list[dict]) -> dict:
             }
 
     if "fund_prospect" in by_type:
+        # Legacy type — migrated records now in leads table
         ids = list(by_type["fund_prospect"])
-        resp = sb.table("fund_prospects").select("id, organization_id, fund_id").in_("id", ids).execute()
-        org_ids_needed = {str(r["organization_id"]) for r in (resp.data or []) if r.get("organization_id")}
-        fund_ids_needed = {str(r["fund_id"]) for r in (resp.data or []) if r.get("fund_id")}
+        resp = sb.table("leads").select("id, organization_id, fund_id, lead_type").in_("id", ids).execute()
+        found_ids = {str(r["id"]) for r in (resp.data or [])}
+        remaining_ids = [i for i in ids if i not in found_ids]
+        fp_rows = []
+        if remaining_ids:
+            fp_resp = sb.table("fund_prospects").select("id, organization_id, fund_id").in_("id", remaining_ids).execute()
+            fp_rows = fp_resp.data or []
+        all_rows = list(resp.data or []) + fp_rows
+        org_ids_needed = {str(r["organization_id"]) for r in all_rows if r.get("organization_id")}
+        fund_ids_needed = {str(r["fund_id"]) for r in all_rows if r.get("fund_id")}
         org_names = {}
         fund_tickers = {}
         if org_ids_needed:
@@ -190,12 +146,12 @@ def _batch_resolve_linked_records(tasks: list[dict]) -> dict:
         if fund_ids_needed:
             fund_resp = sb.table("funds").select("id, ticker").in_("id", list(fund_ids_needed)).execute()
             fund_tickers = {str(f["id"]): f["ticker"] for f in (fund_resp.data or [])}
-        for r in (resp.data or []):
+        for r in all_rows:
             org_name = org_names.get(str(r.get("organization_id", "")), "Unknown Org")
             ticker = fund_tickers.get(str(r.get("fund_id", "")), "?")
             results[("fund_prospect", str(r["id"]))] = {
                 "name": f"{org_name} ({ticker})",
-                "url": f"/fund-prospects/{r['id']}",
+                "url": f"/leads/{r['id']}",
                 "subtitle": "",
                 "type": "fund_prospect",
             }
@@ -223,15 +179,6 @@ def _batch_resolve_linked_records(tasks: list[dict]) -> dict:
             }
 
     return results
-
-
-def _batch_resolve_users(user_ids: list[str]) -> dict:
-    """Batch resolve user UUIDs to display names. Returns {id: display_name}."""
-    if not user_ids:
-        return {}
-    sb = get_supabase()
-    resp = sb.table("users").select("id, display_name").in_("id", user_ids).execute()
-    return {str(u["id"]): u["display_name"] for u in (resp.data or [])}
 
 
 def _build_task_data_from_form(form: dict) -> dict:
@@ -263,7 +210,7 @@ _SOURCE_LABELS = {
     "manual": "Manual",
     "activity_follow_up": "Activity Follow-Up",
     "lead_next_steps": "Lead Next Steps",
-    "fund_prospect_next_steps": "Fund Prospect Next Steps",
+    "fund_prospect_next_steps": "Fundraise Lead Next Steps",
 }
 
 
@@ -303,10 +250,10 @@ def _enrich_tasks_for_list(tasks: list[dict]) -> None:
 
     # Batch resolve assigned_to names
     user_ids = list({str(t["assigned_to"]) for t in tasks if t.get("assigned_to")})
-    user_map = _batch_resolve_users(user_ids)
+    user_map = batch_resolve_users(user_ids)
 
     for task in tasks:
-        task["is_overdue"] = _is_overdue(task)
+        task["is_overdue"] = is_overdue(task)
         key = (task.get("linked_record_type"), str(task.get("linked_record_id", "")))
         task["linked_record_info"] = record_map.get(key)
         task["assigned_to_name"] = user_map.get(str(task.get("assigned_to", "")), "Unknown")
@@ -335,7 +282,7 @@ async def search_records(
         resp = (
             sb.table("organizations")
             .select("id, company_name, organization_type")
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .ilike("company_name", f"%{q}%")
             .order("company_name")
             .limit(10)
@@ -357,7 +304,7 @@ async def search_records(
         resp = (
             sb.table("people")
             .select("id, first_name, last_name, email, job_title")
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .or_(f"first_name.ilike.%{q}%,last_name.ilike.%{q}%,email.ilike.%{q}%")
             .order("last_name")
             .limit(10)
@@ -383,7 +330,7 @@ async def search_records(
         resp = (
             sb.table("organizations")
             .select("id, company_name")
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .ilike("company_name", f"%{q}%")
             .limit(20)
             .execute()
@@ -393,7 +340,7 @@ async def search_records(
             leads_resp = (
                 sb.table("leads")
                 .select("id, organization_id, summary")
-                .eq("is_archived", False)
+                .eq("is_deleted", False)
                 .in_("organization_id", list(org_map.keys()))
                 .limit(10)
                 .execute()
@@ -412,10 +359,11 @@ async def search_records(
                 )
 
     elif record_type == "fund_prospect":
+        # Now searches fundraise/product leads in the leads table
         resp = (
             sb.table("organizations")
             .select("id, company_name")
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .ilike("company_name", f"%{q}%")
             .limit(20)
             .execute()
@@ -423,9 +371,10 @@ async def search_records(
         org_map = {str(o["id"]): o["company_name"] for o in (resp.data or [])}
         if org_map:
             fp_resp = (
-                sb.table("fund_prospects")
-                .select("id, organization_id, fund_id")
-                .eq("is_archived", False)
+                sb.table("leads")
+                .select("id, organization_id, fund_id, lead_type")
+                .eq("is_deleted", False)
+                .in_("lead_type", ["fundraise", "product"])
                 .in_("organization_id", list(org_map.keys()))
                 .limit(10)
                 .execute()
@@ -447,7 +396,7 @@ async def search_records(
                     f'class="w-full text-left px-4 py-2 hover:bg-brand-50 text-sm" '
                     f"onclick=\"selectRecord('{fp['id']}', '{safe_name}')\">"
                     f'<div class="font-medium text-gray-900">{display}</div>'
-                    f'<div class="text-xs text-gray-400">Fund Prospect</div>'
+                    f'<div class="text-xs text-gray-400">Fundraise Lead</div>'
                     f'</button>'
                 )
 
@@ -465,88 +414,31 @@ async def search_records(
 async def my_tasks(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=10, le=100),
-    status_filter: str = Query("", alias="status"),
-    overdue_only: str = Query("", alias="overdue"),
-    date_from: str = Query("", alias="from"),
-    date_to: str = Query("", alias="to"),
-    sort_by: str = Query("due_date"),
-    sort_dir: str = Query("asc"),
 ):
     """Personal task view: tasks assigned to the current user."""
-    sb = get_supabase()
-
-    query = (
-        sb.table("tasks")
-        .select("*", count="exact")
-        .eq("is_archived", False)
-        .eq("assigned_to", str(current_user.id))
-    )
-
-    # Status filter
-    if status_filter:
-        query = query.eq("status", status_filter)
-
-    # Overdue-only filter (DB level)
-    if overdue_only == "true":
-        query = query.lt("due_date", str(date_type.today())).in_("status", ["open", "in_progress"])
-
-    # Date range
-    if date_from:
-        query = query.gte("due_date", date_from)
-    if date_to:
-        query = query.lte("due_date", date_to)
-
-    # Sorting
-    valid_sort_cols = ["due_date", "created_at", "status", "title"]
-    if sort_by not in valid_sort_cols:
-        sort_by = "due_date"
-    desc = sort_dir.lower() == "desc"
-    # For due_date ASC, we want NULLs last
-    query = query.order(sort_by, desc=desc, nullsfirst=False if not desc else True)
-
-    # Pagination
-    offset = (page - 1) * page_size
-    query = query.range(offset, offset + page_size - 1)
-
-    resp = query.execute()
-    tasks_list = resp.data or []
-    total_count = resp.count or 0
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    # Enrich
-    _enrich_tasks_for_list(tasks_list)
-
-    # Reference data for filters
-    statuses = _get_reference_data("task_status")
-
-    context = {
-        "request": request,
-        "user": current_user,
-        "tasks": tasks_list,
-        "total_count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "status_filter": status_filter,
-        "overdue_only": overdue_only,
-        "date_from": date_from,
-        "date_to": date_to,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
-        "statuses": statuses,
-        "users": [],
-        "search": "",
-        "assignee_filter": "",
-        "source_filter": "",
-        "linked_type": "",
-        "view_mode": "my_tasks",
-    }
+    extra_filters = {"assignee": str(current_user.id)}
+    ctx = build_grid_context("task", request, current_user, base_url="/tasks/my-tasks", extra_filters=extra_filters)
 
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("tasks/_list_table.html", context)
-    return templates.TemplateResponse("tasks/list.html", context)
+        return templates.TemplateResponse("components/_grid.html", {"request": request, **ctx})
+
+    statuses = get_reference_data("task_status")
+    ctx.update({
+        "user": current_user,
+        "view_mode": "my_tasks",
+        "total_count": ctx["pagination"]["total"],
+        "search": ctx["filters"].get("q", ""),
+        "status_filter": ctx["filters"].get("status", ""),
+        "assignee_filter": ctx["filters"].get("assignee", ""),
+        "source_filter": ctx["filters"].get("source", ""),
+        "linked_type": ctx["filters"].get("linked_type", ""),
+        "overdue_only": ctx["filters"].get("overdue", ""),
+        "date_from": ctx["filters"].get("from", ""),
+        "date_to": ctx["filters"].get("to", ""),
+        "statuses": statuses,
+        "users": ctx.get("users", []),
+    })
+    return templates.TemplateResponse("tasks/list.html", {"request": request, **ctx})
 
 
 # ---------------------------------------------------------------------------
@@ -565,7 +457,7 @@ async def new_task_form(
 
     sb = get_supabase()
     users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
-    statuses = _get_reference_data("task_status")
+    statuses = get_reference_data("task_status")
 
     # Pre-fill linked record if provided
     pre_linked = None
@@ -587,7 +479,7 @@ async def new_task_form(
                 person_ids = list({r["person_id"] for r in (pol_resp.data or [])})
                 if person_ids:
                     # Get coverage owners for those people
-                    people_resp = sb.table("people").select("coverage_owner").in_("id", person_ids).eq("is_archived", False).execute()
+                    people_resp = sb.table("people").select("coverage_owner").in_("id", person_ids).eq("is_deleted", False).execute()
                     coverage_owner_ids = list({str(p["coverage_owner"]) for p in (people_resp.data or []) if p.get("coverage_owner")})
                     if coverage_owner_ids:
                         # Get user details for those coverage owners
@@ -595,6 +487,11 @@ async def new_task_form(
                         suggested_assignees = owners_resp.data or []
         except Exception:
             pass  # Non-critical feature, don't break the form
+
+    # Build dynamic form context from field definitions
+    form_ctx = build_form_context("task", record=None, extra_context={
+        "users": users_resp.data or [],
+    })
 
     context = {
         "request": request,
@@ -604,6 +501,8 @@ async def new_task_form(
         "statuses": statuses,
         "pre_linked": pre_linked,
         "suggested_assignees": suggested_assignees,
+        "sections": form_ctx["sections"],
+        "field_defs": form_ctx["field_defs"],
     }
     return templates.TemplateResponse("tasks/form.html", context)
 
@@ -616,107 +515,33 @@ async def new_task_form(
 async def list_tasks(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=10, le=100),
-    search: str = Query("", alias="q"),
-    status_filter: str = Query("", alias="status"),
-    assignee_filter: str = Query("", alias="assignee"),
-    source_filter: str = Query("", alias="source"),
-    linked_type: str = Query("", alias="linked_type"),
-    overdue_only: str = Query("", alias="overdue"),
-    date_from: str = Query("", alias="from"),
-    date_to: str = Query("", alias="to"),
-    sort_by: str = Query("due_date"),
-    sort_dir: str = Query("asc"),
 ):
     """List all tasks with filtering, search, sorting, and pagination."""
-    sb = get_supabase()
-
-    query = (
-        sb.table("tasks")
-        .select("*", count="exact")
-        .eq("is_archived", False)
-    )
-
-    # Search
-    if search:
-        query = query.or_(f"title.ilike.%{search}%,notes.ilike.%{search}%")
-
-    # Status filter
-    if status_filter:
-        query = query.eq("status", status_filter)
-
-    # Assignee filter
-    if assignee_filter:
-        query = query.eq("assigned_to", assignee_filter)
-
-    # Source filter
-    if source_filter:
-        query = query.eq("source", source_filter)
-
-    # Linked record type filter
-    if linked_type:
-        query = query.eq("linked_record_type", linked_type)
-
-    # Overdue-only filter
-    if overdue_only == "true":
-        query = query.lt("due_date", str(date_type.today())).in_("status", ["open", "in_progress"])
-
-    # Date range
-    if date_from:
-        query = query.gte("due_date", date_from)
-    if date_to:
-        query = query.lte("due_date", date_to)
-
-    # Sorting
-    valid_sort_cols = ["due_date", "created_at", "status", "title"]
-    if sort_by not in valid_sort_cols:
-        sort_by = "due_date"
-    desc = sort_dir.lower() == "desc"
-    query = query.order(sort_by, desc=desc, nullsfirst=False if not desc else True)
-
-    # Pagination
-    offset = (page - 1) * page_size
-    query = query.range(offset, offset + page_size - 1)
-
-    resp = query.execute()
-    tasks_list = resp.data or []
-    total_count = resp.count or 0
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    # Enrich
-    _enrich_tasks_for_list(tasks_list)
-
-    # Reference data for filters
-    statuses = _get_reference_data("task_status")
-    users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
-
-    context = {
-        "request": request,
-        "user": current_user,
-        "tasks": tasks_list,
-        "total_count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "search": search,
-        "status_filter": status_filter,
-        "assignee_filter": assignee_filter,
-        "source_filter": source_filter,
-        "linked_type": linked_type,
-        "overdue_only": overdue_only,
-        "date_from": date_from,
-        "date_to": date_to,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
-        "statuses": statuses,
-        "users": users_resp.data or [],
-        "view_mode": "all_tasks",
-    }
+    ctx = build_grid_context("task", request, current_user, base_url="/tasks/")
 
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("tasks/_list_table.html", context)
-    return templates.TemplateResponse("tasks/list.html", context)
+        return templates.TemplateResponse("components/_grid.html", {"request": request, **ctx})
+
+    statuses = get_reference_data("task_status")
+    sb = get_supabase()
+    users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+
+    ctx.update({
+        "user": current_user,
+        "view_mode": "all_tasks",
+        "total_count": ctx["pagination"]["total"],
+        "search": ctx["filters"].get("q", ""),
+        "status_filter": ctx["filters"].get("status", ""),
+        "assignee_filter": ctx["filters"].get("assignee", ""),
+        "source_filter": ctx["filters"].get("source", ""),
+        "linked_type": ctx["filters"].get("linked_type", ""),
+        "overdue_only": ctx["filters"].get("overdue", ""),
+        "date_from": ctx["filters"].get("from", ""),
+        "date_to": ctx["filters"].get("to", ""),
+        "statuses": statuses,
+        "users": users_resp.data or [],
+    })
+    return templates.TemplateResponse("tasks/list.html", {"request": request, **ctx})
 
 
 # ---------------------------------------------------------------------------
@@ -732,14 +557,23 @@ async def create_task(
     require_role(current_user, ["admin", "standard_user", "rfp_team"])
 
     form = await request.form()
-    task_data = _build_task_data_from_form(form)
+    field_defs = get_field_definitions("task", active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    task_data = parse_form_data("task", form, field_defs)
 
-    # Validation
-    errors = []
-    if not task_data.get("title"):
-        errors.append("Title is required.")
-    if not task_data.get("assigned_to"):
-        errors.append("Assigned To is required.")
+    # Always set source to manual for manually created tasks
+    task_data["source"] = "manual"
+
+    # Extract entity-specific fields not in field_defs (linked record)
+    lrt = (form.get("linked_record_type") or "").strip()
+    task_data["linked_record_type"] = lrt if lrt else None
+    lri = (form.get("linked_record_id") or "").strip()
+    task_data["linked_record_id"] = lri if lri else None
+
+    # Validate using field definitions
+    errors = validate_form_data("task", task_data, field_defs)
+
+    # Entity-specific validation
     if task_data.get("linked_record_type") and not task_data.get("linked_record_id"):
         errors.append("Linked Record ID is required when Record Type is selected.")
     if task_data.get("linked_record_id") and not task_data.get("linked_record_type"):
@@ -748,7 +582,7 @@ async def create_task(
     if errors:
         sb = get_supabase()
         users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
-        statuses = _get_reference_data("task_status")
+        statuses = get_reference_data("task_status")
 
         # Rebuild pre-linked for re-rendering
         pre_linked = None
@@ -756,6 +590,8 @@ async def create_task(
             pre_linked = _resolve_linked_record(task_data["linked_record_type"], task_data["linked_record_id"])
             pre_linked["record_type"] = task_data["linked_record_type"]
             pre_linked["record_id"] = task_data["linked_record_id"]
+
+        form_ctx = build_form_context("task", record=task_data, extra_context={"users": users_resp.data or []})
 
         context = {
             "request": request,
@@ -765,6 +601,8 @@ async def create_task(
             "users": users_resp.data or [],
             "statuses": statuses,
             "pre_linked": pre_linked,
+            "sections": form_ctx["sections"],
+            "field_defs": form_ctx["field_defs"],
         }
         return templates.TemplateResponse("tasks/form.html", context)
 
@@ -775,7 +613,7 @@ async def create_task(
 
     if resp.data:
         new_task = resp.data[0]
-        _log_field_change("task", str(new_task["id"]), "_created", None, "record created", current_user.id)
+        log_field_change("task", str(new_task["id"]), "_created", None, "record created", current_user.id)
         return RedirectResponse(url=f"/tasks/{new_task['id']}", status_code=303)
 
     raise HTTPException(status_code=500, detail="Failed to create task")
@@ -799,7 +637,7 @@ async def update_task_status(
         sb.table("tasks")
         .select("*")
         .eq("id", str(task_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -821,7 +659,7 @@ async def update_task_status(
     old_status = task["status"]
     if old_status != new_status:
         sb.table("tasks").update({"status": new_status}).eq("id", str(task_id)).execute()
-        _log_field_change("task", str(task_id), "status", old_status, new_status, current_user.id)
+        log_field_change("task", str(task_id), "status", old_status, new_status, current_user.id)
 
     task["status"] = new_status
     return HTMLResponse(_render_status_cell_html(task))
@@ -841,8 +679,8 @@ async def archive_task(
     require_role(current_user, ["admin"])
 
     sb = get_supabase()
-    sb.table("tasks").update({"is_archived": True}).eq("id", str(task_id)).execute()
-    _log_field_change("task", str(task_id), "is_archived", False, True, current_user.id)
+    sb.table("tasks").update({"is_deleted": True}).eq("id", str(task_id)).execute()
+    log_field_change("task", str(task_id), "is_deleted", False, True, current_user.id)
 
     if request.headers.get("HX-Request"):
         return HTMLResponse('<p class="text-sm text-green-600">Task archived.</p>')
@@ -867,7 +705,7 @@ async def edit_task_form(
         sb.table("tasks")
         .select("*")
         .eq("id", str(task_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -880,7 +718,7 @@ async def edit_task_form(
         raise HTTPException(status_code=403, detail="You can only edit tasks assigned to you.")
 
     users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
-    statuses = _get_reference_data("task_status")
+    statuses = get_reference_data("task_status")
 
     # Resolve linked record for pre-fill
     pre_linked = None
@@ -889,6 +727,9 @@ async def edit_task_form(
         pre_linked["record_type"] = task["linked_record_type"]
         pre_linked["record_id"] = str(task["linked_record_id"])
 
+    # Build dynamic form context
+    form_ctx = build_form_context("task", record=task, extra_context={"users": users_resp.data or []})
+
     context = {
         "request": request,
         "user": current_user,
@@ -896,6 +737,8 @@ async def edit_task_form(
         "users": users_resp.data or [],
         "statuses": statuses,
         "pre_linked": pre_linked,
+        "sections": form_ctx["sections"],
+        "field_defs": form_ctx["field_defs"],
     }
     return templates.TemplateResponse("tasks/form.html", context)
 
@@ -918,7 +761,7 @@ async def update_task(
         sb.table("tasks")
         .select("*")
         .eq("id", str(task_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -931,7 +774,9 @@ async def update_task(
         raise HTTPException(status_code=403, detail="You can only edit tasks assigned to you.")
 
     form = await request.form()
-    task_data = _build_task_data_from_form(form)
+    field_defs = get_field_definitions("task", active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    task_data = parse_form_data("task", form, field_defs)
 
     # For system-generated tasks, preserve the source
     if old_task.get("source") and old_task["source"] != "manual":
@@ -940,16 +785,18 @@ async def update_task(
     # Status comes from form (editable on edit)
     task_data["status"] = (form.get("status") or old_task.get("status", "open")).strip()
 
-    # Validation
-    errors = []
-    if not task_data.get("title"):
-        errors.append("Title is required.")
-    if not task_data.get("assigned_to"):
-        errors.append("Assigned To is required.")
+    # Extract entity-specific fields not in field_defs (linked record)
+    lrt = (form.get("linked_record_type") or "").strip()
+    task_data["linked_record_type"] = lrt if lrt else None
+    lri = (form.get("linked_record_id") or "").strip()
+    task_data["linked_record_id"] = lri if lri else None
+
+    # Validate using field definitions
+    errors = validate_form_data("task", task_data, field_defs, record=old_task)
 
     if errors:
         users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
-        statuses = _get_reference_data("task_status")
+        statuses = get_reference_data("task_status")
 
         pre_linked = None
         if task_data.get("linked_record_type") and task_data.get("linked_record_id"):
@@ -957,19 +804,24 @@ async def update_task(
             pre_linked["record_type"] = task_data["linked_record_type"]
             pre_linked["record_id"] = task_data["linked_record_id"]
 
+        merged = {**old_task, **task_data}
+        form_ctx = build_form_context("task", record=merged, extra_context={"users": users_resp.data or []})
+
         context = {
             "request": request,
             "user": current_user,
-            "task": {**old_task, **task_data},
+            "task": merged,
             "errors": errors,
             "users": users_resp.data or [],
             "statuses": statuses,
             "pre_linked": pre_linked,
+            "sections": form_ctx["sections"],
+            "field_defs": form_ctx["field_defs"],
         }
         return templates.TemplateResponse("tasks/form.html", context)
 
     # Audit changes
-    _audit_changes(str(task_id), old_task, task_data, current_user.id)
+    audit_changes("task", str(task_id), old_task, task_data, current_user.id)
 
     # Update
     sb.table("tasks").update(task_data).eq("id", str(task_id)).execute()
@@ -994,7 +846,7 @@ async def get_task(
         sb.table("tasks")
         .select("*")
         .eq("id", str(task_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -1022,7 +874,7 @@ async def get_task(
         linked_record_info = _resolve_linked_record(task["linked_record_type"], str(task["linked_record_id"]))
 
     # Overdue check
-    task["is_overdue"] = _is_overdue(task)
+    task["is_overdue"] = is_overdue(task)
 
     # Audit history
     audit_resp = (
@@ -1038,7 +890,7 @@ async def get_task(
 
     # Resolve audit user names
     audit_user_ids = list({str(a["changed_by"]) for a in audit_entries if a.get("changed_by")})
-    audit_user_map = _batch_resolve_users(audit_user_ids)
+    audit_user_map = batch_resolve_users(audit_user_ids)
     for entry in audit_entries:
         entry["changed_by_name"] = audit_user_map.get(str(entry.get("changed_by", "")), "Unknown")
 

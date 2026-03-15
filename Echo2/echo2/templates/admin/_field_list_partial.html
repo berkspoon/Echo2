@@ -1,0 +1,82 @@
+{% for section_name, fields in grouped_fields.items() %}
+<div class="bg-white rounded-lg shadow mb-4">
+    <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">{{ section_name }}</h3>
+        <p class="text-xs text-gray-500 mt-0.5">{{ fields | length }} field{{ 's' if fields | length != 1 else '' }}</p>
+    </div>
+    <div class="divide-y divide-gray-100">
+        {% for field in fields %}
+        <div class="px-6 py-3 flex items-center justify-between hover:bg-gray-50 {{ 'opacity-50' if not field.is_active else '' }}">
+            <div class="flex items-center gap-4 min-w-0">
+                <!-- Reorder buttons -->
+                <div class="flex flex-col gap-0.5">
+                    <form method="post" action="/admin/fields/{{ field.id }}/reorder" class="inline">
+                        <input type="hidden" name="direction" value="up">
+                        <button type="submit" class="text-gray-400 hover:text-gray-600 p-0.5" title="Move up">
+                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+                        </button>
+                    </form>
+                    <form method="post" action="/admin/fields/{{ field.id }}/reorder" class="inline">
+                        <input type="hidden" name="direction" value="down">
+                        <button type="submit" class="text-gray-400 hover:text-gray-600 p-0.5" title="Move down">
+                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                    </form>
+                </div>
+
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-gray-900">{{ field.display_name }}</span>
+                        {% if field.is_system %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">System</span>
+                        {% endif %}
+                        {% if field.is_required %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">Required</span>
+                        {% endif %}
+                        {% if not field.is_active %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">Inactive</span>
+                        {% endif %}
+                        {% if field.storage_type == 'eav' %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">Custom</span>
+                        {% endif %}
+                    </div>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        <code class="text-xs bg-gray-100 px-1 rounded">{{ field.field_name }}</code>
+                        &middot; {{ field.field_type | replace('_', ' ') | title }}
+                        {% if field.dropdown_category %}&middot; Category: {{ field.dropdown_category }}{% endif %}
+                        {% if field.storage_type == 'eav' %}&middot; EAV{% else %}&middot; Core Column{% endif %}
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 ml-4">
+                <!-- Edit -->
+                <a href="/admin/fields/{{ field.id }}/edit"
+                   class="text-sm px-3 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">
+                    Edit
+                </a>
+
+                <!-- Toggle active (not for system fields) -->
+                {% if not field.is_system %}
+                <form method="post" action="/admin/fields/{{ field.id }}/toggle"
+                      hx-post="/admin/fields/{{ field.id }}/toggle"
+                      hx-target="#field-list-container"
+                      hx-swap="innerHTML">
+                    <button type="submit"
+                            class="text-sm px-3 py-1 rounded border {{ 'border-green-300 text-green-700 hover:bg-green-50' if not field.is_active else 'border-yellow-300 text-yellow-700 hover:bg-yellow-50' }}">
+                        {{ 'Activate' if not field.is_active else 'Deactivate' }}
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endfor %}
+
+{% if not grouped_fields %}
+<div class="bg-white rounded-lg shadow p-12 text-center">
+    <p class="text-gray-500">No fields defined for this entity type.</p>
+</div>
+{% endif %}

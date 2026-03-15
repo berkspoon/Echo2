@@ -9,7 +9,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
+from db.helpers import get_reference_data, log_field_change, audit_changes, batch_resolve_users
+from db.field_service import get_field_definitions, enrich_field_definitions
+from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup
 from dependencies import CurrentUser, get_current_user, require_role
+from services.grid_service import build_grid_context
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 templates = Jinja2Templates(directory="templates")
@@ -19,55 +23,7 @@ templates = Jinja2Templates(directory="templates")
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_reference_data(category: str) -> list[dict]:
-    """Fetch active reference data for a dropdown category, ordered by display_order."""
-    sb = get_supabase()
-    resp = (
-        sb.table("reference_data")
-        .select("value, label")
-        .eq("category", category)
-        .eq("is_active", True)
-        .order("display_order")
-        .execute()
-    )
-    return resp.data or []
-
-
-def _log_field_change(
-    record_type: str,
-    record_id: str,
-    field_name: str,
-    old_value,
-    new_value,
-    changed_by: UUID,
-) -> None:
-    """Write a single field change to the audit_log table."""
-    sb = get_supabase()
-    sb.table("audit_log").insert({
-        "record_type": record_type,
-        "record_id": record_id,
-        "field_name": field_name,
-        "old_value": str(old_value) if old_value is not None else None,
-        "new_value": str(new_value) if new_value is not None else None,
-        "changed_by": str(changed_by),
-    }).execute()
-
-
-def _audit_changes(
-    record_id: str,
-    old_record: dict,
-    new_data: dict,
-    changed_by: UUID,
-) -> None:
-    """Compare old record with new data and log every changed field."""
-    for field, new_val in new_data.items():
-        old_val = old_record.get(field)
-        # Normalise for comparison
-        if str(old_val) != str(new_val) and not (old_val is None and new_val is None):
-            _log_field_change("organization", record_id, field, old_val, new_val, changed_by)
-
-
-def _check_duplicates(company_name: str, website: Optional[str] = None, exclude_id: Optional[str] = None) -> list[dict]:
+def _check_duplicates(company_name: str, website: Optional[str] = None, exclude_id: Optional[str] = None, source_id: Optional[str] = None) -> list[dict]:
     """Return potential duplicate organisations based on name similarity or website match."""
     sb = get_supabase()
     duplicates = []
@@ -86,7 +42,7 @@ def _check_duplicates(company_name: str, website: Optional[str] = None, exclude_
         web_resp = (
             sb.table("organizations")
             .select("id, company_name, website, organization_type, relationship_type")
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .ilike("website", f"%{domain}%")
             .execute()
         )
@@ -99,6 +55,17 @@ def _check_duplicates(company_name: str, website: Optional[str] = None, exclude_
     # Exclude self when editing
     if exclude_id:
         duplicates = [d for d in duplicates if str(d["id"]) != exclude_id]
+
+    # Filter out suppressed pairs
+    if source_id:
+        supp_resp = sb.table("duplicate_suppressions").select("record_id_a, record_id_b").eq("entity_type", "organization").or_(f"record_id_a.eq.{source_id},record_id_b.eq.{source_id}").execute()
+        if supp_resp.data:
+            suppressed_ids = set()
+            for s in supp_resp.data:
+                suppressed_ids.add(s["record_id_a"])
+                suppressed_ids.add(s["record_id_b"])
+            suppressed_ids.discard(source_id)
+            duplicates = [d for d in duplicates if str(d["id"]) not in suppressed_ids]
 
     return duplicates
 
@@ -156,78 +123,27 @@ def _build_org_data_from_form(form: dict) -> dict:
 async def list_organizations(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=10, le=100),
-    search: str = Query("", alias="q"),
-    relationship_type: str = Query("", alias="relationship"),
-    organization_type: str = Query("", alias="type"),
-    country: str = Query("", alias="country"),
-    sort_by: str = Query("company_name"),
-    sort_dir: str = Query("asc"),
 ):
     """List organizations with filtering, search, sorting, and pagination."""
-    sb = get_supabase()
-    query = (
-        sb.table("organizations")
-        .select("id, company_name, short_name, relationship_type, organization_type, country, city, aum_mn, rfp_hold, website, created_at", count="exact")
-        .eq("is_archived", False)
-    )
+    ctx = build_grid_context("organization", request, current_user, base_url="/organizations")
 
-    # Filters
-    if search:
-        query = query.ilike("company_name", f"%{search}%")
-    if relationship_type:
-        query = query.eq("relationship_type", relationship_type)
-    if organization_type:
-        query = query.eq("organization_type", organization_type)
-    if country:
-        query = query.eq("country", country)
-
-    # Sorting
-    valid_sort_cols = ["company_name", "relationship_type", "organization_type", "country", "aum_mn", "created_at"]
-    if sort_by not in valid_sort_cols:
-        sort_by = "company_name"
-    desc = sort_dir.lower() == "desc"
-    query = query.order(sort_by, desc=desc)
-
-    # Pagination
-    offset = (page - 1) * page_size
-    query = query.range(offset, offset + page_size - 1)
-
-    resp = query.execute()
-    organizations = resp.data or []
-    total_count = resp.count or 0
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    # Reference data for filter dropdowns
-    relationship_types = _get_reference_data("relationship_type")
-    organization_types = _get_reference_data("organization_type")
-    countries = _get_reference_data("country")
-
-    context = {
-        "request": request,
-        "user": current_user,
-        "organizations": organizations,
-        "total_count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "search": search,
-        "relationship_type": relationship_type,
-        "organization_type": organization_type,
-        "country": country,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
-        "relationship_types": relationship_types,
-        "organization_types": organization_types,
-        "countries": countries,
-        "view_mode": "all_organizations",
-    }
-
-    # HTMX partial vs full page (hx-boost navigations get the full page)
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("organizations/_list_table.html", context)
-    return templates.TemplateResponse("organizations/list.html", context)
+        return templates.TemplateResponse("components/_grid.html", {"request": request, **ctx})
+
+    # Extra context for the filter bar on list.html
+    ctx.update({
+        "user": current_user,
+        "view_mode": "all_organizations",
+        "total_count": ctx["pagination"]["total"],
+        "search": ctx["filters"].get("q", ""),
+        "relationship_type": ctx["filters"].get("relationship", ""),
+        "organization_type": ctx["filters"].get("type", ""),
+        "country": ctx["filters"].get("country", ""),
+        "relationship_types": get_reference_data("relationship_type"),
+        "organization_types": get_reference_data("organization_type"),
+        "countries": get_reference_data("country"),
+    })
+    return templates.TemplateResponse("organizations/list.html", {"request": request, **ctx})
 
 
 # ---------------------------------------------------------------------------
@@ -238,14 +154,6 @@ async def list_organizations(
 async def my_organizations(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=10, le=100),
-    search: str = Query("", alias="q"),
-    relationship_type: str = Query("", alias="relationship"),
-    organization_type: str = Query("", alias="type"),
-    country: str = Query("", alias="country"),
-    sort_by: str = Query("company_name"),
-    sort_dir: str = Query("asc"),
 ):
     """List organizations where the current user is a coverage owner (via people or leads)."""
     sb = get_supabase()
@@ -255,7 +163,7 @@ async def my_organizations(
         sb.table("people")
         .select("id")
         .eq("coverage_owner", str(current_user.id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .execute()
     )
     person_ids = [str(p["id"]) for p in (covered_people.data or [])]
@@ -274,79 +182,30 @@ async def my_organizations(
         sb.table("leads")
         .select("organization_id")
         .eq("aksia_owner_id", str(current_user.id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .execute()
     )
     my_org_ids |= {str(l["organization_id"]) for l in (owned_leads.data or []) if l.get("organization_id")}
 
-    # If no matching orgs, return empty results
-    organizations = []
-    total_count = 0
-    total_pages = 1
+    extra_filters = {"_org_ids": list(my_org_ids)} if my_org_ids else {"_org_ids": ["00000000-0000-0000-0000-000000000000"]}
+    ctx = build_grid_context("organization", request, current_user, base_url="/organizations/my-organizations", extra_filters=extra_filters)
 
-    if my_org_ids:
-        query = (
-            sb.table("organizations")
-            .select("id, company_name, short_name, relationship_type, organization_type, country, city, aum_mn, rfp_hold, website, created_at", count="exact")
-            .eq("is_archived", False)
-            .in_("id", list(my_org_ids))
-        )
-
-        # Filters
-        if search:
-            query = query.ilike("company_name", f"%{search}%")
-        if relationship_type:
-            query = query.eq("relationship_type", relationship_type)
-        if organization_type:
-            query = query.eq("organization_type", organization_type)
-        if country:
-            query = query.eq("country", country)
-
-        # Sorting
-        valid_sort_cols = ["company_name", "relationship_type", "organization_type", "country", "aum_mn", "created_at"]
-        if sort_by not in valid_sort_cols:
-            sort_by = "company_name"
-        desc = sort_dir.lower() == "desc"
-        query = query.order(sort_by, desc=desc)
-
-        # Pagination
-        offset = (page - 1) * page_size
-        query = query.range(offset, offset + page_size - 1)
-
-        resp = query.execute()
-        organizations = resp.data or []
-        total_count = resp.count or 0
-        total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    # Reference data for filter dropdowns
-    relationship_types = _get_reference_data("relationship_type")
-    organization_types = _get_reference_data("organization_type")
-    countries = _get_reference_data("country")
-
-    context = {
-        "request": request,
-        "user": current_user,
-        "organizations": organizations,
-        "total_count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "search": search,
-        "relationship_type": relationship_type,
-        "organization_type": organization_type,
-        "country": country,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
-        "relationship_types": relationship_types,
-        "organization_types": organization_types,
-        "countries": countries,
-        "view_mode": "my_organizations",
-    }
-
-    # HTMX partial vs full page
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("organizations/_list_table.html", context)
-    return templates.TemplateResponse("organizations/list.html", context)
+        return templates.TemplateResponse("components/_grid.html", {"request": request, **ctx})
+
+    ctx.update({
+        "user": current_user,
+        "view_mode": "my_organizations",
+        "total_count": ctx["pagination"]["total"],
+        "search": ctx["filters"].get("q", ""),
+        "relationship_type": ctx["filters"].get("relationship", ""),
+        "organization_type": ctx["filters"].get("type", ""),
+        "country": ctx["filters"].get("country", ""),
+        "relationship_types": get_reference_data("relationship_type"),
+        "organization_types": get_reference_data("organization_type"),
+        "countries": get_reference_data("country"),
+    })
+    return templates.TemplateResponse("organizations/list.html", {"request": request, **ctx})
 
 
 # ---------------------------------------------------------------------------
@@ -361,13 +220,17 @@ async def new_organization_form(
     """Render the new organization form."""
     require_role(current_user, ["admin", "standard_user", "rfp_team"])
 
+    form_ctx = build_form_context("organization", record=None)
+
     context = {
         "request": request,
         "user": current_user,
         "org": None,
-        "relationship_types": _get_reference_data("relationship_type"),
-        "organization_types": _get_reference_data("organization_type"),
-        "countries": _get_reference_data("country"),
+        "relationship_types": get_reference_data("relationship_type"),
+        "organization_types": get_reference_data("organization_type"),
+        "countries": get_reference_data("country"),
+        "sections": form_ctx["sections"],
+        "field_defs": form_ctx["field_defs"],
     }
     return templates.TemplateResponse("organizations/form.html", context)
 
@@ -388,15 +251,118 @@ async def check_duplicates(
     if not name or len(name) < 3:
         return HTMLResponse("")
 
-    dupes = _check_duplicates(name, website or None, exclude_id or None)
+    dupes = _check_duplicates(name, website or None, exclude_id or None, source_id=exclude_id or None)
     if not dupes:
         return HTMLResponse("")
 
     context = {
         "request": request,
         "duplicates": dupes,
+        "source_id": exclude_id or None,
+        "entity_type": "organization",
     }
     return templates.TemplateResponse("organizations/_duplicate_warning.html", context)
+
+
+# ---------------------------------------------------------------------------
+# SUPPRESS DUPLICATE — POST /organizations/{org_id}/suppress-duplicate
+# ---------------------------------------------------------------------------
+
+@router.post("/{org_id}/suppress-duplicate", response_class=HTMLResponse)
+async def suppress_duplicate(
+    request: Request,
+    org_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Suppress a duplicate pair so it no longer shows as a warning."""
+    form = await request.form()
+    other_id = form.get("other_id", "")
+    if not other_id:
+        raise HTTPException(status_code=400, detail="Missing other_id")
+
+    # Normalize: smaller UUID as record_id_a
+    id_a, id_b = (min(org_id, other_id), max(org_id, other_id))
+
+    sb = get_supabase()
+    sb.table("duplicate_suppressions").upsert({
+        "entity_type": "organization",
+        "record_id_a": id_a,
+        "record_id_b": id_b,
+        "suppressed_by": str(current_user.id),
+    }).execute()
+
+    log_field_change("organization", org_id, "duplicate_suppressed", other_id, "suppressed", current_user.id)
+
+    # Re-run duplicate check and return updated list
+    org_resp = sb.table("organizations").select("company_name, website").eq("id", org_id).maybe_single().execute()
+    if org_resp.data:
+        dupes = _check_duplicates(org_resp.data["company_name"], org_resp.data.get("website"), exclude_id=org_id, source_id=org_id)
+    else:
+        dupes = []
+
+    context = {
+        "request": request,
+        "duplicates": dupes,
+        "source_id": org_id,
+        "entity_type": "organization",
+    }
+    return templates.TemplateResponse("organizations/_duplicate_warning.html", context)
+
+
+# ---------------------------------------------------------------------------
+# LEADS PANEL (HTMX) — GET /organizations/{org_id}/leads-panel
+# ---------------------------------------------------------------------------
+
+# Inactive lead stages — same as grid_service._enrich_organizations
+_INACTIVE_LEAD_STAGES = (
+    "won", "lost_dropped_out", "lost_selected_other",
+    "lost_nobody_hired", "closed", "declined",
+)
+
+@router.get("/{org_id}/leads-panel", response_class=HTMLResponse)
+async def org_leads_panel(
+    request: Request,
+    org_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """HTMX partial: inline mini-table of active leads for an organization."""
+    sb = get_supabase()
+
+    leads_resp = (
+        sb.table("leads")
+        .select("id, summary, rating, service_type, aksia_owner_id, expected_revenue, lead_type")
+        .eq("organization_id", str(org_id))
+        .eq("is_deleted", False)
+        .execute()
+    )
+    all_leads = leads_resp.data or []
+
+    # Filter out inactive stages in Python
+    active_leads = [
+        l for l in all_leads
+        if l.get("rating") not in _INACTIVE_LEAD_STAGES
+    ]
+
+    # Batch resolve owner names
+    owner_ids = list({str(l["aksia_owner_id"]) for l in active_leads if l.get("aksia_owner_id")})
+    user_map = batch_resolve_users(owner_ids) if owner_ids else {}
+
+    # Batch resolve stage labels from reference_data
+    stage_labels = {}
+    for rd in get_reference_data("lead_stage"):
+        stage_labels[rd["value"]] = rd["label"]
+
+    # Attach resolved names to each lead
+    for lead in active_leads:
+        lead["owner_name"] = user_map.get(str(lead.get("aksia_owner_id", "")), "")
+        lead["stage_label"] = stage_labels.get(lead.get("rating", ""), (lead.get("rating") or "").replace("_", " ").title())
+
+    context = {
+        "request": request,
+        "org_id": str(org_id),
+        "leads": active_leads,
+    }
+    return templates.TemplateResponse("organizations/_org_leads_panel.html", context)
 
 
 # ---------------------------------------------------------------------------
@@ -418,7 +384,7 @@ async def get_organization(
         sb.table("organizations")
         .select("*")
         .eq("id", str(org_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -429,7 +395,7 @@ async def get_organization(
     # Linked people
     people_resp = (
         sb.table("person_organization_links")
-        .select("link_type, job_title_at_org, person:people(id, first_name, last_name, email, job_title, coverage_owner, do_not_contact)")
+        .select("link_type, job_title_at_org, start_date, end_date, person:people(id, first_name, last_name, email, job_title, coverage_owner, do_not_contact)")
         .eq("organization_id", str(org_id))
         .execute()
     )
@@ -451,7 +417,7 @@ async def get_organization(
         sb.table("leads")
         .select("id, start_date, end_date, rating, service_type, asset_classes, relationship, aksia_owner_id, expected_revenue, expected_yr1_flar")
         .eq("organization_id", str(org_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .order("created_at", desc=True)
         .execute()
     )
@@ -462,34 +428,36 @@ async def get_organization(
         sb.table("contracts")
         .select("id, start_date, service_type, asset_classes, actual_revenue, client_coverage")
         .eq("organization_id", str(org_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .execute()
     )
     contracts = contracts_resp.data or []
 
-    # Linked fund prospects
-    fp_resp = (
-        sb.table("fund_prospects")
-        .select("id, fund_id, share_class, stage, aksia_owner_id, target_allocation_mn, probability_pct")
+    # Linked fundraise/product leads (replaces fund_prospects)
+    fundraise_resp = (
+        sb.table("leads")
+        .select("id, fund_id, share_class, rating, aksia_owner_id, target_allocation_mn, probability_pct, lead_type")
         .eq("organization_id", str(org_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
+        .in_("lead_type", ["fundraise", "product"])
         .execute()
     )
-    fund_prospects = fp_resp.data or []
+    fundraise_leads = fundraise_resp.data or []
 
-    # Enrich fund prospects with ticker
-    if fund_prospects:
+    # Enrich fundraise leads with fund ticker
+    if fundraise_leads:
         funds_resp = sb.table("funds").select("id, ticker").execute()
         funds_map = {f["id"]: f["ticker"] for f in (funds_resp.data or [])}
-        for fp in fund_prospects:
-            fp["fund_ticker"] = funds_map.get(fp.get("fund_id"), "?")
+        for fl in fundraise_leads:
+            fl["fund_ticker"] = funds_map.get(fl.get("fund_id"), "?")
+            fl["stage"] = fl.get("rating", "target_identified")
 
     # Fee arrangements
     fee_resp = (
         sb.table("fee_arrangements")
         .select("id, arrangement_name, annual_value, frequency, status, start_date, end_date")
         .eq("organization_id", str(org_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .execute()
     )
     fee_arrangements = fee_resp.data or []
@@ -546,7 +514,7 @@ async def get_organization(
         "activities": activities,
         "leads": leads,
         "contracts": contracts,
-        "fund_prospects": fund_prospects,
+        "fundraise_leads": fundraise_leads,
         "fee_arrangements": fee_arrangements,
         "coverage_names": coverage_names,
         "last_contact_date": last_contact_date,
@@ -574,15 +542,21 @@ async def create_organization(
 
     form = await request.form()
     form_data = dict(form)
-    org_data = _build_org_data_from_form(form_data)
 
-    # Validation
-    errors = []
-    if not org_data.get("company_name"):
+    # Dynamic form parsing via field_defs
+    field_defs = get_field_definitions("organization", active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    org_data = parse_form_data("organization", form, field_defs)
+
+    # Dynamic validation from field_defs
+    errors = validate_form_data("organization", org_data, field_defs)
+
+    # Entity-specific validation (keep existing logic)
+    if not org_data.get("company_name") and "Company Name is required." not in errors:
         errors.append("Company Name is required.")
-    if not org_data.get("relationship_type"):
+    if not org_data.get("relationship_type") and "Relationship Type is required." not in errors:
         errors.append("Relationship Type is required.")
-    if not org_data.get("organization_type"):
+    if not org_data.get("organization_type") and "Organization Type is required." not in errors:
         errors.append("Organization Type is required.")
 
     # RFP Hold — only rfp_team and admin can set it
@@ -590,14 +564,17 @@ async def create_organization(
         org_data["rfp_hold"] = False
 
     if errors:
+        form_ctx = build_form_context("organization", record=None)
         context = {
             "request": request,
             "user": current_user,
             "org": org_data,
             "errors": errors,
-            "relationship_types": _get_reference_data("relationship_type"),
-            "organization_types": _get_reference_data("organization_type"),
-            "countries": _get_reference_data("country"),
+            "relationship_types": get_reference_data("relationship_type"),
+            "organization_types": get_reference_data("organization_type"),
+            "countries": get_reference_data("country"),
+            "sections": form_ctx["sections"],
+            "field_defs": form_ctx["field_defs"],
         }
         return templates.TemplateResponse("organizations/form.html", context)
 
@@ -605,14 +582,17 @@ async def create_organization(
     if form_data.get("confirm_duplicate") != "yes":
         dupes = _check_duplicates(org_data["company_name"], org_data.get("website"))
         if dupes:
+            form_ctx = build_form_context("organization", record=None)
             context = {
                 "request": request,
                 "user": current_user,
                 "org": org_data,
                 "duplicates": dupes,
-                "relationship_types": _get_reference_data("relationship_type"),
-                "organization_types": _get_reference_data("organization_type"),
-                "countries": _get_reference_data("country"),
+                "relationship_types": get_reference_data("relationship_type"),
+                "organization_types": get_reference_data("organization_type"),
+                "countries": get_reference_data("country"),
+                "sections": form_ctx["sections"],
+                "field_defs": form_ctx["field_defs"],
             }
             return templates.TemplateResponse("organizations/form.html", context)
 
@@ -624,7 +604,7 @@ async def create_organization(
     if resp.data:
         new_org = resp.data[0]
         # Audit log — record creation
-        _log_field_change("organization", new_org["id"], "_created", None, "record created", current_user.id)
+        log_field_change("organization", new_org["id"], "_created", None, "record created", current_user.id)
         return RedirectResponse(url=f"/organizations/{new_org['id']}", status_code=303)
 
     raise HTTPException(status_code=500, detail="Failed to create organization")
@@ -648,7 +628,7 @@ async def edit_organization_form(
         sb.table("organizations")
         .select("*")
         .eq("id", str(org_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -656,13 +636,17 @@ async def edit_organization_form(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
+    form_ctx = build_form_context("organization", record=org)
+
     context = {
         "request": request,
         "user": current_user,
         "org": org,
-        "relationship_types": _get_reference_data("relationship_type"),
-        "organization_types": _get_reference_data("organization_type"),
-        "countries": _get_reference_data("country"),
+        "relationship_types": get_reference_data("relationship_type"),
+        "organization_types": get_reference_data("organization_type"),
+        "countries": get_reference_data("country"),
+        "sections": form_ctx["sections"],
+        "field_defs": form_ctx["field_defs"],
     }
     return templates.TemplateResponse("organizations/form.html", context)
 
@@ -687,7 +671,7 @@ async def update_organization(
         sb.table("organizations")
         .select("*")
         .eq("id", str(org_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -697,35 +681,44 @@ async def update_organization(
 
     form = await request.form()
     form_data = dict(form)
-    org_data = _build_org_data_from_form(form_data)
+
+    # Dynamic form parsing via field_defs
+    field_defs = get_field_definitions("organization", active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    org_data = parse_form_data("organization", form, field_defs)
 
     # RFP Hold — only rfp_team and admin can change it
     if current_user.role not in ("admin", "rfp_team"):
         org_data["rfp_hold"] = old_org["rfp_hold"]
 
-    # Validation
-    errors = []
-    if not org_data.get("company_name"):
+    # Dynamic validation from field_defs
+    errors = validate_form_data("organization", org_data, field_defs)
+
+    # Entity-specific validation (keep existing logic)
+    if not org_data.get("company_name") and "Company Name is required." not in errors:
         errors.append("Company Name is required.")
-    if not org_data.get("relationship_type"):
+    if not org_data.get("relationship_type") and "Relationship Type is required." not in errors:
         errors.append("Relationship Type is required.")
-    if not org_data.get("organization_type"):
+    if not org_data.get("organization_type") and "Organization Type is required." not in errors:
         errors.append("Organization Type is required.")
 
     if errors:
+        form_ctx = build_form_context("organization", record=old_org)
         context = {
             "request": request,
             "user": current_user,
             "org": {**old_org, **org_data},
             "errors": errors,
-            "relationship_types": _get_reference_data("relationship_type"),
-            "organization_types": _get_reference_data("organization_type"),
-            "countries": _get_reference_data("country"),
+            "relationship_types": get_reference_data("relationship_type"),
+            "organization_types": get_reference_data("organization_type"),
+            "countries": get_reference_data("country"),
+            "sections": form_ctx["sections"],
+            "field_defs": form_ctx["field_defs"],
         }
         return templates.TemplateResponse("organizations/form.html", context)
 
     # Audit log every changed field
-    _audit_changes(str(org_id), old_org, org_data, current_user.id)
+    audit_changes("organization", str(org_id), old_org, org_data, current_user.id)
 
     # Update
     sb.table("organizations").update(org_data).eq("id", str(org_id)).execute()
@@ -747,8 +740,8 @@ async def archive_organization(
     require_role(current_user, ["admin"])
 
     sb = get_supabase()
-    sb.table("organizations").update({"is_archived": True}).eq("id", str(org_id)).execute()
-    _log_field_change("organization", str(org_id), "is_archived", False, True, current_user.id)
+    sb.table("organizations").update({"is_deleted": True}).eq("id", str(org_id)).execute()
+    log_field_change("organization", str(org_id), "is_deleted", False, True, current_user.id)
 
     if request.headers.get("HX-Request"):
         return HTMLResponse('<p class="text-sm text-green-600">Organization archived.</p>')

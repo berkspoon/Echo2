@@ -2,6 +2,9 @@
 {% block title %}Lead — {{ org_name }} — Echo 2.0{% endblock %}
 {% block page_title %}Lead Detail{% endblock %}
 
+{% set is_fundraise = lead_type in ('fundraise', 'product') %}
+{% set current_stage = stage_order.get(lead.rating, 1) %}
+
 {% block content %}
 <div class="space-y-6">
 
@@ -14,13 +17,33 @@
                         <h2 class="text-xl font-bold text-gray-900">
                             <a href="/organizations/{{ lead.organization_id }}" class="text-brand-600 hover:underline">{{ org_name }}</a>
                         </h2>
+                        <!-- Lead type badge -->
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                            {% if lead_type == 'advisory' %}bg-blue-100 text-blue-800
+                            {% elif lead_type == 'fundraise' %}bg-purple-100 text-purple-800
+                            {% elif lead_type == 'product' %}bg-orange-100 text-orange-800
+                            {% endif %}">
+                            {{ lead_type | title }}
+                        </span>
+                        <!-- Stage badge -->
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                             {% if lead.rating == 'exploratory' %}bg-gray-100 text-gray-800
                             {% elif lead.rating == 'radar' %}bg-blue-100 text-blue-800
                             {% elif lead.rating == 'focus' %}bg-yellow-100 text-yellow-800
                             {% elif lead.rating == 'verbal_mandate' %}bg-purple-100 text-purple-800
                             {% elif lead.rating == 'won' %}bg-green-100 text-green-800
-                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {% elif lead.rating and lead.rating.startswith('lost') %}bg-red-100 text-red-800
+                            {% elif lead.rating == 'target_identified' %}bg-gray-100 text-gray-800
+                            {% elif lead.rating == 'intro_scheduled' %}bg-blue-100 text-blue-800
+                            {% elif lead.rating == 'initial_meeting_complete' %}bg-indigo-100 text-indigo-800
+                            {% elif lead.rating == 'ddq_materials_sent' %}bg-cyan-100 text-cyan-800
+                            {% elif lead.rating == 'due_diligence' %}bg-yellow-100 text-yellow-800
+                            {% elif lead.rating == 'ic_review' %}bg-orange-100 text-orange-800
+                            {% elif lead.rating == 'soft_circle' %}bg-purple-100 text-purple-800
+                            {% elif lead.rating == 'legal_docs' %}bg-pink-100 text-pink-800
+                            {% elif lead.rating == 'closed' %}bg-green-100 text-green-800
+                            {% elif lead.rating == 'declined' %}bg-red-100 text-red-800
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
                             {{ stage_labels.get(lead.rating, lead.rating | replace('_', ' ') | title) }}
                         </span>
                     </div>
@@ -45,7 +68,31 @@
 
             <!-- Stage Progress Bar -->
             <div class="mt-6">
-                {% set current_stage = stage_order.get(lead.rating, 1) %}
+                {% if is_fundraise %}
+                {# Fundraise stage progress bar #}
+                {% set fr_stages = [('target_identified', 'Target', 1), ('intro_scheduled', 'Intro', 2), ('initial_meeting_complete', 'Initial Mtg', 3), ('ddq_materials_sent', 'DDQ', 4), ('due_diligence', 'DD', 5), ('ic_review', 'IC', 6), ('soft_circle', 'Soft Circle', 7), ('legal_docs', 'Legal', 8)] %}
+                <div class="flex items-center gap-1">
+                    {% for val, label, order in fr_stages %}
+                    <div class="flex-1">
+                        <div class="h-2 rounded-full {{ 'bg-brand-500' if current_stage >= order else 'bg-gray-200' }}"></div>
+                        <p class="mt-1 text-xs {{ 'text-brand-600 font-medium' if lead.rating == val else 'text-gray-400' }}">{{ label }}</p>
+                    </div>
+                    {% endfor %}
+                    <div class="flex-1">
+                        {% if lead.rating == 'closed' %}
+                        <div class="h-2 rounded-full bg-green-500"></div>
+                        <p class="mt-1 text-xs text-green-600 font-medium">Closed</p>
+                        {% elif lead.rating == 'declined' %}
+                        <div class="h-2 rounded-full bg-red-500"></div>
+                        <p class="mt-1 text-xs text-red-600 font-medium">Declined</p>
+                        {% else %}
+                        <div class="h-2 rounded-full bg-gray-200"></div>
+                        <p class="mt-1 text-xs text-gray-400">Outcome</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% else %}
+                {# Advisory stage progress bar #}
                 {% set stages = [('exploratory', 'Exploratory', 1), ('radar', 'Radar', 2), ('focus', 'Focus', 3), ('verbal_mandate', 'Verbal Mandate', 4)] %}
                 <div class="flex items-center gap-1">
                     {% for val, label, order in stages %}
@@ -67,6 +114,7 @@
                         {% endif %}
                     </div>
                 </div>
+                {% endif %}
             </div>
 
             <!-- Key fields grid -->
@@ -79,14 +127,17 @@
                     <dt class="text-xs font-medium text-gray-500 uppercase">End Date</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ lead.end_date or '—' }}</dd>
                 </div>
+                {% if not is_fundraise %}
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Relationship</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ (lead.relationship or '—') | replace('_', ' ') | title }}</dd>
                 </div>
+                {% endif %}
                 <div>
-                    <dt class="text-xs font-medium text-gray-500 uppercase">Aksia Owner</dt>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Lead Owners</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ owner_name }}</dd>
                 </div>
+                {% if not is_fundraise %}
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Service Type</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ (lead.service_type or '—') | replace('_', ' ') | title }}</dd>
@@ -95,6 +146,7 @@
                     <dt class="text-xs font-medium text-gray-500 uppercase">Source</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ lead.source or '—' }}</dd>
                 </div>
+                {% endif %}
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Created</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ lead.created_at[:10] if lead.created_at else '—' }}</dd>
@@ -105,8 +157,8 @@
                 </div>
             </div>
 
-            <!-- Asset Classes -->
-            {% if lead.asset_classes %}
+            <!-- Asset Classes (advisory only) -->
+            {% if not is_fundraise and lead.asset_classes %}
             <div class="mt-4">
                 <dt class="text-xs font-medium text-gray-500 uppercase mb-2">Asset Classes</dt>
                 <div class="flex flex-wrap gap-1.5">
@@ -121,8 +173,94 @@
         </div>
     </div>
 
-    <!-- Focus+ Fields (only show if stage >= focus) -->
-    {% set current_stage = stage_order.get(lead.rating, 1) %}
+    {% if is_fundraise %}
+    <!-- Fund & Allocation Details (fundraise/product only) -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Fund & Allocation</h3>
+        </div>
+        <div class="p-6">
+            <!-- Fund info -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Fund</dt>
+                    <dd class="mt-1 text-sm text-gray-900">
+                        {% if fund_info %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-gray-100 text-gray-800 mr-1">{{ fund_info.ticker }}</span>
+                        {{ fund_info.fund_name }}
+                        {% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Share Class</dt>
+                    <dd class="mt-1 text-sm text-gray-900">
+                        {% if lead.share_class %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ 'bg-blue-100 text-blue-800' if lead.share_class == 'domestic' else 'bg-teal-100 text-teal-800' }}">
+                            {{ lead.share_class | title }}
+                        </span>
+                        {% else %}—{% endif %}
+                    </dd>
+                </div>
+                {% if lead.stage_entry_date %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Stage Entry Date</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.stage_entry_date }}</dd>
+                </div>
+                {% endif %}
+                {% if lead.rating == 'declined' and lead.decline_reason %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Decline Reason</dt>
+                    <dd class="mt-1 text-sm text-red-600 font-medium">{{ decline_labels.get(lead.decline_reason, lead.decline_reason | replace('_', ' ') | title) }}</dd>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Allocation metrics -->
+            <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-blue-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-blue-600 uppercase">Target Allocation</dt>
+                    <dd class="mt-1 text-lg font-bold text-blue-900">
+                        {% if lead.target_allocation_mn is not none %}${{ '{:,.1f}'.format(lead.target_allocation_mn) }}M{% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div class="bg-purple-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-purple-600 uppercase">Soft Circle</dt>
+                    <dd class="mt-1 text-lg font-bold text-purple-900">
+                        {% if lead.soft_circle_mn is not none %}${{ '{:,.1f}'.format(lead.soft_circle_mn) }}M{% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div class="bg-green-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-green-600 uppercase">Hard Circle</dt>
+                    <dd class="mt-1 text-lg font-bold text-green-900">
+                        {% if lead.hard_circle_mn is not none %}${{ '{:,.1f}'.format(lead.hard_circle_mn) }}M{% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div class="bg-yellow-50 rounded-lg p-3">
+                    <dt class="text-xs font-medium text-yellow-600 uppercase">Probability</dt>
+                    <dd class="mt-1 text-lg font-bold text-yellow-900">
+                        {{ lead.probability_pct ~ '%' if lead.probability_pct is not none else '—' }}
+                    </dd>
+                </div>
+            </div>
+
+            <!-- Next Steps -->
+            {% if lead.next_steps or lead.next_steps_date %}
+            <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Next Steps</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.next_steps or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Next Steps Date</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ lead.next_steps_date or '—' }}</dd>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% else %}
+    <!-- Advisory: Focus+ Fields -->
     {% if current_stage >= 3 %}
     <div class="bg-white rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200">
@@ -158,7 +296,6 @@
                 {% endif %}
             </div>
 
-            <!-- FLAR fields -->
             <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Yr 1 FLAR</dt>
@@ -180,7 +317,6 @@
                 {% endif %}
             </div>
 
-            <!-- RFP section -->
             <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">RFP Status</dt>
@@ -198,7 +334,6 @@
                 </div>
             </div>
 
-            <!-- Next Steps -->
             {% if lead.next_steps or lead.next_steps_date %}
             <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -215,7 +350,7 @@
     </div>
     {% endif %}
 
-    <!-- Verbal Mandate+ Fields (only show if stage >= verbal_mandate) -->
+    <!-- Advisory: Verbal Mandate+ Fields -->
     {% if current_stage >= 4 %}
     <div class="bg-white rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200">
@@ -242,11 +377,18 @@
     </div>
     {% endif %}
 
-    <!-- Contract (if won and contract exists) -->
+    {% endif %}
+
+    <!-- Contract section: show for all lead types when won/closed -->
     {% if contract %}
     <div class="bg-white rounded-lg shadow border-l-4 border-green-400">
-        <div class="px-6 py-4 border-b border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
             <h3 class="text-sm font-semibold text-green-800 uppercase tracking-wider">Contract Created</h3>
+            <a href="/contracts/{{ contract.id }}"
+               class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-700 bg-green-100 border border-green-300 rounded-md hover:bg-green-200">
+                <svg class="mr-1 h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                View Contract
+            </a>
         </div>
         <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -265,6 +407,28 @@
             </div>
         </div>
     </div>
+    {% elif (lead.rating == 'won' or lead.rating == 'closed') %}
+    {# Lead is won/closed but no contract yet — show create button for admin/legal #}
+    {% if user.role in ('admin', 'legal') %}
+    <div class="bg-white rounded-lg shadow border-l-4 border-yellow-400">
+        <div class="px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <svg class="h-5 w-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">No contract has been created for this lead yet.</p>
+                    <p class="text-xs text-gray-500">Create a contract to formalize this won engagement.</p>
+                </div>
+            </div>
+            <a href="/contracts/new?lead_id={{ lead.id }}"
+               class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 shadow-sm">
+                <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Create Contract
+            </a>
+        </div>
+    </div>
+    {% endif %}
     {% endif %}
 
     <!-- Related Tasks -->
@@ -298,9 +462,32 @@
     </div>
     {% endif %}
 
+    <!-- Documents -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Documents</h3>
+        </div>
+        <div class="p-6" id="documents-tab-content"
+             hx-get="/documents/for/lead/{{ lead.id }}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="flex items-center justify-center py-4">
+                <svg class="animate-spin h-5 w-5 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                <span class="text-sm text-gray-400">Loading documents...</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Back link -->
     <div>
-        <a href="/leads" class="text-sm text-brand-600 hover:underline">&larr; Back to Advisory Pipeline</a>
+        {% if is_fundraise %}
+        <a href="/leads?lead_type=fundraise" class="text-sm text-brand-600 hover:underline">&larr; Back to Fundraise Pipeline</a>
+        {% else %}
+        <a href="/leads?lead_type=advisory" class="text-sm text-brand-600 hover:underline">&larr; Back to Advisory Pipeline</a>
+        {% endif %}
     </div>
 
 </div>

@@ -31,7 +31,7 @@
 
     <!-- Filters -->
     <div class="bg-white rounded-lg shadow p-4">
-        <form id="filter-form" hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-target="#tasks-list-container" hx-push-url="true" class="flex flex-wrap items-end gap-4">
+        <form id="filter-form" hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-target="#{{ grid_container_id }}" hx-push-url="true" class="flex flex-wrap items-end gap-4">
 
             {% if view_mode == 'all_tasks' %}
             <!-- Search (all tasks only) -->
@@ -40,7 +40,7 @@
                 <input type="text" name="q" value="{{ search }}"
                        placeholder="Search by title or notes..."
                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                       hx-get="/tasks/" hx-trigger="keyup changed delay:400ms" hx-target="#tasks-list-container" hx-push-url="true" hx-include="#filter-form">
+                       hx-get="/tasks/" hx-trigger="keyup changed delay:400ms" hx-target="#{{ grid_container_id }}" hx-push-url="true" hx-include="#filter-form">
             </div>
             {% endif %}
 
@@ -49,7 +49,7 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">Status</label>
                 <select name="status"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+                        hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
                     <option value="">All Statuses</option>
                     {% for s in statuses %}
                     <option value="{{ s.value }}" {{ 'selected' if status_filter == s.value else '' }}>{{ s.label }}</option>
@@ -63,7 +63,7 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">Assignee</label>
                 <select name="assignee"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="/tasks/" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+                        hx-get="/tasks/" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
                     <option value="">All Assignees</option>
                     {% for u in users %}
                     <option value="{{ u.id }}" {{ 'selected' if assignee_filter == u.id|string else '' }}>{{ u.display_name }}</option>
@@ -76,7 +76,7 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">Source</label>
                 <select name="source"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="/tasks/" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+                        hx-get="/tasks/" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
                     <option value="">All Sources</option>
                     <option value="manual" {{ 'selected' if source_filter == 'manual' else '' }}>Manual</option>
                     <option value="activity_follow_up" {{ 'selected' if source_filter == 'activity_follow_up' else '' }}>Activity Follow-Up</option>
@@ -92,7 +92,7 @@
                     <input type="checkbox" name="overdue" value="true"
                            {{ 'checked' if overdue_only == 'true' else '' }}
                            class="h-4 w-4 rounded border-gray-300 text-red-500 focus:ring-red-500"
-                           hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+                           hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
                     <span class="text-xs font-medium text-red-600">Overdue only</span>
                 </label>
             </div>
@@ -102,7 +102,7 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">Due From</label>
                 <input type="date" name="from" value="{{ date_from }}"
                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                       hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+                       hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
             </div>
 
             <!-- Date To -->
@@ -110,7 +110,7 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">Due To</label>
                 <input type="date" name="to" value="{{ date_to }}"
                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                       hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#tasks-list-container" hx-include="#filter-form" hx-push-url="true">
+                       hx-get="{{ '/tasks/my-tasks' if view_mode == 'my_tasks' else '/tasks/' }}" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
             </div>
 
             <input type="hidden" name="sort_by" value="{{ sort_by }}">
@@ -119,9 +119,7 @@
     </div>
 
     <!-- Table -->
-    <div id="tasks-list-container">
-        {% include "tasks/_list_table.html" %}
-    </div>
+    {% include "components/_grid.html" %}
 
 </div>
 {% endblock %}

@@ -40,7 +40,7 @@ class FeeArrangementResponse(BaseModel):
     start_date: date
     end_date: Optional[date] = None
     notes: Optional[str] = None
-    is_archived: bool
+    is_deleted: bool
     created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime

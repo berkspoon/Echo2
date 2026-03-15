@@ -1,0 +1,165 @@
+{#
+    Dynamic field renderer macro.
+    Renders a single form field based on its field_definition metadata.
+
+    Usage:
+        {% from "components/_field_renderer.html" import render_field %}
+        {{ render_field(field_def, record, users) }}
+
+    Parameters:
+        fd       - field definition dict (from field_definitions table)
+        record   - current record dict (for pre-filling values), or {}
+        users    - list of user dicts [{id, display_name}] for lookup fields
+        errors   - list of error strings (optional, for highlighting)
+        readonly - boolean, render as read-only (optional)
+#}
+
+{% macro render_field(fd, record=None, users=None, errors=None, readonly=False) %}
+{% set record = record or {} %}
+{% set users = users or [] %}
+{% set fname = fd.field_name %}
+{% set ftype = fd.field_type %}
+{% set value = record.get(fname, fd.default_value or '') if record is mapping else '' %}
+{% set is_req = fd.is_required %}
+{% set field_id = 'field-' + fname %}
+{% set vis_rules = fd.visibility_rules or {} %}
+
+{# Build data attributes for visibility rules (consumed by JS) #}
+{% set vis_attrs = '' %}
+{% if vis_rules.get('when') %}
+{% set vis_attrs = 'data-vis-when="' + vis_rules.when + '"' %}
+{% if vis_rules.get('equals') is not none %}{% set vis_attrs = vis_attrs + ' data-vis-equals="' + vis_rules.equals|string + '"' %}{% endif %}
+{% if vis_rules.get('not_equals') is not none %}{% set vis_attrs = vis_attrs + ' data-vis-not-equals="' + vis_rules.not_equals|string + '"' %}{% endif %}
+{% if vis_rules.get('in') %}{% set vis_attrs = vis_attrs + ' data-vis-in="' + vis_rules['in']|join(',') + '"' %}{% endif %}
+{% if vis_rules.get('not_in') %}{% set vis_attrs = vis_attrs + ' data-vis-not-in="' + vis_rules.not_in|join(',') + '"' %}{% endif %}
+{% endif %}
+{% if vis_rules.get('min_stage') %}{% set vis_attrs = vis_attrs + ' data-vis-min-stage="' + vis_rules.min_stage|string + '"' %}{% endif %}
+{% if vis_rules.get('lead_type') %}{% set vis_attrs = vis_attrs + ' data-vis-lead-type="' + vis_rules.lead_type|string + '"' %}{% endif %}
+
+<div class="field-wrapper" data-field-name="{{ fname }}" {{ vis_attrs }}>
+    <label for="{{ field_id }}" class="block text-sm font-medium text-gray-700">
+        {{ fd.display_name }}
+        {% if is_req %}<span class="text-red-500">*</span>{% endif %}
+    </label>
+
+    {% if ftype == 'text' %}
+    <input type="text" name="{{ fname }}" id="{{ field_id }}"
+           value="{{ value or '' }}"
+           {{ 'required' if is_req and not readonly else '' }}
+           {{ 'disabled' if readonly else '' }}
+           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
+
+    {% elif ftype == 'textarea' %}
+    <textarea name="{{ fname }}" id="{{ field_id }}" rows="3"
+              {{ 'required' if is_req and not readonly else '' }}
+              {{ 'disabled' if readonly else '' }}
+              class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">{{ value or '' }}</textarea>
+
+    {% elif ftype == 'email' %}
+    <input type="email" name="{{ fname }}" id="{{ field_id }}"
+           value="{{ value or '' }}"
+           {{ 'required' if is_req and not readonly else '' }}
+           {{ 'disabled' if readonly else '' }}
+           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
+
+    {% elif ftype == 'url' %}
+    <input type="url" name="{{ fname }}" id="{{ field_id }}"
+           value="{{ value or '' }}"
+           placeholder="https://"
+           {{ 'required' if is_req and not readonly else '' }}
+           {{ 'disabled' if readonly else '' }}
+           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
+
+    {% elif ftype == 'phone' %}
+    <input type="tel" name="{{ fname }}" id="{{ field_id }}"
+           value="{{ value or '' }}"
+           {{ 'required' if is_req and not readonly else '' }}
+           {{ 'disabled' if readonly else '' }}
+           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
+
+    {% elif ftype in ('number', 'currency') %}
+    <div class="mt-1 relative">
+        {% if ftype == 'currency' %}
+        <span class="absolute left-3 top-2 text-sm text-gray-500">$</span>
+        {% endif %}
+        <input type="number" name="{{ fname }}" id="{{ field_id }}"
+               value="{{ value if value is not none and value != '' else '' }}"
+               step="{{ '0.01' if ftype == 'currency' else 'any' }}"
+               {{ 'required' if is_req and not readonly else '' }}
+               {{ 'disabled' if readonly else '' }}
+               {% if fd.validation_rules and fd.validation_rules.get('min') is not none %}min="{{ fd.validation_rules.min }}"{% endif %}
+               {% if fd.validation_rules and fd.validation_rules.get('max') is not none %}max="{{ fd.validation_rules.max }}"{% endif %}
+               class="w-full rounded-md border border-gray-300 {{ 'pl-7' if ftype == 'currency' else 'pl-3' }} pr-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
+    </div>
+
+    {% elif ftype == 'date' %}
+    <input type="date" name="{{ fname }}" id="{{ field_id }}"
+           value="{{ value[:10] if value else '' }}"
+           {{ 'required' if is_req and not readonly else '' }}
+           {{ 'disabled' if readonly else '' }}
+           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
+
+    {% elif ftype == 'boolean' %}
+    <div class="mt-2 flex items-center gap-2">
+        <input type="checkbox" name="{{ fname }}" id="{{ field_id }}"
+               {{ 'checked' if value else '' }}
+               {{ 'disabled' if readonly else '' }}
+               class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+        <span class="text-sm text-gray-600">{{ fd.display_name }}</span>
+    </div>
+
+    {% elif ftype == 'dropdown' %}
+    <select name="{{ fname }}" id="{{ field_id }}"
+            {{ 'required' if is_req and not readonly else '' }}
+            {{ 'disabled' if readonly else '' }}
+            class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
+        <option value="">— Select —</option>
+        {% for opt in fd.options or [] %}
+        <option value="{{ opt.value }}" {{ 'selected' if value and value == opt.value else '' }}>{{ opt.label }}</option>
+        {% endfor %}
+    </select>
+
+    {% elif ftype == 'multi_select' %}
+    <div class="mt-2 space-y-1 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-2">
+        {% set selected_values = value if value is iterable and value is not string else [] %}
+        {% for opt in fd.options or [] %}
+        <label class="flex items-center gap-2 py-0.5">
+            <input type="checkbox" name="{{ fname }}" value="{{ opt.value }}"
+                   {{ 'checked' if opt.value in selected_values else '' }}
+                   {{ 'disabled' if readonly else '' }}
+                   class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+            <span class="text-sm text-gray-700">{{ opt.label }}</span>
+        </label>
+        {% endfor %}
+    </div>
+
+    {% elif ftype == 'lookup' %}
+    {# Lookup fields: render as user dropdown if the field is a user reference, else text input #}
+    {% if fname in ('assigned_to', 'coverage_owner', 'author_id', 'aksia_owner_id', 'questionnaire_filled_by') and users %}
+    <select name="{{ fname }}" id="{{ field_id }}"
+            {{ 'required' if is_req and not readonly else '' }}
+            {{ 'disabled' if readonly else '' }}
+            class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
+        <option value="">— Select —</option>
+        {% for u in users %}
+        <option value="{{ u.id }}" {{ 'selected' if value and value|string == u.id|string else '' }}>{{ u.display_name }}</option>
+        {% endfor %}
+    </select>
+    {% else %}
+    <input type="text" name="{{ fname }}" id="{{ field_id }}"
+           value="{{ value or '' }}"
+           {{ 'required' if is_req and not readonly else '' }}
+           {{ 'disabled' if readonly else '' }}
+           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
+    {% endif %}
+
+    {% else %}
+    {# Fallback: text input #}
+    <input type="text" name="{{ fname }}" id="{{ field_id }}"
+           value="{{ value or '' }}"
+           {{ 'required' if is_req and not readonly else '' }}
+           {{ 'disabled' if readonly else '' }}
+           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
+    {% endif %}
+</div>
+{% endmacro %}

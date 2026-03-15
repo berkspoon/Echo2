@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/_form_section.html" import render_section %}
 {% block title %}{{ 'Edit' if task and task.id is defined else 'New' }} Task — Echo 2.0{% endblock %}
 {% block page_title %}{{ 'Edit Task' if task and task.id is defined else 'New Task' }}{% endblock %}
 
@@ -34,26 +35,39 @@
     </div>
     {% endif %}
 
-    <!-- Basic Information -->
+    <!-- Dynamic field sections from field_definitions -->
+    {% if sections is defined %}
+        {% for section_name, fields in sections.items() %}
+            {# Filter out source (set programmatically) and status (only on edit) #}
+            {% set visible_fields = [] %}
+            {% for fd in fields %}
+                {% if fd.field_name != 'source' %}
+                    {% if fd.field_name != 'status' or (task and task.id is defined) %}
+                        {% set _ = visible_fields.append(fd) %}
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+            {% if visible_fields %}
+                {{ render_section(section_name, visible_fields, task or {}, users, errors) }}
+            {% endif %}
+        {% endfor %}
+    {% else %}
+    <!-- Fallback: hardcoded fields when sections not provided -->
     <div class="bg-white rounded-lg shadow p-6">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Basic Information</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-
             <div class="md:col-span-2">
                 <label for="title" class="block text-sm font-medium text-gray-700">Title <span class="text-red-500">*</span></label>
                 <input type="text" name="title" id="title" required
                        value="{{ task.title if task and task.title else '' }}"
-                       placeholder="What needs to be done?"
                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
             </div>
-
             <div>
                 <label for="due_date" class="block text-sm font-medium text-gray-700">Due Date</label>
                 <input type="date" name="due_date" id="due_date"
                        value="{{ task.due_date[:10] if task and task.due_date else '' }}"
                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
             </div>
-
             <div>
                 <label for="assigned_to" class="block text-sm font-medium text-gray-700">Assigned To <span class="text-red-500">*</span></label>
                 <select name="assigned_to" id="assigned_to" required
@@ -65,44 +79,33 @@
                     </option>
                     {% endfor %}
                 </select>
-                {% if suggested_assignees is defined and suggested_assignees %}
-                <div class="mt-2">
-                    <p class="text-xs text-gray-500 mb-1">Coverage owners at linked organizations:</p>
-                    <div class="flex flex-wrap gap-1">
-                        {% for sa in suggested_assignees %}
-                        <button type="button" onclick="document.getElementById('assigned_to').value='{{ sa.id }}'"
-                                class="text-xs px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200">
-                            {{ sa.display_name }}
-                        </button>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
             </div>
-
-            {% if task and task.id is defined %}
-            <div>
-                <label for="status" class="block text-sm font-medium text-gray-700">Status</label>
-                <select name="status" id="status"
-                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
-                    {% for s in statuses %}
-                    <option value="{{ s.value }}" {{ 'selected' if task and task.status == s.value else '' }}>{{ s.label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            {% endif %}
         </div>
     </div>
+    {% endif %}
 
-    <!-- Link to Record (optional) -->
+    <!-- Suggested assignees (entity-specific) -->
+    {% if suggested_assignees is defined and suggested_assignees %}
+    <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-xs text-gray-500 mb-2">Coverage owners at linked organizations:</p>
+        <div class="flex flex-wrap gap-1">
+            {% for sa in suggested_assignees %}
+            <button type="button" onclick="document.getElementById('field-assigned_to').value='{{ sa.id }}'"
+                    class="text-xs px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200">
+                {{ sa.display_name }}
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Link to Record (entity-specific, not from field_defs) -->
     <div class="bg-white rounded-lg shadow p-6">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Link to Record <span class="text-xs text-gray-400 font-normal">(optional)</span></h3>
 
-        <!-- Hidden inputs for selected record -->
         <input type="hidden" name="linked_record_type" id="linked-record-type" value="{{ pre_linked.record_type if pre_linked else '' }}">
         <input type="hidden" name="linked_record_id" id="linked-record-id" value="{{ pre_linked.record_id if pre_linked else '' }}">
 
-        <!-- Selected record chip -->
         <div id="selected-record" class="{{ '' if pre_linked else 'hidden' }} mb-3">
             <div class="inline-flex items-center gap-2 bg-brand-50 rounded-md px-3 py-2">
                 <span id="selected-record-type" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
@@ -117,7 +120,6 @@
             </div>
         </div>
 
-        <!-- Record type selector + search (hidden when record selected) -->
         <div id="record-search-area" class="{{ 'hidden' if pre_linked else '' }}">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -137,21 +139,12 @@
                         <input type="text" id="record-search-input"
                                placeholder="Start typing to search..."
                                class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:bg-gray-100"
-                               disabled
-                               autocomplete="off">
+                               disabled autocomplete="off">
                         <div id="record-search-results" class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"></div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-
-    <!-- Notes -->
-    <div class="bg-white rounded-lg shadow p-6">
-        <h3 class="text-base font-semibold text-gray-900 mb-4">Notes</h3>
-        <textarea name="notes" id="notes" rows="4"
-                  placeholder="Additional details or context..."
-                  class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ task.notes if task and task.notes else '' }}</textarea>
     </div>
 
     <!-- Submit -->
@@ -170,20 +163,14 @@
 
 {% block scripts %}
 <script>
-/* --- Record type change: enable/disable search --- */
 function onRecordTypeChange(type) {
     const searchInput = document.getElementById('record-search-input');
     const resultsDiv = document.getElementById('record-search-results');
-
-    // Clear previous state
     searchInput.value = '';
     resultsDiv.innerHTML = '';
-
     if (type) {
         searchInput.disabled = false;
         searchInput.placeholder = 'Start typing to search ' + type.replace('_', ' ') + 's...';
-
-        // Wire up HTMX dynamically
         searchInput.setAttribute('hx-get', '/tasks/search-records?type=' + type);
         searchInput.setAttribute('hx-trigger', 'keyup changed delay:300ms');
         searchInput.setAttribute('hx-target', '#record-search-results');
@@ -196,39 +183,24 @@ function onRecordTypeChange(type) {
     }
 }
 
-/* --- Select a record from search results --- */
 function selectRecord(id, name) {
     const typeSelect = document.getElementById('record-type-select');
     const recordType = typeSelect.value;
-
-    // Set hidden inputs
     document.getElementById('linked-record-type').value = recordType;
     document.getElementById('linked-record-id').value = id;
-
-    // Show selected chip
     document.getElementById('selected-record-type').textContent = recordType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
     document.getElementById('selected-record-name').textContent = name;
     document.getElementById('selected-record').classList.remove('hidden');
-
-    // Hide search area
     document.getElementById('record-search-area').classList.add('hidden');
-
-    // Clear search
     document.getElementById('record-search-input').value = '';
     document.getElementById('record-search-results').innerHTML = '';
 }
 
-/* --- Clear selected record --- */
 function clearRecord() {
-    // Clear hidden inputs
     document.getElementById('linked-record-type').value = '';
     document.getElementById('linked-record-id').value = '';
-
-    // Hide chip, show search
     document.getElementById('selected-record').classList.add('hidden');
     document.getElementById('record-search-area').classList.remove('hidden');
-
-    // Reset type selector
     document.getElementById('record-type-select').value = '';
     document.getElementById('record-search-input').disabled = true;
     document.getElementById('record-search-input').value = '';

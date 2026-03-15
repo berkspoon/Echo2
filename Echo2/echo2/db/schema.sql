@@ -66,16 +66,35 @@ INSERT INTO reference_data (category, value, label, parent_value, display_order)
     ('activity_subtype', 'pipeline_call', 'Pipeline Call', 'meeting', 4),
     ('activity_subtype', 'site_visit', 'Site Visit', 'meeting', 5);
 
--- Seed: Lead Stage
+-- Seed: Lead Stage (advisory stages scoped with parent_value='advisory')
+INSERT INTO reference_data (category, value, label, parent_value, display_order) VALUES
+    ('lead_stage', 'exploratory', 'Open [Exploratory]', 'advisory', 1),
+    ('lead_stage', 'radar', 'Open [Radar]', 'advisory', 2),
+    ('lead_stage', 'focus', 'Open [Focus]', 'advisory', 3),
+    ('lead_stage', 'verbal_mandate', 'Open [Verbal Mandate - In Contract]', 'advisory', 4),
+    ('lead_stage', 'won', 'Inactive [Won Mandate – Aksia Client]', 'advisory', 5),
+    ('lead_stage', 'lost_dropped_out', 'Inactive [Lost – Aksia Dropped Out]', 'advisory', 6),
+    ('lead_stage', 'lost_selected_other', 'Inactive [Lost – Selected Someone Else]', 'advisory', 7),
+    ('lead_stage', 'lost_nobody_hired', 'Inactive [Lost – Nobody Hired]', 'advisory', 8);
+
+-- Seed: Lead Stage (fundraise stages scoped with parent_value='fundraise')
+INSERT INTO reference_data (category, value, label, parent_value, display_order) VALUES
+    ('lead_stage', 'target_identified', 'Target Identified', 'fundraise', 1),
+    ('lead_stage', 'intro_scheduled', 'Intro Scheduled', 'fundraise', 2),
+    ('lead_stage', 'initial_meeting_complete', 'Initial Meeting Complete', 'fundraise', 3),
+    ('lead_stage', 'ddq_materials_sent', 'DDQ / Materials Sent', 'fundraise', 4),
+    ('lead_stage', 'due_diligence', 'Due Diligence', 'fundraise', 5),
+    ('lead_stage', 'ic_review', 'IC Review', 'fundraise', 6),
+    ('lead_stage', 'soft_circle', 'Soft Circle', 'fundraise', 7),
+    ('lead_stage', 'legal_docs', 'Legal / Docs', 'fundraise', 8),
+    ('lead_stage', 'closed', 'Closed', 'fundraise', 9),
+    ('lead_stage', 'declined', 'Declined', 'fundraise', 10);
+
+-- Seed: Lead Type
 INSERT INTO reference_data (category, value, label, display_order) VALUES
-    ('lead_stage', 'exploratory', 'Open [Exploratory]', 1),
-    ('lead_stage', 'radar', 'Open [Radar]', 2),
-    ('lead_stage', 'focus', 'Open [Focus]', 3),
-    ('lead_stage', 'verbal_mandate', 'Open [Verbal Mandate - In Contract]', 4),
-    ('lead_stage', 'won', 'Inactive [Won Mandate – Aksia Client]', 5),
-    ('lead_stage', 'lost_dropped_out', 'Inactive [Lost – Aksia Dropped Out]', 6),
-    ('lead_stage', 'lost_selected_other', 'Inactive [Lost – Selected Someone Else]', 7),
-    ('lead_stage', 'lost_nobody_hired', 'Inactive [Lost – Nobody Hired]', 8);
+    ('lead_type', 'advisory', 'Advisory', 1),
+    ('lead_type', 'product', 'Product', 2),
+    ('lead_type', 'fundraise', 'Fundraise', 3);
 
 -- Seed: Lead Relationship Type
 INSERT INTO reference_data (category, value, label, display_order) VALUES
@@ -339,6 +358,8 @@ CREATE TABLE person_organization_links (
     link_type       TEXT NOT NULL DEFAULT 'primary'
                         CHECK (link_type IN ('primary', 'secondary', 'former')),
     job_title_at_org TEXT,
+    start_date      DATE,           -- when the person joined this org
+    end_date        DATE,           -- when the person left (set on primary org change)
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(person_id, organization_id)
@@ -444,6 +465,19 @@ CREATE TABLE leads (
     legacy_onboarding_holdings TEXT,
     potential_coverage      TEXT,
 
+    -- Lead type: advisory (default), product, fundraise
+    lead_type               TEXT NOT NULL DEFAULT 'advisory',
+
+    -- Fundraise/product fields (populated when lead_type IN ('fundraise', 'product'))
+    fund_id                 UUID REFERENCES funds(id),
+    share_class             TEXT,                    -- domestic/offshore; required for fundraise
+    decline_reason          TEXT,                    -- required when rating = declined
+    target_allocation_mn    NUMERIC(15, 2),
+    soft_circle_mn          NUMERIC(15, 2),
+    hard_circle_mn          NUMERIC(15, 2),
+    probability_pct         INT CHECK (probability_pct >= 0 AND probability_pct <= 100),
+    stage_entry_date        DATE DEFAULT CURRENT_DATE,
+
     -- System fields
     is_archived             BOOLEAN NOT NULL DEFAULT FALSE,
     created_by              UUID REFERENCES users(id),
@@ -455,6 +489,7 @@ CREATE INDEX idx_leads_org ON leads (organization_id);
 CREATE INDEX idx_leads_stage ON leads (rating);
 CREATE INDEX idx_leads_owner ON leads (aksia_owner_id);
 CREATE INDEX idx_leads_service ON leads (service_type);
+CREATE INDEX idx_leads_type ON leads (lead_type);
 
 -- =============================================================================
 -- CONTRACTS
@@ -711,6 +746,151 @@ CREATE INDEX idx_audit_user ON audit_log (changed_by);
 CREATE INDEX idx_audit_time ON audit_log (changed_at DESC);
 
 -- =============================================================================
+-- FIELD DEFINITIONS (EAV metadata — defines all fields per entity type)
+-- =============================================================================
+
+CREATE TABLE field_definitions (
+    id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    entity_type             TEXT NOT NULL,   -- 'organization', 'person', 'lead', 'contract', 'activity', 'task'
+    field_name              TEXT NOT NULL,   -- internal name (matches DB column or EAV key)
+    display_name            TEXT NOT NULL,   -- human-readable label
+    field_type              TEXT NOT NULL CHECK (field_type IN (
+        'text', 'number', 'date', 'boolean', 'dropdown', 'multi_select',
+        'lookup', 'address', 'phone', 'currency', 'calculated', 'url',
+        'email', 'textarea'
+    )),
+    storage_type            TEXT NOT NULL DEFAULT 'core_column'
+                                CHECK (storage_type IN ('core_column', 'eav')),
+    is_required             BOOLEAN NOT NULL DEFAULT FALSE,
+    is_system               BOOLEAN NOT NULL DEFAULT TRUE,   -- system fields cannot be deleted
+    display_order           INT NOT NULL DEFAULT 0,
+    section_name            TEXT,            -- groups fields into sections on forms
+    validation_rules        JSONB DEFAULT '{}',
+    dropdown_category       TEXT,            -- reference_data category for dropdown/multi_select
+    dropdown_options        JSONB,           -- inline options for simple dropdowns
+    calculation_expression  TEXT,            -- for calculated field type
+    default_value           TEXT,
+    is_active               BOOLEAN NOT NULL DEFAULT TRUE,
+    visibility_rules        JSONB DEFAULT '{}',   -- conditional show/hide logic
+    grid_default_visible    BOOLEAN NOT NULL DEFAULT TRUE,
+    grid_sortable           BOOLEAN NOT NULL DEFAULT TRUE,
+    grid_filterable         BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by              UUID REFERENCES users(id),
+    UNIQUE(entity_type, field_name)
+);
+
+CREATE INDEX idx_fd_entity ON field_definitions (entity_type);
+CREATE INDEX idx_fd_entity_active ON field_definitions (entity_type) WHERE is_active = TRUE;
+
+-- =============================================================================
+-- ENTITY CUSTOM VALUES (EAV storage for admin-created fields)
+-- =============================================================================
+
+CREATE TABLE entity_custom_values (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    entity_type         TEXT NOT NULL,
+    entity_id           UUID NOT NULL,
+    field_definition_id UUID NOT NULL REFERENCES field_definitions(id),
+    value_text          TEXT,
+    value_number        NUMERIC(15, 2),
+    value_date          DATE,
+    value_boolean       BOOLEAN,
+    value_json          JSONB,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(entity_type, entity_id, field_definition_id)
+);
+
+CREATE INDEX idx_ecv_entity ON entity_custom_values (entity_type, entity_id);
+CREATE INDEX idx_ecv_field ON entity_custom_values (field_definition_id);
+
+-- =============================================================================
+-- ROLES (dynamic, multi-role permission system)
+-- =============================================================================
+
+CREATE TABLE roles (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    role_name       TEXT NOT NULL UNIQUE,
+    display_name    TEXT NOT NULL,
+    description     TEXT,
+    permissions     JSONB NOT NULL DEFAULT '{}',
+    is_system       BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Seed system roles
+INSERT INTO roles (role_name, display_name, description, is_system, permissions) VALUES
+    ('admin', 'Admin', 'Full access to all entities and admin panel', TRUE,
+     '{"entities": {"organization": ["create","read","update","delete","archive","restore"], "person": ["create","read","update","delete","archive","restore"], "lead": ["create","read","update","delete","archive","restore"], "contract": ["create","read","update","delete","archive","restore"], "activity": ["create","read","update","delete","archive","restore"], "task": ["create","read","update","delete","archive","restore"], "distribution_list": ["create","read","update","delete","archive","restore"], "document": ["create","read","update","delete"]}, "admin_panel": true, "manage_users": true, "manage_roles": true, "manage_fields": true}'),
+    ('legal', 'Legal', 'View all entities, create and edit Contracts', TRUE,
+     '{"entities": {"organization": ["read"], "person": ["read"], "lead": ["read"], "contract": ["create","read","update"], "activity": ["read"], "task": ["read"], "distribution_list": ["read"], "document": ["read"]}, "create_contract": true}'),
+    ('rfp_team', 'RFP Team', 'Standard access plus RFP-specific field editing', TRUE,
+     '{"entities": {"organization": ["create","read","update"], "person": ["create","read","update"], "lead": ["create","read","update"], "activity": ["create","read","update"], "task": ["create","read","update"], "distribution_list": ["create","read","update"], "document": ["create","read","update","delete"]}, "rfp_hold": true}'),
+    ('bd', 'BD', 'Business Development — standard access plus lead ownership', TRUE,
+     '{"entities": {"organization": ["create","read","update"], "person": ["create","read","update"], "lead": ["create","read","update"], "activity": ["create","read","update"], "task": ["create","read","update"], "distribution_list": ["read"], "document": ["create","read","update","delete"]}}'),
+    ('standard_user', 'Standard User', 'Create and edit Orgs, People, Activities, Leads', TRUE,
+     '{"entities": {"organization": ["create","read","update"], "person": ["create","read","update"], "lead": ["create","read","update"], "activity": ["create","read","update"], "task": ["create","read","update"], "distribution_list": ["create","read","update"], "document": ["create","read","update","delete"]}}'),
+    ('read_only', 'Read Only', 'View and export only', TRUE,
+     '{"entities": {"organization": ["read"], "person": ["read"], "lead": ["read"], "contract": ["read"], "activity": ["read"], "task": ["read"], "distribution_list": ["read"], "document": ["read"]}, "export": true}');
+
+-- =============================================================================
+-- USER ROLES (junction table — users can have multiple roles)
+-- =============================================================================
+
+CREATE TABLE user_roles (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_id         UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    assigned_by     UUID REFERENCES users(id),
+    assigned_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, role_id)
+);
+
+CREATE INDEX idx_ur_user ON user_roles (user_id);
+CREATE INDEX idx_ur_role ON user_roles (role_id);
+
+-- =============================================================================
+-- DOCUMENTS (attachments linked to any entity)
+-- =============================================================================
+
+CREATE TABLE documents (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title           TEXT NOT NULL,
+    file_url        TEXT NOT NULL,
+    file_type       TEXT,                -- 'pdf', 'docx', 'xlsx', 'link', etc.
+    file_size       BIGINT,              -- bytes, nullable
+    entity_type     TEXT NOT NULL,       -- 'organization', 'person', 'lead', 'contract'
+    entity_id       UUID NOT NULL,
+    uploaded_by     UUID NOT NULL REFERENCES users(id),
+    uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_doc_entity ON documents (entity_type, entity_id);
+CREATE INDEX idx_doc_uploaded_by ON documents (uploaded_by);
+
+-- =============================================================================
+-- LEAD OWNERS (junction table — leads can have multiple owners)
+-- =============================================================================
+
+CREATE TABLE lead_owners (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    lead_id         UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    is_primary      BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(lead_id, user_id)
+);
+
+CREATE INDEX idx_lo_lead ON lead_owners (lead_id);
+CREATE INDEX idx_lo_user ON lead_owners (user_id);
+
+-- =============================================================================
 -- HELPER: Fuzzy duplicate detection for organizations
 -- =============================================================================
 
@@ -781,3 +961,85 @@ CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUN
 CREATE TRIGGER trg_reference_data_updated BEFORE UPDATE ON reference_data FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_funds_updated BEFORE UPDATE ON funds FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_person_org_links_updated BEFORE UPDATE ON person_organization_links FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_field_definitions_updated BEFORE UPDATE ON field_definitions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_entity_custom_values_updated BEFORE UPDATE ON entity_custom_values FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_roles_updated BEFORE UPDATE ON roles FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- =============================================================================
+-- PAGE LAYOUTS (admin-configurable view/edit page layouts)
+-- =============================================================================
+
+CREATE TABLE page_layouts (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    entity_type     TEXT NOT NULL,
+    layout_type     TEXT NOT NULL DEFAULT 'view',  -- 'view' or 'edit'
+    sections        JSONB NOT NULL DEFAULT '[]',   -- [{name, fields: [field_name, ...]}]
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by      UUID REFERENCES users(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_pl_entity ON page_layouts (entity_type, layout_type);
+CREATE TRIGGER trg_page_layouts_updated BEFORE UPDATE ON page_layouts FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- =============================================================================
+-- SAVED VIEWS (user-configurable grid column/filter/sort presets)
+-- =============================================================================
+
+CREATE TABLE saved_views (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id),
+    entity_type     TEXT NOT NULL,
+    view_name       TEXT NOT NULL,
+    columns         JSONB NOT NULL DEFAULT '[]',
+    filters         JSONB NOT NULL DEFAULT '{}',
+    sort_by         TEXT,
+    sort_dir        TEXT NOT NULL DEFAULT 'asc',
+    is_default      BOOLEAN NOT NULL DEFAULT FALSE,
+    is_shared       BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_sv_user_entity ON saved_views (user_id, entity_type);
+CREATE TRIGGER trg_saved_views_updated BEFORE UPDATE ON saved_views FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Seed: Lead Finder shared view
+-- INSERT INTO saved_views (user_id, entity_type, view_name, columns, filters, sort_by, sort_dir, is_shared, is_default)
+-- VALUES ('{admin_user_id}', 'organization', 'Lead Finder', '["company_name","organization_type","country","active_leads_count","relationship_type"]', '{}', 'active_leads_count', 'desc', true, false);
+
+
+-- =====================================================================
+-- Phase 5: Rename is_archived → is_deleted (Change 14)
+-- =====================================================================
+
+ALTER TABLE organizations RENAME COLUMN is_archived TO is_deleted;
+ALTER TABLE people RENAME COLUMN is_archived TO is_deleted;
+ALTER TABLE activities RENAME COLUMN is_archived TO is_deleted;
+ALTER TABLE leads RENAME COLUMN is_archived TO is_deleted;
+ALTER TABLE contracts RENAME COLUMN is_archived TO is_deleted;
+ALTER TABLE tasks RENAME COLUMN is_archived TO is_deleted;
+ALTER TABLE person_organization_links RENAME COLUMN is_archived TO is_deleted;
+ALTER TABLE activity_organization_links RENAME COLUMN is_archived TO is_deleted;
+ALTER TABLE activity_people_links RENAME COLUMN is_archived TO is_deleted;
+ALTER TABLE fee_arrangements RENAME COLUMN is_archived TO is_deleted;
+ALTER TABLE record_tags RENAME COLUMN is_archived TO is_deleted;
+-- documents table already uses is_deleted — no rename needed
+-- distribution_lists.is_active stays as-is — it's a status field, not a soft-delete flag
+
+
+-- =====================================================================
+-- Phase 5: Duplicate Suppressions table (Change 15)
+-- =====================================================================
+
+CREATE TABLE duplicate_suppressions (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    entity_type     TEXT NOT NULL,
+    record_id_a     UUID NOT NULL,
+    record_id_b     UUID NOT NULL,
+    suppressed_by   UUID NOT NULL REFERENCES users(id),
+    suppressed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(entity_type, record_id_a, record_id_b)
+);
+CREATE INDEX idx_dup_supp_entity ON duplicate_suppressions (entity_type);

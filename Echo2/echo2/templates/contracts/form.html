@@ -1,10 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Edit Contract — Echo 2.0{% endblock %}
-{% block page_title %}Edit Contract{% endblock %}
+
+{% set is_create = (mode is defined and mode == 'create') %}
+
+{% block title %}{{ 'Create Contract' if is_create else 'Edit Contract' }} — Echo 2.0{% endblock %}
+{% block page_title %}{{ 'Create Contract' if is_create else 'Edit Contract' }}{% endblock %}
 
 {% block content %}
 <form class="space-y-6" method="post"
-      action="/contracts/{{ contract.id }}">
+      action="{{ '/contracts/create' if is_create else '/contracts/' ~ contract.id }}">
+
+    {% if is_create %}
+    <input type="hidden" name="lead_id" value="{{ lead_id }}">
+    {% endif %}
 
     {% if errors is defined and errors %}
     <div class="rounded-md bg-red-50 border border-red-200 p-4">
@@ -13,6 +20,23 @@
             <li>{{ err }}</li>
             {% endfor %}
         </ul>
+    </div>
+    {% endif %}
+
+    {% if is_create %}
+    <!-- Lead context banner for create mode -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div class="flex items-start gap-3">
+            <svg class="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+                <p class="text-sm font-medium text-blue-800">Creating contract from lead</p>
+                <p class="mt-1 text-sm text-blue-700">
+                    Fields have been pre-filled from the originating lead. Review and adjust before saving.
+                </p>
+            </div>
+        </div>
     </div>
     {% endif %}
 
@@ -135,6 +159,16 @@
 
     <!-- Submit -->
     <div class="flex items-center justify-end gap-3">
+        {% if is_create %}
+        <a href="/leads/{{ lead_id }}"
+           class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            Cancel
+        </a>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 shadow-sm">
+            Create Contract
+        </button>
+        {% else %}
         <a href="/contracts/{{ contract.id }}"
            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
             Cancel
@@ -143,6 +177,7 @@
                 class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
             Save Changes
         </button>
+        {% endif %}
     </div>
 
 </form>

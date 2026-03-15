@@ -10,7 +10,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
+from db.helpers import get_reference_data, log_field_change, audit_changes, get_user_name
 from dependencies import CurrentUser, get_current_user, require_role
+from services.grid_service import build_grid_context
 
 router = APIRouter(prefix="/distribution-lists", tags=["distribution_lists"])
 templates = Jinja2Templates(directory="templates")
@@ -20,66 +22,12 @@ templates = Jinja2Templates(directory="templates")
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_reference_data(category: str) -> list[dict]:
-    """Fetch active reference data for a dropdown category."""
-    sb = get_supabase()
-    return (
-        sb.table("reference_data")
-        .select("value, label")
-        .eq("category", category)
-        .eq("is_active", True)
-        .order("display_order")
-        .execute()
-        .data or []
-    )
-
-
-def _log_field_change(
-    record_type: str,
-    record_id: str,
-    field_name: str,
-    old_value,
-    new_value,
-    changed_by: UUID,
-) -> None:
-    """Write a single field change to the audit_log table."""
-    sb = get_supabase()
-    sb.table("audit_log").insert({
-        "record_type": record_type,
-        "record_id": record_id,
-        "field_name": field_name,
-        "old_value": str(old_value) if old_value is not None else None,
-        "new_value": str(new_value) if new_value is not None else None,
-        "changed_by": str(changed_by),
-    }).execute()
-
-
-def _audit_changes(
-    record_id: str,
-    old_record: dict,
-    new_data: dict,
-    changed_by: UUID,
-) -> None:
-    """Compare old record with new data and log every changed field."""
-    for field, new_val in new_data.items():
-        old_val = old_record.get(field)
-        if str(old_val) != str(new_val) and not (old_val is None and new_val is None):
-            _log_field_change("distribution_list", record_id, field, old_val, new_val, changed_by)
-
-
-def _get_user_name(user_id: str) -> str:
-    """Look up a user display_name by ID."""
-    sb = get_supabase()
-    resp = sb.table("users").select("display_name").eq("id", user_id).maybe_single().execute()
-    return resp.data["display_name"] if resp.data else "Unknown"
-
-
 def _get_person_with_org(person_id: str) -> dict | None:
     """Look up a person with their primary org name."""
     sb = get_supabase()
     person_resp = (
         sb.table("people")
-        .select("id, first_name, last_name, email, do_not_contact, is_archived, coverage_owner")
+        .select("id, first_name, last_name, email, do_not_contact, is_deleted, coverage_owner")
         .eq("id", person_id)
         .maybe_single()
         .execute()
@@ -257,7 +205,7 @@ def _build_send_preview(list_id: str) -> dict:
 
     for pid in person_ids:
         person = _get_person_with_org(pid)
-        if not person or person.get("is_archived"):
+        if not person or person.get("is_deleted"):
             continue
 
         person_info = {
@@ -287,9 +235,9 @@ def _build_send_preview(list_id: str) -> dict:
 
 def _load_form_context(sb, current_user, dist_list=None, errors=None):
     """Load all reference data needed for the distribution list form."""
-    list_types = _get_reference_data("distribution_list_type")
-    brands = _get_reference_data("brand")
-    asset_classes = _get_reference_data("asset_class")
+    list_types = get_reference_data("distribution_list_type")
+    brands = get_reference_data("brand")
+    asset_classes = get_reference_data("asset_class")
 
     # L1 publication lists (for L2 superset dropdown)
     l1_lists_resp = (
@@ -343,7 +291,7 @@ async def search_people(
     person_id_filter = None
     if has_filters:
         # Find orgs matching country / relationship_type filters
-        org_query = sb.table("organizations").select("id").eq("is_archived", False)
+        org_query = sb.table("organizations").select("id").eq("is_deleted", False)
         if country:
             org_query = org_query.eq("country", country)
         if rel_type:
@@ -357,7 +305,7 @@ async def search_people(
                 sb.table("fund_prospects")
                 .select("organization_id")
                 .eq("fund_id", fund)
-                .eq("is_archived", False)
+                .eq("is_deleted", False)
                 .execute()
             )
             fp_org_ids = {str(fp["organization_id"]) for fp in (fp_resp.data or [])}
@@ -368,7 +316,7 @@ async def search_people(
                 sb.table("fund_prospects")
                 .select("organization_id")
                 .eq("fund_id", fund)
-                .eq("is_archived", False)
+                .eq("is_deleted", False)
                 .execute()
             )
             filtered_org_ids = list({str(fp["organization_id"]) for fp in (fp_resp.data or [])})
@@ -393,7 +341,7 @@ async def search_people(
         query1 = (
             sb.table("people")
             .select("id, first_name, last_name, email, do_not_contact")
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .eq("do_not_contact", False)
             .ilike("last_name", f"%{q}%")
             .order("last_name")
@@ -407,7 +355,7 @@ async def search_people(
         query2 = (
             sb.table("people")
             .select("id, first_name, last_name, email, do_not_contact")
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .eq("do_not_contact", False)
             .ilike("first_name", f"%{q}%")
             .order("last_name")
@@ -429,7 +377,7 @@ async def search_people(
         query = (
             sb.table("people")
             .select("id, first_name, last_name, email, do_not_contact")
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .eq("do_not_contact", False)
             .in_("id", person_id_filter)
             .order("last_name")
@@ -570,107 +518,35 @@ async def new_list_form(
 async def list_distribution_lists(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=10, le=100),
-    search: str = Query("", alias="q"),
-    list_type: str = Query("", alias="type"),
-    brand: str = Query("", alias="brand"),
-    asset_class: str = Query("", alias="asset_class"),
-    official: str = Query("", alias="official"),
-    sort_by: str = Query("list_name"),
-    sort_dir: str = Query("asc"),
 ):
     """List distribution lists with filtering, search, sorting, and pagination."""
-    sb = get_supabase()
+    extra_filters = {
+        "_user_id": str(current_user.id),
+        "_user_role": current_user.role,
+    }
+    ctx = build_grid_context("distribution_list", request, current_user, base_url="/distribution-lists", extra_filters=extra_filters)
 
-    query = (
-        sb.table("distribution_lists")
-        .select("id, list_name, list_type, brand, asset_class, frequency, "
-                "is_official, is_private, owner_id, l2_superset_of, "
-                "created_at", count="exact")
-        .eq("is_active", True)
-    )
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse("components/_grid.html", {"request": request, **ctx})
 
-    # Privacy filter: non-admin users only see official + own custom + public custom
-    if current_user.role != "admin":
-        query = query.or_(
-            f"is_official.eq.true,owner_id.eq.{current_user.id},is_private.eq.false"
-        )
+    list_types = get_reference_data("list_type")
+    brands = get_reference_data("brand")
+    asset_classes = get_reference_data("asset_class")
 
-    # Search by list name
-    if search:
-        query = query.ilike("list_name", f"%{search}%")
-
-    # Filters
-    if list_type:
-        query = query.eq("list_type", list_type)
-    if brand:
-        query = query.eq("brand", brand)
-    if asset_class:
-        query = query.eq("asset_class", asset_class)
-    if official == "official":
-        query = query.eq("is_official", True)
-    elif official == "custom":
-        query = query.eq("is_official", False)
-
-    # Sorting
-    valid_sort_cols = ["list_name", "list_type", "brand", "created_at"]
-    if sort_by not in valid_sort_cols:
-        sort_by = "list_name"
-    desc = sort_dir.lower() == "desc"
-    query = query.order(sort_by, desc=desc)
-
-    # Pagination
-    offset = (page - 1) * page_size
-    query = query.range(offset, offset + page_size - 1)
-
-    resp = query.execute()
-    lists = resp.data or []
-    total_count = resp.count or 0
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    # Enrich with member counts
-    for dl in lists:
-        dl["member_count"] = _get_member_count(str(dl["id"]))
-        if dl.get("owner_id"):
-            dl["owner_name"] = _get_user_name(str(dl["owner_id"]))
-        else:
-            dl["owner_name"] = None
-
-    # Split into official and user's custom lists for the two-table layout
-    official_lists = [dl for dl in lists if dl.get("is_official")]
-    my_lists = [dl for dl in lists if not dl.get("is_official") and str(dl.get("owner_id", "")) == str(current_user.id)]
-
-    # Reference data for filter dropdowns
-    list_types = _get_reference_data("distribution_list_type")
-    brands = _get_reference_data("brand")
-    asset_classes = _get_reference_data("asset_class")
-
-    context = {
-        "request": request,
+    ctx.update({
         "user": current_user,
-        "lists": lists,
-        "official_lists": official_lists,
-        "my_lists": my_lists,
-        "total_count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "search": search,
-        "list_type": list_type,
-        "brand": brand,
-        "asset_class": asset_class,
-        "official": official,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
+        "total_count": ctx["pagination"]["total"],
+        "search": ctx["filters"].get("q", ""),
+        "list_type": ctx["filters"].get("type", ""),
+        "brand": ctx["filters"].get("brand", ""),
+        "asset_class": ctx["filters"].get("asset_class", ""),
+        "official": ctx["filters"].get("official", ""),
         "list_types": list_types,
         "brands": brands,
         "asset_classes": asset_classes,
-    }
-
-    if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("distribution_lists/_list_table.html", context)
-    return templates.TemplateResponse("distribution_lists/list.html", context)
+        "lists": ctx["rows"],
+    })
+    return templates.TemplateResponse("distribution_lists/list.html", {"request": request, **ctx})
 
 
 # ---------------------------------------------------------------------------
@@ -701,7 +577,7 @@ async def get_distribution_list(
         raise HTTPException(status_code=404, detail="Distribution list not found")
 
     # Owner name
-    owner_name = _get_user_name(str(dist_list["owner_id"])) if dist_list.get("owner_id") else None
+    owner_name = get_user_name(str(dist_list["owner_id"])) if dist_list.get("owner_id") else None
 
     # L2 superset info
     l1_list = None
@@ -756,7 +632,7 @@ async def get_distribution_list(
             m["person_email"] = None
             m["person_org"] = None
         if m.get("coverage_owner_id"):
-            m["coverage_owner_name"] = _get_user_name(str(m["coverage_owner_id"]))
+            m["coverage_owner_name"] = get_user_name(str(m["coverage_owner_id"]))
         else:
             m["coverage_owner_name"] = None
 
@@ -772,12 +648,12 @@ async def get_distribution_list(
     send_history = history_resp.data or []
     for sh in send_history:
         if sh.get("sent_by"):
-            sh["sender_name"] = _get_user_name(str(sh["sent_by"]))
+            sh["sender_name"] = get_user_name(str(sh["sent_by"]))
         else:
             sh["sender_name"] = "Unknown"
 
     # Reference data for type labels
-    type_labels = {t["value"]: t["label"] for t in _get_reference_data("distribution_list_type")}
+    type_labels = {t["value"]: t["label"] for t in get_reference_data("distribution_list_type")}
 
     # Load filter options for member search
     countries = (
@@ -932,7 +808,7 @@ async def execute_send(
         "status": "sent",
     }).execute()
 
-    _log_field_change(
+    log_field_change(
         "distribution_list", str(list_id), "send_executed",
         None, f"Sent to {preview['sendable_count']} recipients: {subject}",
         current_user.id,
@@ -973,7 +849,7 @@ async def get_send_detail(
     if not send:
         raise HTTPException(status_code=404, detail="Send record not found")
 
-    send["sender_name"] = _get_user_name(str(send["sent_by"])) if send.get("sent_by") else "Unknown"
+    send["sender_name"] = get_user_name(str(send["sent_by"])) if send.get("sent_by") else "Unknown"
 
     # Parse recipient snapshot
     try:
@@ -1045,7 +921,7 @@ async def create_distribution_list(
 
     if resp.data:
         new_list = resp.data[0]
-        _log_field_change("distribution_list", str(new_list["id"]), "_created", None, "record created", current_user.id)
+        log_field_change("distribution_list", str(new_list["id"]), "_created", None, "record created", current_user.id)
         return RedirectResponse(url=f"/distribution-lists/{new_list['id']}", status_code=303)
 
     raise HTTPException(status_code=500, detail="Failed to create distribution list")
@@ -1126,7 +1002,7 @@ async def update_distribution_list(
         return templates.TemplateResponse("distribution_lists/form.html", context)
 
     # Audit log
-    _audit_changes(str(list_id), old_list, list_data, current_user.id)
+    audit_changes("distribution_list", str(list_id), old_list, list_data, current_user.id)
 
     # Update
     sb.table("distribution_lists").update(list_data).eq("id", str(list_id)).execute()
@@ -1149,7 +1025,7 @@ async def archive_distribution_list(
 
     sb = get_supabase()
     sb.table("distribution_lists").update({"is_active": False}).eq("id", str(list_id)).execute()
-    _log_field_change("distribution_list", str(list_id), "is_active", True, False, current_user.id)
+    log_field_change("distribution_list", str(list_id), "is_active", True, False, current_user.id)
 
     if request.headers.get("HX-Request"):
         return HTMLResponse('<p class="text-sm text-green-600">Distribution list archived.</p>')
@@ -1194,7 +1070,7 @@ async def add_member(
     person = _get_person_with_org(person_id)
     if not person:
         return HTMLResponse('<div class="text-sm text-red-600 p-2">Person not found.</div>')
-    if person.get("is_archived"):
+    if person.get("is_deleted"):
         return HTMLResponse('<div class="text-sm text-red-600 p-2">Cannot add: person is archived.</div>')
     if person.get("do_not_contact"):
         return HTMLResponse('<div class="text-sm text-red-600 p-2">Cannot add: person is flagged as Do Not Contact.</div>')
@@ -1231,7 +1107,7 @@ async def add_member(
             "is_active": True,
         }).execute()
 
-    _log_field_change(
+    log_field_change(
         "distribution_list", str(list_id), "member_added",
         None, f"{person['full_name']} ({person_id})",
         current_user.id,
@@ -1309,7 +1185,7 @@ async def remove_member(
         "removal_reason": "manual",
     }).eq("id", str(member_id)).execute()
 
-    _log_field_change(
+    log_field_change(
         "distribution_list", str(list_id), "member_removed",
         f"{person_label} ({member['person_id']})", None,
         current_user.id,
@@ -1359,7 +1235,7 @@ async def _render_members_tab(
             m["person_email"] = None
             m["person_org"] = None
         if m.get("coverage_owner_id"):
-            m["coverage_owner_name"] = _get_user_name(str(m["coverage_owner_id"]))
+            m["coverage_owner_name"] = get_user_name(str(m["coverage_owner_id"]))
         else:
             m["coverage_owner_name"] = None
 
@@ -1406,3 +1282,334 @@ async def _render_members_tab(
         "funds": funds,
     }
     return templates.TemplateResponse("distribution_lists/_tab_members.html", context)
+
+
+# ---------------------------------------------------------------------------
+# REMOVE MEMBER BY PERSON ID — POST /distribution-lists/{list_id}/remove-member
+# (Called from person detail page DL tab — accepts person_id in form data)
+# ---------------------------------------------------------------------------
+
+@router.post("/{list_id}/remove-member", response_class=HTMLResponse)
+async def remove_member_by_person(
+    request: Request,
+    list_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Remove a person from a distribution list given list_id + person_id.
+    Used from person detail page distribution lists tab."""
+    require_role(current_user, ["admin", "standard_user"])
+
+    sb = get_supabase()
+    form = await request.form()
+    person_id = (form.get("person_id") or "").strip()
+    if not person_id:
+        return HTMLResponse('<div class="text-sm text-red-600 p-2">No person specified.</div>')
+
+    # Find the active membership
+    member_resp = (
+        sb.table("distribution_list_members")
+        .select("id, person_id")
+        .eq("distribution_list_id", str(list_id))
+        .eq("person_id", person_id)
+        .eq("is_active", True)
+        .maybe_single()
+        .execute()
+    )
+    if not member_resp.data:
+        return HTMLResponse('<div class="text-sm text-yellow-600 p-2">Membership not found or already removed.</div>')
+
+    member = member_resp.data
+    person = _get_person_with_org(person_id)
+    person_label = person["full_name"] if person else person_id
+
+    now_str = datetime.now(timezone.utc).isoformat()
+
+    # Soft-remove
+    sb.table("distribution_list_members").update({
+        "is_active": False,
+        "removed_at": now_str,
+        "removal_reason": "manual",
+    }).eq("id", member["id"]).execute()
+
+    log_field_change(
+        "distribution_list", str(list_id), "member_removed",
+        f"{person_label} ({person_id})", None,
+        current_user.id,
+    )
+
+    # Return updated distribution list memberships for this person
+    # (reload the person's DL tab content)
+    dl_resp = (
+        sb.table("distribution_list_members")
+        .select("id, joined_at, is_active, distribution_list:distribution_lists(id, list_name, list_type, asset_class, brand)")
+        .eq("person_id", person_id)
+        .eq("is_active", True)
+        .execute()
+    )
+    distribution_lists = dl_resp.data or []
+
+    # Load person for context
+    person_resp = (
+        sb.table("people")
+        .select("*")
+        .eq("id", person_id)
+        .eq("is_deleted", False)
+        .maybe_single()
+        .execute()
+    )
+    person_data = person_resp.data or {}
+
+    context = {
+        "request": request,
+        "user": current_user,
+        "person": person_data,
+        "distribution_lists": distribution_lists,
+    }
+    return templates.TemplateResponse("people/_tab_distribution_lists.html", context)
+
+
+# ---------------------------------------------------------------------------
+# ADD ALL FILTERED — POST /distribution-lists/{list_id}/add-filtered
+# (Bulk add all people matching current search filters)
+# ---------------------------------------------------------------------------
+
+@router.post("/{list_id}/add-filtered", response_class=HTMLResponse)
+async def add_filtered_members(
+    request: Request,
+    list_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Bulk add all people matching the current search/filter criteria to a distribution list.
+    Skips DNC people and already-active members. Returns count of additions."""
+    require_role(current_user, ["admin", "standard_user", "rfp_team"])
+
+    sb = get_supabase()
+
+    # Verify list exists
+    dist_list = (
+        sb.table("distribution_lists")
+        .select("*")
+        .eq("id", str(list_id))
+        .eq("is_active", True)
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if not dist_list:
+        raise HTTPException(status_code=404, detail="Distribution list not found")
+
+    if not _can_manage_members(dist_list, current_user):
+        return HTMLResponse('<div class="text-sm text-red-600 p-2">Permission denied.</div>')
+
+    form = await request.form()
+    country = (form.get("country") or "").strip()
+    rel_type = (form.get("rel_type") or "").strip()
+    fund = (form.get("fund") or "").strip()
+    q = (form.get("q") or "").strip()
+
+    has_filters = bool(country or rel_type or fund)
+    if not has_filters and (not q or len(q) < 2):
+        return HTMLResponse(
+            '<div class="rounded-md bg-yellow-50 border border-yellow-200 p-3 mt-2">'
+            '<p class="text-sm text-yellow-700">Please set at least one filter or search term before using Add All.</p>'
+            '</div>'
+        )
+
+    # --- Step 1: Find matching people (same logic as search_people) ---
+    person_id_filter = None
+    if has_filters:
+        org_query = sb.table("organizations").select("id").eq("is_deleted", False)
+        if country:
+            org_query = org_query.eq("country", country)
+        if rel_type:
+            org_query = org_query.eq("relationship_type", rel_type)
+        org_resp = org_query.execute()
+        filtered_org_ids = [o["id"] for o in (org_resp.data or [])]
+
+        if fund and filtered_org_ids:
+            # Check leads with lead_type='fundraise' for fund filter
+            fp_resp = (
+                sb.table("leads")
+                .select("organization_id")
+                .eq("fund_id", fund)
+                .eq("lead_type", "fundraise")
+                .eq("is_deleted", False)
+                .execute()
+            )
+            fp_org_ids = {str(fp["organization_id"]) for fp in (fp_resp.data or [])}
+            # Also check legacy fund_prospects table
+            fp_legacy = (
+                sb.table("fund_prospects")
+                .select("organization_id")
+                .eq("fund_id", fund)
+                .eq("is_deleted", False)
+                .execute()
+            )
+            fp_org_ids.update({str(fp["organization_id"]) for fp in (fp_legacy.data or [])})
+            filtered_org_ids = [oid for oid in filtered_org_ids if str(oid) in fp_org_ids]
+        elif fund and not filtered_org_ids and not country and not rel_type:
+            fp_resp = (
+                sb.table("leads")
+                .select("organization_id")
+                .eq("fund_id", fund)
+                .eq("lead_type", "fundraise")
+                .eq("is_deleted", False)
+                .execute()
+            )
+            filtered_org_ids = list({str(fp["organization_id"]) for fp in (fp_resp.data or [])})
+            fp_legacy = (
+                sb.table("fund_prospects")
+                .select("organization_id")
+                .eq("fund_id", fund)
+                .eq("is_deleted", False)
+                .execute()
+            )
+            filtered_org_ids.extend(list({str(fp["organization_id"]) for fp in (fp_legacy.data or [])}))
+            filtered_org_ids = list(set(filtered_org_ids))
+
+        if not filtered_org_ids:
+            return HTMLResponse(
+                '<div class="rounded-md bg-yellow-50 border border-yellow-200 p-3 mt-2">'
+                '<p class="text-sm text-yellow-700">No people matched the selected filters. 0 members added.</p>'
+                '</div>'
+            )
+
+        pol_resp = (
+            sb.table("person_organization_links")
+            .select("person_id")
+            .in_("organization_id", filtered_org_ids)
+            .execute()
+        )
+        person_id_filter = list({str(r["person_id"]) for r in (pol_resp.data or [])})
+
+        if not person_id_filter:
+            return HTMLResponse(
+                '<div class="rounded-md bg-yellow-50 border border-yellow-200 p-3 mt-2">'
+                '<p class="text-sm text-yellow-700">No people matched the selected filters. 0 members added.</p>'
+                '</div>'
+            )
+
+    # Query matching people (no limit — we want all matching for bulk add)
+    people = []
+    if q and len(q) >= 2:
+        query1 = (
+            sb.table("people")
+            .select("id, first_name, last_name, email, do_not_contact, coverage_owner")
+            .eq("is_deleted", False)
+            .eq("do_not_contact", False)
+            .ilike("last_name", f"%{q}%")
+            .order("last_name")
+            .limit(500)
+        )
+        if person_id_filter:
+            query1 = query1.in_("id", person_id_filter)
+        resp1 = query1.execute()
+
+        query2 = (
+            sb.table("people")
+            .select("id, first_name, last_name, email, do_not_contact, coverage_owner")
+            .eq("is_deleted", False)
+            .eq("do_not_contact", False)
+            .ilike("first_name", f"%{q}%")
+            .order("last_name")
+            .limit(500)
+        )
+        if person_id_filter:
+            query2 = query2.in_("id", person_id_filter)
+        resp2 = query2.execute()
+
+        seen = set()
+        for p in (resp1.data or []) + (resp2.data or []):
+            if p["id"] not in seen:
+                seen.add(p["id"])
+                people.append(p)
+    else:
+        query = (
+            sb.table("people")
+            .select("id, first_name, last_name, email, do_not_contact, coverage_owner")
+            .eq("is_deleted", False)
+            .eq("do_not_contact", False)
+            .in_("id", person_id_filter)
+            .order("last_name")
+            .limit(500)
+        )
+        resp = query.execute()
+        people = resp.data or []
+
+    if not people:
+        return HTMLResponse(
+            '<div class="rounded-md bg-yellow-50 border border-yellow-200 p-3 mt-2">'
+            '<p class="text-sm text-yellow-700">No eligible people found. 0 members added.</p>'
+            '</div>'
+        )
+
+    # --- Step 2: Get existing active members to skip ---
+    existing_resp = (
+        sb.table("distribution_list_members")
+        .select("person_id, id, is_active")
+        .eq("distribution_list_id", str(list_id))
+        .execute()
+    )
+    existing_active = {m["person_id"] for m in (existing_resp.data or []) if m["is_active"]}
+    existing_inactive = {m["person_id"]: m["id"] for m in (existing_resp.data or []) if not m["is_active"]}
+
+    # --- Step 3: Add each person (skip DNC, skip already-member) ---
+    now_str = datetime.now(timezone.utc).isoformat()
+    added_count = 0
+    skipped_dnc = 0
+    skipped_existing = 0
+
+    for p in people:
+        pid = str(p["id"])
+
+        # Skip DNC (should already be excluded by query, but double-check)
+        if p.get("do_not_contact"):
+            skipped_dnc += 1
+            continue
+
+        # Skip already-active members
+        if pid in existing_active:
+            skipped_existing += 1
+            continue
+
+        # Reactivate or insert
+        if pid in existing_inactive:
+            sb.table("distribution_list_members").update({
+                "is_active": True,
+                "joined_at": now_str,
+                "removed_at": None,
+                "removal_reason": None,
+                "coverage_owner_id": p.get("coverage_owner"),
+            }).eq("id", existing_inactive[pid]).execute()
+        else:
+            sb.table("distribution_list_members").insert({
+                "distribution_list_id": str(list_id),
+                "person_id": pid,
+                "coverage_owner_id": p.get("coverage_owner"),
+                "is_active": True,
+            }).execute()
+
+        log_field_change(
+            "distribution_list", str(list_id), "member_added",
+            None, f"{p['first_name']} {p['last_name']} ({pid})",
+            current_user.id,
+        )
+        added_count += 1
+
+    # Build summary message
+    parts = [f"{added_count} member{'s' if added_count != 1 else ''} added"]
+    if skipped_existing:
+        parts.append(f"{skipped_existing} already on list")
+    if skipped_dnc:
+        parts.append(f"{skipped_dnc} skipped (DNC)")
+
+    return HTMLResponse(
+        f'<div class="rounded-md bg-green-50 border border-green-200 p-3 mt-2" id="add-all-result">'
+        f'<div class="flex items-center">'
+        f'<svg class="h-5 w-5 text-green-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">'
+        f'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+        f'<p class="text-sm text-green-700 font-medium">{". ".join(parts)}.</p>'
+        f'</div>'
+        f'<p class="text-xs text-green-600 mt-1">Refresh the members list to see all changes.</p>'
+        f'</div>'
+    )

@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Field' if field and field.id is defined else 'New Field' }} — Echo 2.0{% endblock %}
+{% block page_title %}{{ 'Edit Field Definition' if field and field.id is defined else 'New Field Definition' }}{% endblock %}
+
+{% block content %}
+<form class="space-y-6 max-w-3xl" method="post"
+      action="{{ '/admin/fields/' + field.id|string if field and field.id is defined else '/admin/fields' }}">
+
+    {% if errors is defined and errors %}
+    <div class="rounded-md bg-red-50 border border-red-200 p-4">
+        <ul class="list-disc list-inside text-sm text-red-700">
+            {% for err in errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% set is_system = field and field.is_system is defined and field.is_system %}
+    {% set is_editing = field and field.id is defined %}
+
+    {% if is_system %}
+    <div class="rounded-md bg-blue-50 border border-blue-200 p-4">
+        <p class="text-sm text-blue-700">
+            <span class="font-medium">System field</span> — field name, storage type, and field type cannot be changed.
+        </p>
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Field Properties</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <!-- Entity Type -->
+            <div>
+                <label for="entity_type" class="block text-sm font-medium text-gray-700">Entity Type <span class="text-red-500">*</span></label>
+                {% if is_editing %}
+                <input type="text" value="{{ entity_type | replace('_', ' ') | title }}" disabled
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-gray-100">
+                <input type="hidden" name="entity_type" value="{{ entity_type }}">
+                {% else %}
+                <select name="entity_type" id="entity_type" required
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    {% for et in entity_types %}
+                    <option value="{{ et }}" {{ 'selected' if et == entity_type else '' }}>{{ et | replace('_', ' ') | title }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            </div>
+
+            <!-- Field Name -->
+            <div>
+                <label for="field_name" class="block text-sm font-medium text-gray-700">Field Name <span class="text-red-500">*</span></label>
+                <input type="text" name="field_name" id="field_name"
+                       value="{{ field.field_name if field else '' }}"
+                       {{ 'disabled' if is_system or is_editing else '' }}
+                       placeholder="e.g., custom_budget"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm {{ 'bg-gray-100' if is_system or is_editing else '' }} focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                <p class="mt-1 text-xs text-gray-500">Lowercase, underscores only. Used as the internal identifier.</p>
+            </div>
+
+            <!-- Display Name -->
+            <div>
+                <label for="display_name" class="block text-sm font-medium text-gray-700">Display Name <span class="text-red-500">*</span></label>
+                <input type="text" name="display_name" id="display_name" required
+                       value="{{ field.display_name if field else '' }}"
+                       placeholder="e.g., Custom Budget"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Field Type -->
+            <div>
+                <label for="field_type" class="block text-sm font-medium text-gray-700">Field Type <span class="text-red-500">*</span></label>
+                <select name="field_type" id="field_type" onchange="toggleDropdownCategory()"
+                        {{ 'disabled' if is_system else '' }}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm {{ 'bg-gray-100' if is_system else '' }} focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    {% for ft in field_types %}
+                    <option value="{{ ft.value }}" {{ 'selected' if field and field.field_type == ft.value else '' }}>{{ ft.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Storage Type -->
+            <div>
+                <label for="storage_type" class="block text-sm font-medium text-gray-700">Storage Type</label>
+                <select name="storage_type" id="storage_type"
+                        {{ 'disabled' if is_system or is_editing else '' }}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm {{ 'bg-gray-100' if is_system or is_editing else '' }} focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="eav" {{ 'selected' if field and field.storage_type == 'eav' else ('selected' if not field else '') }}>EAV (Custom Field)</option>
+                    <option value="core_column" {{ 'selected' if field and field.storage_type == 'core_column' else '' }}>Core Column</option>
+                </select>
+                <p class="mt-1 text-xs text-gray-500">Custom fields use EAV storage. Core columns map to database table columns.</p>
+            </div>
+
+            <!-- Section -->
+            <div>
+                <label for="section_name" class="block text-sm font-medium text-gray-700">Section <span class="text-red-500">*</span></label>
+                <select name="section_name" id="section_name"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    {% for s in sections %}
+                    <option value="{{ s }}" {{ 'selected' if field and field.section_name == s else '' }}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+                <div class="mt-2">
+                    <label for="new_section" class="block text-xs text-gray-500">Or create new section:</label>
+                    <input type="text" name="new_section" id="new_section"
+                           placeholder="New Section Name"
+                           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                </div>
+            </div>
+
+            <!-- Dropdown Category (shown for dropdown/multi_select types) -->
+            <div id="dropdown-category-group">
+                <label for="dropdown_category" class="block text-sm font-medium text-gray-700">Dropdown Category</label>
+                <select name="dropdown_category" id="dropdown_category"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— None —</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {{ 'selected' if field and field.dropdown_category == cat else '' }}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+                <p class="mt-1 text-xs text-gray-500">Required for Dropdown and Multi-Select field types.</p>
+            </div>
+
+            <!-- Default Value -->
+            <div>
+                <label for="default_value" class="block text-sm font-medium text-gray-700">Default Value</label>
+                <input type="text" name="default_value" id="default_value"
+                       value="{{ field.default_value if field and field.default_value else '' }}"
+                       placeholder="Optional"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Required -->
+            <div class="flex items-center gap-2 pt-6">
+                <input type="checkbox" name="is_required" id="is_required"
+                       {{ 'checked' if field and field.is_required else '' }}
+                       class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                <label for="is_required" class="text-sm font-medium text-gray-700">Required Field</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="flex items-center justify-end gap-3">
+        <a href="/admin/fields?entity_type={{ entity_type }}"
+           class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            Cancel
+        </a>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            {{ 'Save Changes' if is_editing else 'Create Field' }}
+        </button>
+    </div>
+</form>
+
+{% block scripts %}
+<script>
+function toggleDropdownCategory() {
+    const ft = document.getElementById('field_type').value;
+    const group = document.getElementById('dropdown-category-group');
+    if (ft === 'dropdown' || ft === 'multi_select') {
+        group.style.display = '';
+    } else {
+        group.style.display = 'none';
+    }
+}
+toggleDropdownCategory();
+</script>
+{% endblock %}
+{% endblock %}

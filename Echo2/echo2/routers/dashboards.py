@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
+from db.helpers import get_reference_data, batch_resolve_users, batch_resolve_orgs, is_overdue
 from dependencies import CurrentUser, get_current_user, require_role
 
 router = APIRouter(prefix="/dashboards", tags=["dashboards"])
@@ -57,38 +58,6 @@ FP_STAGE_COLORS = {
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_reference_data(category: str) -> list[dict]:
-    """Fetch active reference data for a dropdown category."""
-    sb = get_supabase()
-    return (
-        sb.table("reference_data")
-        .select("value, label")
-        .eq("category", category)
-        .eq("is_active", True)
-        .order("display_order")
-        .execute()
-        .data or []
-    )
-
-
-def _batch_resolve_users(user_ids: list[str]) -> dict:
-    """Batch resolve user UUIDs to display names. Returns {id: display_name}."""
-    if not user_ids:
-        return {}
-    sb = get_supabase()
-    resp = sb.table("users").select("id, display_name").in_("id", user_ids).execute()
-    return {str(u["id"]): u["display_name"] for u in (resp.data or [])}
-
-
-def _batch_resolve_orgs(org_ids: list[str]) -> dict:
-    """Batch resolve org UUIDs to org data. Returns {id: {company_name, organization_type, ...}}."""
-    if not org_ids:
-        return {}
-    sb = get_supabase()
-    resp = sb.table("organizations").select("id, company_name, organization_type").in_("id", org_ids).execute()
-    return {str(o["id"]): o for o in (resp.data or [])}
-
-
 def _safe_float(val) -> float:
     """Convert to float safely, defaulting to 0.0."""
     if val is None:
@@ -116,19 +85,6 @@ def _fmt_mn(val: float) -> str:
     return '{:,.1f}'.format(val)
 
 
-def _is_overdue(task: dict) -> bool:
-    """Return True if task is past due and still open/in-progress."""
-    if task.get("status") not in ("open", "in_progress"):
-        return False
-    if not task.get("due_date"):
-        return False
-    try:
-        due = date_type.fromisoformat(str(task["due_date"])[:10])
-        return due < date_type.today()
-    except (ValueError, TypeError):
-        return False
-
-
 def _batch_resolve_linked_records(tasks: list[dict]) -> dict:
     """Resolve linked records for tasks in batch. Returns dict keyed by (type, id)."""
     sb = get_supabase()
@@ -153,10 +109,22 @@ def _batch_resolve_linked_records(tasks: list[dict]) -> dict:
             results[("lead", str(r["id"]))] = {"name": org_name, "url": f"/leads/{r['id']}"}
 
     if "fund_prospect" in by_type:
+        # Legacy: fund_prospect linked records now point to leads table
+        # (migration script updates references, but handle any stragglers)
         ids = list(by_type["fund_prospect"])
-        resp = sb.table("fund_prospects").select("id, organization_id, fund_id").in_("id", ids).execute()
-        org_ids_needed = {str(r["organization_id"]) for r in (resp.data or []) if r.get("organization_id")}
-        fund_ids_needed = {str(r["fund_id"]) for r in (resp.data or []) if r.get("fund_id")}
+        # Try leads table first (migrated records)
+        resp = sb.table("leads").select("id, organization_id, fund_id, lead_type").in_("id", ids).execute()
+        found_ids = {str(r["id"]) for r in (resp.data or [])}
+        # Fall back to fund_prospects table for unmigrated records
+        remaining_ids = [i for i in ids if i not in found_ids]
+        fp_rows = []
+        if remaining_ids:
+            fp_resp = sb.table("fund_prospects").select("id, organization_id, fund_id").in_("id", remaining_ids).execute()
+            fp_rows = fp_resp.data or []
+
+        all_rows = list(resp.data or []) + fp_rows
+        org_ids_needed = {str(r["organization_id"]) for r in all_rows if r.get("organization_id")}
+        fund_ids_needed = {str(r["fund_id"]) for r in all_rows if r.get("fund_id")}
         org_names = {}
         fund_tickers = {}
         if org_ids_needed:
@@ -165,10 +133,12 @@ def _batch_resolve_linked_records(tasks: list[dict]) -> dict:
         if fund_ids_needed:
             fund_resp = sb.table("funds").select("id, ticker").in_("id", list(fund_ids_needed)).execute()
             fund_tickers = {str(f["id"]): f["ticker"] for f in (fund_resp.data or [])}
-        for r in (resp.data or []):
+        for r in all_rows:
             org_name = org_names.get(str(r.get("organization_id", "")), "Unknown Org")
             ticker = fund_tickers.get(str(r.get("fund_id", "")), "?")
-            results[("fund_prospect", str(r["id"]))] = {"name": f"{org_name} ({ticker})", "url": f"/fund-prospects/{r['id']}"}
+            rid = str(r["id"])
+            url = f"/leads/{rid}" if rid in found_ids else f"/leads/{rid}"
+            results[("fund_prospect", rid)] = {"name": f"{org_name} ({ticker})", "url": url}
 
     if "activity" in by_type:
         ids = list(by_type["activity"])
@@ -205,7 +175,7 @@ async def widget_pipeline_summary(
     resp = (
         sb.table("leads")
         .select("rating, expected_revenue")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .eq("aksia_owner_id", str(current_user.id))
         .execute()
     )
@@ -220,7 +190,7 @@ async def widget_pipeline_summary(
         stage_groups[rating]["count"] += 1
         stage_groups[rating]["total_revenue"] += _safe_float(lead.get("expected_revenue"))
 
-    stage_labels = {s["value"]: s["label"] for s in _get_reference_data("lead_stage")}
+    stage_labels = {s["value"]: s["label"] for s in get_reference_data("lead_stage")}
     stages = []
     for stage_val in LEAD_STAGE_ORDER:
         g = stage_groups.get(stage_val, {"count": 0, "total_revenue": 0.0})
@@ -249,7 +219,7 @@ async def widget_tasks(
     resp = (
         sb.table("tasks")
         .select("id, title, due_date, status, linked_record_type, linked_record_id, notes, source")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .eq("assigned_to", str(current_user.id))
         .in_("status", ["open", "in_progress"])
         .order("due_date", nullsfirst=False)
@@ -261,7 +231,7 @@ async def widget_tasks(
     # Enrich
     record_map = _batch_resolve_linked_records(tasks)
     for task in tasks:
-        task["is_overdue"] = _is_overdue(task)
+        task["is_overdue"] = is_overdue(task)
         key = (task.get("linked_record_type"), str(task.get("linked_record_id", "")))
         task["linked_info"] = record_map.get(key)
 
@@ -283,7 +253,7 @@ async def widget_leads(
     resp = (
         sb.table("leads")
         .select("id, organization_id, rating, service_type, expected_revenue")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .eq("aksia_owner_id", str(current_user.id))
         .not_.in_("rating", inactive)
         .order("expected_revenue", desc=True, nullsfirst=False)
@@ -294,9 +264,9 @@ async def widget_leads(
 
     # Batch resolve org names
     org_ids = list({str(l["organization_id"]) for l in leads if l.get("organization_id")})
-    org_map = _batch_resolve_orgs(org_ids)
+    org_map = batch_resolve_orgs(org_ids)
 
-    stage_labels = {s["value"]: s["label"] for s in _get_reference_data("lead_stage")}
+    stage_labels = {s["value"]: s["label"] for s in get_reference_data("lead_stage")}
 
     for lead in leads:
         org = org_map.get(str(lead.get("organization_id", "")), {})
@@ -321,7 +291,7 @@ async def widget_activities(
     resp = (
         sb.table("activities")
         .select("id, title, effective_date, activity_type")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .eq("author_id", str(current_user.id))
         .order("effective_date", desc=True)
         .limit(10)
@@ -346,7 +316,7 @@ async def widget_activities(
 
         # Batch resolve all org names
         all_org_ids = list({oid for oids in act_orgs.values() for oid in oids})
-        org_map = _batch_resolve_orgs(all_org_ids)
+        org_map = batch_resolve_orgs(all_org_ids)
 
         for act in activities:
             org_ids = act_orgs.get(str(act["id"]), [])
@@ -378,31 +348,32 @@ async def widget_my_coverage(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Widget: counts of orgs, people, leads, fund prospects under user's coverage."""
+    """Widget: counts of orgs, people, leads (advisory + fundraise) under user's coverage."""
     sb = get_supabase()
 
     # Count people where coverage_owner = current user
-    people_resp = sb.table("people").select("id", count="exact").eq("is_archived", False).eq("coverage_owner", str(current_user.id)).execute()
+    people_resp = sb.table("people").select("id", count="exact").eq("is_deleted", False).eq("coverage_owner", str(current_user.id)).execute()
     people_count = people_resp.count or 0
 
-    # Count leads where aksia_owner = current user
-    leads_resp = sb.table("leads").select("id", count="exact").eq("is_archived", False).eq("aksia_owner_id", str(current_user.id)).execute()
-    leads_count = leads_resp.count or 0
+    # Count advisory leads where aksia_owner = current user
+    advisory_leads_resp = sb.table("leads").select("id", count="exact").eq("is_deleted", False).eq("aksia_owner_id", str(current_user.id)).eq("lead_type", "advisory").execute()
+    advisory_leads_count = advisory_leads_resp.count or 0
 
-    # Count fund prospects where aksia_owner = current user
-    fp_resp = sb.table("fund_prospects").select("id", count="exact").eq("is_archived", False).eq("aksia_owner_id", str(current_user.id)).execute()
-    fp_count = fp_resp.count or 0
+    # Count fundraise/product leads where aksia_owner = current user
+    fundraise_leads_resp = sb.table("leads").select("id", count="exact").eq("is_deleted", False).eq("aksia_owner_id", str(current_user.id)).in_("lead_type", ["fundraise", "product"]).execute()
+    fundraise_leads_count = fundraise_leads_resp.count or 0
 
     # Count orgs (via coverage on people + leads)
     my_org_ids = set()
     if people_count > 0:
-        covered_people = sb.table("people").select("id").eq("coverage_owner", str(current_user.id)).eq("is_archived", False).execute()
+        covered_people = sb.table("people").select("id").eq("coverage_owner", str(current_user.id)).eq("is_deleted", False).execute()
         person_ids = [str(p["id"]) for p in (covered_people.data or [])]
         if person_ids:
             pol_resp = sb.table("person_organization_links").select("organization_id").in_("person_id", person_ids).execute()
             my_org_ids |= {str(r["organization_id"]) for r in (pol_resp.data or [])}
-    if leads_count > 0:
-        owned_leads = sb.table("leads").select("organization_id").eq("aksia_owner_id", str(current_user.id)).eq("is_archived", False).execute()
+    all_leads_count = advisory_leads_count + fundraise_leads_count
+    if all_leads_count > 0:
+        owned_leads = sb.table("leads").select("organization_id").eq("aksia_owner_id", str(current_user.id)).eq("is_deleted", False).execute()
         my_org_ids |= {str(l["organization_id"]) for l in (owned_leads.data or []) if l.get("organization_id")}
     org_count = len(my_org_ids)
 
@@ -410,8 +381,8 @@ async def widget_my_coverage(
         "request": request,
         "org_count": org_count,
         "people_count": people_count,
-        "leads_count": leads_count,
-        "fp_count": fp_count,
+        "leads_count": advisory_leads_count,
+        "fundraise_leads_count": fundraise_leads_count,
     }
     return templates.TemplateResponse("dashboards/_widget_my_coverage.html", context)
 
@@ -425,12 +396,12 @@ async def widget_missing_info(
     sb = get_supabase()
 
     # People missing email or phone
-    people_resp = sb.table("people").select("id, first_name, last_name, email, phone").eq("is_archived", False).eq("coverage_owner", str(current_user.id)).execute()
+    people_resp = sb.table("people").select("id, first_name, last_name, email, phone").eq("is_deleted", False).eq("coverage_owner", str(current_user.id)).execute()
     all_people = people_resp.data or []
     people_missing = [p for p in all_people if not p.get("email") or not p.get("phone")]
 
     # Leads missing expected_revenue or service_type
-    leads_resp = sb.table("leads").select("id, organization_id, service_type, expected_revenue, summary").eq("is_archived", False).eq("aksia_owner_id", str(current_user.id)).execute()
+    leads_resp = sb.table("leads").select("id, organization_id, service_type, expected_revenue, summary").eq("is_deleted", False).eq("aksia_owner_id", str(current_user.id)).execute()
     all_leads = leads_resp.data or []
     leads_missing = [l for l in all_leads if not l.get("expected_revenue") or not l.get("service_type")]
 
@@ -465,7 +436,7 @@ async def widget_stale_contacts(
     cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
     # Get all covered people
-    people_resp = sb.table("people").select("id, first_name, last_name, email").eq("is_archived", False).eq("coverage_owner", str(current_user.id)).execute()
+    people_resp = sb.table("people").select("id, first_name, last_name, email").eq("is_deleted", False).eq("coverage_owner", str(current_user.id)).execute()
     covered_people = people_resp.data or []
 
     if not covered_people:
@@ -495,7 +466,7 @@ async def widget_stale_contacts(
         # Batch in chunks of 100 to avoid query limits
         for i in range(0, len(all_activity_ids), 100):
             chunk = all_activity_ids[i:i+100]
-            act_resp = sb.table("activities").select("id, effective_date").in_("id", chunk).eq("is_archived", False).execute()
+            act_resp = sb.table("activities").select("id, effective_date").in_("id", chunk).eq("is_deleted", False).execute()
             for a in (act_resp.data or []):
                 activity_dates[str(a["id"])] = a.get("effective_date")
 
@@ -569,7 +540,7 @@ async def advisory_pipeline(
         .select("id, organization_id, rating, service_type, asset_classes, "
                 "expected_revenue, expected_yr1_flar, expected_longterm_flar, "
                 "aksia_owner_id, start_date, end_date, relationship")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
     )
 
     # Apply filters
@@ -587,7 +558,7 @@ async def advisory_pipeline(
         org_resp = (
             sb.table("organizations")
             .select("id")
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .eq("organization_type", org_type)
             .execute()
         )
@@ -607,9 +578,9 @@ async def advisory_pipeline(
     # --- Aggregate ---
 
     # Reference data for labels
-    stage_labels = {s["value"]: s["label"] for s in _get_reference_data("lead_stage")}
-    service_type_labels = {s["value"]: s["label"] for s in _get_reference_data("service_type")}
-    ac_labels = {a["value"]: a["label"] for a in _get_reference_data("asset_class")}
+    stage_labels = {s["value"]: s["label"] for s in get_reference_data("lead_stage")}
+    service_type_labels = {s["value"]: s["label"] for s in get_reference_data("service_type")}
+    ac_labels = {a["value"]: a["label"] for a in get_reference_data("asset_class")}
 
     # Separate active vs inactive
     active_leads = [l for l in all_leads if l.get("rating") not in LEAD_INACTIVE_STAGES]
@@ -708,7 +679,7 @@ async def advisory_pipeline(
         elif rating == "won":
             owner_data[oid]["won"] += 1
 
-    user_names = _batch_resolve_users(list(owner_data.keys()))
+    user_names = batch_resolve_users(list(owner_data.keys()))
     owner_coverage = [
         {
             "owner_name": user_names.get(k, "Unknown"),
@@ -722,9 +693,9 @@ async def advisory_pipeline(
     ]
 
     # --- Reference data for filter dropdowns ---
-    service_types = _get_reference_data("service_type")
-    asset_classes = _get_reference_data("asset_class")
-    org_types = _get_reference_data("organization_type")
+    service_types = get_reference_data("service_type")
+    asset_classes = get_reference_data("asset_class")
+    org_types = get_reference_data("organization_type")
     users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
 
     last_refreshed = datetime.now().strftime("%b %d, %Y %I:%M %p")
@@ -809,13 +780,14 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
     if fund_ticker and fund_ticker in funds_by_ticker:
         current_fund = funds_by_ticker[fund_ticker]
 
-    # Load fund prospects
+    # Load fundraise/product leads (replacing fund_prospects query)
     query = (
-        sb.table("fund_prospects")
-        .select("id, organization_id, fund_id, stage, target_allocation_mn, "
+        sb.table("leads")
+        .select("id, organization_id, fund_id, rating, target_allocation_mn, "
                 "soft_circle_mn, hard_circle_mn, probability_pct, share_class, "
-                "decline_reason, aksia_owner_id")
-        .eq("is_archived", False)
+                "decline_reason, aksia_owner_id, lead_type")
+        .eq("is_deleted", False)
+        .in_("lead_type", ["fundraise", "product"])
     )
     if current_fund:
         query = query.eq("fund_id", str(current_fund["id"]))
@@ -823,14 +795,20 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
     resp = query.execute()
     prospects = resp.data or []
 
+    # Normalize: fund_prospects used "stage", leads use "rating"
+    for fp in prospects:
+        fp["stage"] = fp.get("rating", "target_identified")
+
     # Batch resolve orgs
     org_ids = list({str(fp["organization_id"]) for fp in prospects if fp.get("organization_id")})
-    org_map = _batch_resolve_orgs(org_ids)
+    org_map = batch_resolve_orgs(org_ids)
 
-    # Reference data
-    stage_labels = {s["value"]: s["label"] for s in _get_reference_data("fund_prospect_stage")}
-    decline_labels = {d["value"]: d["label"] for d in _get_reference_data("decline_reason")}
-    org_type_labels = {o["value"]: o["label"] for o in _get_reference_data("organization_type")}
+    # Reference data — use lead_stage with parent_value='fundraise'
+    all_stages = get_reference_data("lead_stage")
+    fundraise_stages = [s for s in all_stages if s.get("parent_value") == "fundraise"]
+    stage_labels = {s["value"]: s["label"] for s in fundraise_stages}
+    decline_labels = {d["value"]: d["label"] for d in get_reference_data("decline_reason")}
+    org_type_labels = {o["value"]: o["label"] for o in get_reference_data("organization_type")}
 
     # --- Aggregations ---
 
@@ -977,8 +955,8 @@ async def management_dashboard(
     leads_resp = (
         sb.table("leads")
         .select("id, rating, service_type, asset_classes, expected_revenue, "
-                "expected_yr1_flar, expected_longterm_flar, aksia_owner_id, created_at")
-        .eq("is_archived", False)
+                "expected_yr1_flar, expected_longterm_flar, aksia_owner_id, created_at, lead_type")
+        .eq("is_deleted", False)
         .execute()
     )
     all_leads = leads_resp.data or []
@@ -986,23 +964,28 @@ async def management_dashboard(
     contracts_resp = (
         sb.table("contracts")
         .select("id, actual_revenue")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .execute()
     )
     all_contracts = contracts_resp.data or []
 
+    # Fundraise/product leads (replaces fund_prospects query)
     fp_resp = (
-        sb.table("fund_prospects")
-        .select("id, fund_id, stage, target_allocation_mn, hard_circle_mn, created_at")
-        .eq("is_archived", False)
+        sb.table("leads")
+        .select("id, fund_id, rating, target_allocation_mn, hard_circle_mn, created_at, lead_type")
+        .eq("is_deleted", False)
+        .in_("lead_type", ["fundraise", "product"])
         .execute()
     )
     all_fps = fp_resp.data or []
+    # Normalize stage field name
+    for fp in all_fps:
+        fp["stage"] = fp.get("rating", "target_identified")
 
     activities_resp = (
         sb.table("activities")
         .select("id, author_id, effective_date")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .execute()
     )
     all_activities = activities_resp.data or []
@@ -1010,7 +993,7 @@ async def management_dashboard(
     people_resp = (
         sb.table("people")
         .select("id, email, phone")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .execute()
     )
     all_people = people_resp.data or []
@@ -1024,7 +1007,9 @@ async def management_dashboard(
     all_users = {str(u["id"]): u["display_name"] for u in (users_resp.data or [])}
 
     # --- 1. Firm-Wide KPI Cards ---
-    active_leads = [l for l in all_leads if l.get("rating") not in LEAD_INACTIVE_STAGES]
+    # Filter to advisory leads only for pipeline revenue/FLAR
+    advisory_leads = [l for l in all_leads if l.get("lead_type", "advisory") == "advisory"]
+    active_leads = [l for l in advisory_leads if l.get("rating") not in LEAD_INACTIVE_STAGES]
     advisory_pipeline_rev = sum(_safe_float(l.get("expected_revenue")) for l in active_leads)
     active_fps = [fp for fp in all_fps if fp.get("stage") != "declined"]
     fundraising_pipeline = sum(_safe_float(fp.get("target_allocation_mn")) for fp in active_fps)

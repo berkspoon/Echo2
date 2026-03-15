@@ -8,7 +8,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
+from db.helpers import get_reference_data, log_field_change, audit_changes
+from db.field_service import get_field_definitions, enrich_field_definitions
+from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup
 from dependencies import CurrentUser, get_current_user, require_role
+from services.grid_service import build_grid_context
 
 router = APIRouter(prefix="/people", tags=["people"])
 templates = Jinja2Templates(directory="templates")
@@ -18,58 +22,12 @@ templates = Jinja2Templates(directory="templates")
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_reference_data(category: str) -> list[dict]:
-    """Fetch active reference data for a dropdown category, ordered by display_order."""
-    sb = get_supabase()
-    resp = (
-        sb.table("reference_data")
-        .select("value, label")
-        .eq("category", category)
-        .eq("is_active", True)
-        .order("display_order")
-        .execute()
-    )
-    return resp.data or []
-
-
-def _log_field_change(
-    record_type: str,
-    record_id: str,
-    field_name: str,
-    old_value,
-    new_value,
-    changed_by: UUID,
-) -> None:
-    """Write a single field change to the audit_log table."""
-    sb = get_supabase()
-    sb.table("audit_log").insert({
-        "record_type": record_type,
-        "record_id": record_id,
-        "field_name": field_name,
-        "old_value": str(old_value) if old_value is not None else None,
-        "new_value": str(new_value) if new_value is not None else None,
-        "changed_by": str(changed_by),
-    }).execute()
-
-
-def _audit_changes(
-    record_id: str,
-    old_record: dict,
-    new_data: dict,
-    changed_by: UUID,
-) -> None:
-    """Compare old record with new data and log every changed field."""
-    for field, new_val in new_data.items():
-        old_val = old_record.get(field)
-        if str(old_val) != str(new_val) and not (old_val is None and new_val is None):
-            _log_field_change("person", record_id, field, old_val, new_val, changed_by)
-
-
 def _check_duplicates(
     first_name: str,
     last_name: str,
     email: Optional[str] = None,
     exclude_id: Optional[str] = None,
+    source_id: Optional[str] = None,
 ) -> list[dict]:
     """Return potential duplicate people based on email match or name similarity."""
     sb = get_supabase()
@@ -80,7 +38,7 @@ def _check_duplicates(
         email_resp = (
             sb.table("people")
             .select("id, first_name, last_name, email, job_title")
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .eq("email", email)
             .execute()
         )
@@ -119,6 +77,17 @@ def _check_duplicates(
     if exclude_id:
         duplicates = [d for d in duplicates if str(d["id"]) != exclude_id]
 
+    # Filter out suppressed pairs
+    if source_id:
+        supp_resp = sb.table("duplicate_suppressions").select("record_id_a, record_id_b").eq("entity_type", "person").or_(f"record_id_a.eq.{source_id},record_id_b.eq.{source_id}").execute()
+        if supp_resp.data:
+            suppressed_ids = set()
+            for s in supp_resp.data:
+                suppressed_ids.add(s["record_id_a"])
+                suppressed_ids.add(s["record_id_b"])
+            suppressed_ids.discard(source_id)
+            duplicates = [d for d in duplicates if str(d["id"]) not in suppressed_ids]
+
     return duplicates
 
 
@@ -134,7 +103,7 @@ def _enforce_do_not_contact(person_id: str, changed_by: UUID) -> int:
     removed = 0
     for m in (memberships.data or []):
         sb.table("distribution_list_members").delete().eq("id", m["id"]).execute()
-        _log_field_change(
+        log_field_change(
             "person", person_id, "distribution_list_removal",
             m["distribution_list_id"], None, changed_by,
         )
@@ -190,14 +159,17 @@ def _sync_org_links(person_id: str, form: dict, changed_by: UUID) -> None:
         .execute()
     )
 
+    today = str(__import__("datetime").date.today())
+
     if existing.data:
         old_link = existing.data[0]
         if old_link["organization_id"] != primary_org_id:
-            # Mark old primary as former
+            # Mark old primary as former with end_date
             sb.table("person_organization_links").update({
                 "link_type": "former",
+                "end_date": today,
             }).eq("id", old_link["id"]).execute()
-            _log_field_change("person", person_id, "primary_organization",
+            log_field_change("person", person_id, "primary_organization",
                               old_link["organization_id"], primary_org_id, changed_by)
 
             # Check if there's already a link to the new org
@@ -212,6 +184,8 @@ def _sync_org_links(person_id: str, form: dict, changed_by: UUID) -> None:
                 sb.table("person_organization_links").update({
                     "link_type": "primary",
                     "job_title_at_org": primary_job_title,
+                    "start_date": today,
+                    "end_date": None,
                 }).eq("id", new_existing.data[0]["id"]).execute()
             else:
                 sb.table("person_organization_links").insert({
@@ -219,6 +193,7 @@ def _sync_org_links(person_id: str, form: dict, changed_by: UUID) -> None:
                     "organization_id": primary_org_id,
                     "link_type": "primary",
                     "job_title_at_org": primary_job_title,
+                    "start_date": today,
                 }).execute()
         else:
             # Same org, just update job title
@@ -226,12 +201,13 @@ def _sync_org_links(person_id: str, form: dict, changed_by: UUID) -> None:
                 "job_title_at_org": primary_job_title,
             }).eq("id", old_link["id"]).execute()
     else:
-        # No existing primary — create one
+        # No existing primary — create one with start_date
         sb.table("person_organization_links").insert({
             "person_id": person_id,
             "organization_id": primary_org_id,
             "link_type": "primary",
             "job_title_at_org": primary_job_title,
+            "start_date": today,
         }).execute()
 
 
@@ -253,7 +229,7 @@ async def search_orgs(
     resp = (
         sb.table("organizations")
         .select("id, company_name, organization_type, city, country")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .ilike("company_name", f"%{q}%")
         .order("company_name")
         .limit(10)
@@ -288,92 +264,24 @@ async def search_orgs(
 async def list_people(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=10, le=100),
-    search: str = Query("", alias="q"),
-    organization_id: str = Query("", alias="org"),
-    asset_class: str = Query("", alias="ac"),
-    dnc: str = Query("", alias="dnc"),
-    sort_by: str = Query("last_name"),
-    sort_dir: str = Query("asc"),
 ):
     """List people with filtering, search, sorting, and pagination."""
-    sb = get_supabase()
-    query = (
-        sb.table("people")
-        .select("id, first_name, last_name, email, phone, job_title, do_not_contact, coverage_owner, asset_classes_of_interest, created_at", count="exact")
-        .eq("is_archived", False)
-    )
-
-    # Search by name or email
-    if search:
-        query = query.or_(f"first_name.ilike.%{search}%,last_name.ilike.%{search}%,email.ilike.%{search}%")
-
-    # DNC filter
-    if dnc == "yes":
-        query = query.eq("do_not_contact", True)
-    elif dnc == "no":
-        query = query.eq("do_not_contact", False)
-
-    # Asset class filter
-    if asset_class:
-        query = query.contains("asset_classes_of_interest", [asset_class])
-
-    # Sorting
-    valid_sort_cols = ["first_name", "last_name", "email", "job_title", "phone", "created_at"]
-    if sort_by not in valid_sort_cols:
-        sort_by = "last_name"
-    desc = sort_dir.lower() == "desc"
-    query = query.order(sort_by, desc=desc)
-
-    # Pagination
-    offset = (page - 1) * page_size
-    query = query.range(offset, offset + page_size - 1)
-
-    resp = query.execute()
-    people = resp.data or []
-    total_count = resp.count or 0
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    # Enrich with primary org info
-    for person in people:
-        link_resp = (
-            sb.table("person_organization_links")
-            .select("organization:organizations(id, company_name)")
-            .eq("person_id", str(person["id"]))
-            .eq("link_type", "primary")
-            .limit(1)
-            .execute()
-        )
-        if link_resp.data and link_resp.data[0].get("organization"):
-            person["primary_org"] = link_resp.data[0]["organization"]
-        else:
-            person["primary_org"] = None
-
-    # Reference data for filters
-    asset_classes = _get_reference_data("asset_class")
-
-    context = {
-        "request": request,
-        "user": current_user,
-        "people": people,
-        "total_count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "search": search,
-        "organization_id": organization_id,
-        "asset_class": asset_class,
-        "dnc": dnc,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
-        "asset_classes": asset_classes,
-        "view_mode": "all_people",
-    }
+    ctx = build_grid_context("person", request, current_user, base_url="/people")
 
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("people/_list_table.html", context)
-    return templates.TemplateResponse("people/list.html", context)
+        return templates.TemplateResponse("components/_grid.html", {"request": request, **ctx})
+
+    ctx.update({
+        "user": current_user,
+        "view_mode": "all_people",
+        "total_count": ctx["pagination"]["total"],
+        "search": ctx["filters"].get("q", ""),
+        "asset_class": ctx["filters"].get("ac", ""),
+        "dnc": ctx["filters"].get("dnc", ""),
+        "organization_id": ctx["filters"].get("org", ""),
+        "asset_classes": get_reference_data("asset_class"),
+    })
+    return templates.TemplateResponse("people/list.html", {"request": request, **ctx})
 
 
 # ---------------------------------------------------------------------------
@@ -384,93 +292,37 @@ async def list_people(
 async def my_people(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=10, le=100),
-    search: str = Query("", alias="q"),
-    organization_id: str = Query("", alias="org"),
-    asset_class: str = Query("", alias="ac"),
-    dnc: str = Query("", alias="dnc"),
-    sort_by: str = Query("last_name"),
-    sort_dir: str = Query("asc"),
 ):
-    """List people where the current user is the coverage owner."""
+    """List people where the current user is coverage owner."""
     sb = get_supabase()
-    query = (
+    my_resp = (
         sb.table("people")
-        .select("id, first_name, last_name, email, phone, job_title, do_not_contact, coverage_owner, asset_classes_of_interest, created_at", count="exact")
-        .eq("is_archived", False)
+        .select("id")
         .eq("coverage_owner", str(current_user.id))
+        .eq("is_deleted", False)
+        .execute()
     )
+    my_ids = [str(p["id"]) for p in (my_resp.data or [])]
+    if not my_ids:
+        my_ids = ["00000000-0000-0000-0000-000000000000"]
 
-    # Search by name or email
-    if search:
-        query = query.or_(f"first_name.ilike.%{search}%,last_name.ilike.%{search}%,email.ilike.%{search}%")
-
-    # DNC filter
-    if dnc == "yes":
-        query = query.eq("do_not_contact", True)
-    elif dnc == "no":
-        query = query.eq("do_not_contact", False)
-
-    # Asset class filter
-    if asset_class:
-        query = query.contains("asset_classes_of_interest", [asset_class])
-
-    # Sorting
-    valid_sort_cols = ["first_name", "last_name", "email", "job_title", "phone", "created_at"]
-    if sort_by not in valid_sort_cols:
-        sort_by = "last_name"
-    desc = sort_dir.lower() == "desc"
-    query = query.order(sort_by, desc=desc)
-
-    # Pagination
-    offset = (page - 1) * page_size
-    query = query.range(offset, offset + page_size - 1)
-
-    resp = query.execute()
-    people = resp.data or []
-    total_count = resp.count or 0
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    # Enrich with primary org info
-    for person in people:
-        link_resp = (
-            sb.table("person_organization_links")
-            .select("organization:organizations(id, company_name)")
-            .eq("person_id", str(person["id"]))
-            .eq("link_type", "primary")
-            .limit(1)
-            .execute()
-        )
-        if link_resp.data and link_resp.data[0].get("organization"):
-            person["primary_org"] = link_resp.data[0]["organization"]
-        else:
-            person["primary_org"] = None
-
-    # Reference data for filters
-    asset_classes = _get_reference_data("asset_class")
-
-    context = {
-        "request": request,
-        "user": current_user,
-        "people": people,
-        "total_count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "search": search,
-        "organization_id": organization_id,
-        "asset_class": asset_class,
-        "dnc": dnc,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
-        "asset_classes": asset_classes,
-        "view_mode": "my_people",
-    }
+    ctx = build_grid_context("person", request, current_user, base_url="/people/my-people",
+                             extra_filters={"_org_ids": my_ids})
 
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("people/_list_table.html", context)
-    return templates.TemplateResponse("people/list.html", context)
+        return templates.TemplateResponse("components/_grid.html", {"request": request, **ctx})
+
+    ctx.update({
+        "user": current_user,
+        "view_mode": "my_people",
+        "total_count": ctx["pagination"]["total"],
+        "search": ctx["filters"].get("q", ""),
+        "asset_class": ctx["filters"].get("ac", ""),
+        "dnc": ctx["filters"].get("dnc", ""),
+        "organization_id": ctx["filters"].get("org", ""),
+        "asset_classes": get_reference_data("asset_class"),
+    })
+    return templates.TemplateResponse("people/list.html", {"request": request, **ctx})
 
 
 # ---------------------------------------------------------------------------
@@ -493,13 +345,16 @@ async def new_person_form(
             sb.table("organizations")
             .select("id, company_name")
             .eq("id", org_id)
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .maybe_single()
             .execute()
         )
         pre_org = org_resp.data
 
     users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+    users_list = users_resp.data or []
+
+    form_ctx = build_form_context("person", record=None, extra_context={"users": users_list})
 
     context = {
         "request": request,
@@ -507,8 +362,10 @@ async def new_person_form(
         "person": None,
         "person_org_links": [],
         "pre_org": pre_org,
-        "asset_classes": _get_reference_data("asset_class"),
-        "users": users_resp.data or [],
+        "asset_classes": get_reference_data("asset_class"),
+        "users": users_list,
+        "sections": form_ctx["sections"],
+        "field_defs": form_ctx["field_defs"],
     }
     return templates.TemplateResponse("people/form.html", context)
 
@@ -530,13 +387,63 @@ async def check_duplicates(
     if not last_name or len(last_name) < 2:
         return HTMLResponse("")
 
-    dupes = _check_duplicates(first_name, last_name, email or None, exclude_id or None)
+    dupes = _check_duplicates(first_name, last_name, email or None, exclude_id or None, source_id=exclude_id or None)
     if not dupes:
         return HTMLResponse("")
 
     context = {
         "request": request,
         "duplicates": dupes,
+        "source_id": exclude_id or None,
+        "entity_type": "person",
+    }
+    return templates.TemplateResponse("people/_duplicate_warning.html", context)
+
+
+# ---------------------------------------------------------------------------
+# SUPPRESS DUPLICATE — POST /people/{person_id}/suppress-duplicate
+# ---------------------------------------------------------------------------
+
+@router.post("/{person_id}/suppress-duplicate", response_class=HTMLResponse)
+async def suppress_duplicate(
+    request: Request,
+    person_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Suppress a duplicate pair so it no longer shows as a warning."""
+    form = await request.form()
+    other_id = form.get("other_id", "")
+    if not other_id:
+        raise HTTPException(status_code=400, detail="Missing other_id")
+
+    # Normalize: smaller UUID as record_id_a
+    id_a, id_b = (min(person_id, other_id), max(person_id, other_id))
+
+    sb = get_supabase()
+    sb.table("duplicate_suppressions").upsert({
+        "entity_type": "person",
+        "record_id_a": id_a,
+        "record_id_b": id_b,
+        "suppressed_by": str(current_user.id),
+    }).execute()
+
+    log_field_change("person", person_id, "duplicate_suppressed", other_id, "suppressed", current_user.id)
+
+    # Re-run duplicate check and return updated list
+    person_resp = sb.table("people").select("first_name, last_name, email").eq("id", person_id).maybe_single().execute()
+    if person_resp.data:
+        dupes = _check_duplicates(
+            person_resp.data["first_name"], person_resp.data["last_name"],
+            person_resp.data.get("email"), exclude_id=person_id, source_id=person_id,
+        )
+    else:
+        dupes = []
+
+    context = {
+        "request": request,
+        "duplicates": dupes,
+        "source_id": person_id,
+        "entity_type": "person",
     }
     return templates.TemplateResponse("people/_duplicate_warning.html", context)
 
@@ -559,7 +466,7 @@ async def get_person(
         sb.table("people")
         .select("*")
         .eq("id", str(person_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -587,11 +494,12 @@ async def get_person(
     )
     activities = activities_resp.data or []
 
-    # Distribution list memberships (read-only)
+    # Distribution list memberships
     dl_resp = (
         sb.table("distribution_list_members")
-        .select("id, joined_at, distribution_list:distribution_lists(id, list_name, list_type, asset_class)")
+        .select("id, joined_at, is_active, distribution_list:distribution_lists(id, list_name, list_type, asset_class, brand)")
         .eq("person_id", str(person_id))
+        .eq("is_active", True)
         .execute()
     )
     distribution_lists = dl_resp.data or []
@@ -640,22 +548,37 @@ async def create_person(
 
     form = await request.form()
     form_data = dict(form)
-    person_data = _build_person_data_from_form(form)
 
-    # Validation
-    errors = []
-    if not person_data.get("first_name"):
-        errors.append("First Name is required.")
-    if not person_data.get("last_name"):
-        errors.append("Last Name is required.")
+    # Dynamic form parsing
+    field_defs = get_field_definitions("person", active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    person_data = parse_form_data("person", form, field_defs)
 
+    # Entity-specific extraction (org autocomplete, multi-select)
     primary_org_id = (form_data.get("primary_organization_id") or "").strip()
+    job_title_at_org = (form_data.get("primary_job_title_at_org") or "").strip() or None
+    if "asset_classes_of_interest" not in person_data or person_data["asset_classes_of_interest"] is None:
+        asset_classes = form.getlist("asset_classes_of_interest") if hasattr(form, "getlist") else []
+        person_data["asset_classes_of_interest"] = list(asset_classes) if asset_classes else None
+
+    # Dynamic validation
+    errors = validate_form_data("person", person_data, field_defs)
+
+    # Entity-specific validation
+    if not person_data.get("first_name"):
+        if "First Name is required." not in errors:
+            errors.append("First Name is required.")
+    if not person_data.get("last_name"):
+        if "Last Name is required." not in errors:
+            errors.append("Last Name is required.")
     if not primary_org_id:
         errors.append("Primary Organization is required.")
 
     if errors:
         sb = get_supabase()
         users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+        users_list = users_resp.data or []
+        form_ctx = build_form_context("person", record=None, extra_context={"users": users_list})
         context = {
             "request": request,
             "user": current_user,
@@ -663,8 +586,10 @@ async def create_person(
             "person_org_links": [],
             "pre_org": None,
             "errors": errors,
-            "asset_classes": _get_reference_data("asset_class"),
-            "users": users_resp.data or [],
+            "asset_classes": get_reference_data("asset_class"),
+            "users": users_list,
+            "sections": form_ctx["sections"],
+            "field_defs": form_ctx["field_defs"],
         }
         return templates.TemplateResponse("people/form.html", context)
 
@@ -677,10 +602,12 @@ async def create_person(
         if dupes:
             sb = get_supabase()
             users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+            users_list = users_resp.data or []
             pre_org = None
             if primary_org_id:
                 org_resp = sb.table("organizations").select("id, company_name").eq("id", primary_org_id).maybe_single().execute()
                 pre_org = org_resp.data
+            form_ctx = build_form_context("person", record=None, extra_context={"users": users_list})
             context = {
                 "request": request,
                 "user": current_user,
@@ -688,8 +615,10 @@ async def create_person(
                 "person_org_links": [],
                 "pre_org": pre_org,
                 "duplicates": dupes,
-                "asset_classes": _get_reference_data("asset_class"),
-                "users": users_resp.data or [],
+                "asset_classes": get_reference_data("asset_class"),
+                "users": users_list,
+                "sections": form_ctx["sections"],
+                "field_defs": form_ctx["field_defs"],
             }
             return templates.TemplateResponse("people/form.html", context)
 
@@ -710,7 +639,7 @@ async def create_person(
         _sync_org_links(str(person_id), form_data, current_user.id)
 
         # Audit log
-        _log_field_change("person", str(person_id), "_created", None, "record created", current_user.id)
+        log_field_change("person", str(person_id), "_created", None, "record created", current_user.id)
 
         # DNC enforcement
         if new_person.get("do_not_contact"):
@@ -739,7 +668,7 @@ async def edit_person_form(
         sb.table("people")
         .select("*")
         .eq("id", str(person_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -764,6 +693,9 @@ async def edit_person_form(
             break
 
     users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+    users_list = users_resp.data or []
+
+    form_ctx = build_form_context("person", record=person, extra_context={"users": users_list})
 
     context = {
         "request": request,
@@ -771,8 +703,10 @@ async def edit_person_form(
         "person": person,
         "person_org_links": org_links,
         "pre_org": pre_org,
-        "asset_classes": _get_reference_data("asset_class"),
-        "users": users_resp.data or [],
+        "asset_classes": get_reference_data("asset_class"),
+        "users": users_list,
+        "sections": form_ctx["sections"],
+        "field_defs": form_ctx["field_defs"],
     }
     return templates.TemplateResponse("people/form.html", context)
 
@@ -796,7 +730,7 @@ async def update_person(
         sb.table("people")
         .select("*")
         .eq("id", str(person_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -806,23 +740,38 @@ async def update_person(
 
     form = await request.form()
     form_data = dict(form)
-    person_data = _build_person_data_from_form(form)
 
-    # Validation
-    errors = []
+    # Dynamic form parsing
+    field_defs = get_field_definitions("person", active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    person_data = parse_form_data("person", form, field_defs)
+
+    # Entity-specific extraction (multi-select fallback)
+    if "asset_classes_of_interest" not in person_data or person_data["asset_classes_of_interest"] is None:
+        asset_classes = form.getlist("asset_classes_of_interest") if hasattr(form, "getlist") else []
+        person_data["asset_classes_of_interest"] = list(asset_classes) if asset_classes else None
+
+    # Dynamic validation
+    errors = validate_form_data("person", person_data, field_defs)
+
+    # Entity-specific validation
     if not person_data.get("first_name"):
-        errors.append("First Name is required.")
+        if "First Name is required." not in errors:
+            errors.append("First Name is required.")
     if not person_data.get("last_name"):
-        errors.append("Last Name is required.")
+        if "Last Name is required." not in errors:
+            errors.append("Last Name is required.")
 
     if errors:
         users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+        users_list = users_resp.data or []
         org_links_resp = (
             sb.table("person_organization_links")
             .select("id, link_type, job_title_at_org, organization_id, organization:organizations(id, company_name)")
             .eq("person_id", str(person_id))
             .execute()
         )
+        form_ctx = build_form_context("person", record={**old_person, **person_data}, extra_context={"users": users_list})
         context = {
             "request": request,
             "user": current_user,
@@ -830,13 +779,15 @@ async def update_person(
             "person_org_links": org_links_resp.data or [],
             "pre_org": None,
             "errors": errors,
-            "asset_classes": _get_reference_data("asset_class"),
-            "users": users_resp.data or [],
+            "asset_classes": get_reference_data("asset_class"),
+            "users": users_list,
+            "sections": form_ctx["sections"],
+            "field_defs": form_ctx["field_defs"],
         }
         return templates.TemplateResponse("people/form.html", context)
 
     # Audit log every changed field
-    _audit_changes(str(person_id), old_person, person_data, current_user.id)
+    audit_changes("person", str(person_id), old_person, person_data, current_user.id)
 
     # Update
     sb.table("people").update(person_data).eq("id", str(person_id)).execute()
@@ -867,8 +818,8 @@ async def archive_person(
     require_role(current_user, ["admin"])
 
     sb = get_supabase()
-    sb.table("people").update({"is_archived": True}).eq("id", str(person_id)).execute()
-    _log_field_change("person", str(person_id), "is_archived", False, True, current_user.id)
+    sb.table("people").update({"is_deleted": True}).eq("id", str(person_id)).execute()
+    log_field_change("person", str(person_id), "is_deleted", False, True, current_user.id)
 
     if request.headers.get("HX-Request"):
         return HTMLResponse('<p class="text-sm text-green-600">Person archived.</p>')

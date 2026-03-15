@@ -17,7 +17,7 @@ class PersonCreate(BaseModel):
     legal_compliance_notices: bool = False
     backstop_company_id: Optional[str] = None
     ostrako_id: Optional[str] = None
-    is_archived: bool = False
+    is_deleted: bool = False
     created_by: Optional[UUID] = None
 
 
@@ -33,7 +33,7 @@ class PersonUpdate(BaseModel):
     legal_compliance_notices: Optional[bool] = None
     backstop_company_id: Optional[str] = None
     ostrako_id: Optional[str] = None
-    is_archived: Optional[bool] = None
+    is_deleted: Optional[bool] = None
 
 
 class PersonResponse(BaseModel):
@@ -51,7 +51,7 @@ class PersonResponse(BaseModel):
     legal_compliance_notices: bool
     backstop_company_id: Optional[str] = None
     ostrako_id: Optional[str] = None
-    is_archived: bool
+    is_deleted: bool
     created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime

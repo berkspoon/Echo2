@@ -9,6 +9,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
+from db.helpers import get_reference_data, log_field_change, audit_changes
+from db.field_service import get_field_definitions, enrich_field_definitions
+from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup
+from services.grid_service import build_grid_context
 from dependencies import CurrentUser, get_current_user, require_role
 
 router = APIRouter(prefix="/activities", tags=["activities"])
@@ -18,54 +22,6 @@ templates = Jinja2Templates(directory="templates")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _get_reference_data(category: str, parent_value: Optional[str] = None) -> list[dict]:
-    """Fetch active reference data for a dropdown category."""
-    sb = get_supabase()
-    query = (
-        sb.table("reference_data")
-        .select("value, label, parent_value")
-        .eq("category", category)
-        .eq("is_active", True)
-        .order("display_order")
-    )
-    if parent_value:
-        query = query.eq("parent_value", parent_value)
-    return query.execute().data or []
-
-
-def _log_field_change(
-    record_type: str,
-    record_id: str,
-    field_name: str,
-    old_value,
-    new_value,
-    changed_by: UUID,
-) -> None:
-    """Write a single field change to the audit_log table."""
-    sb = get_supabase()
-    sb.table("audit_log").insert({
-        "record_type": record_type,
-        "record_id": record_id,
-        "field_name": field_name,
-        "old_value": str(old_value) if old_value is not None else None,
-        "new_value": str(new_value) if new_value is not None else None,
-        "changed_by": str(changed_by),
-    }).execute()
-
-
-def _audit_changes(
-    record_id: str,
-    old_record: dict,
-    new_data: dict,
-    changed_by: UUID,
-) -> None:
-    """Compare old record with new data and log every changed field."""
-    for field, new_val in new_data.items():
-        old_val = old_record.get(field)
-        if str(old_val) != str(new_val) and not (old_val is None and new_val is None):
-            _log_field_change("activity", record_id, field, old_val, new_val, changed_by)
-
 
 def _sync_activity_org_links(activity_id: str, org_ids: list[str]) -> None:
     """Replace all org links for an activity with the given list."""
@@ -95,14 +51,19 @@ def _sync_activity_person_links(activity_id: str, person_ids: list[str]) -> None
             }).execute()
 
 
-def _create_follow_up_task(activity: dict, changed_by: UUID) -> None:
-    """Auto-generate a task when follow_up_required is enabled."""
+def _create_follow_up_task(activity: dict, changed_by: UUID, assignee_id: str = None) -> None:
+    """Auto-generate a task when follow_up_required is enabled.
+
+    If *assignee_id* is provided, the task is assigned to that user;
+    otherwise it defaults to the activity author.
+    """
     sb = get_supabase()
     title = activity.get("title") or "Activity follow-up"
+    assigned_to = assignee_id if assignee_id else str(activity["author_id"])
     sb.table("tasks").insert({
         "title": f"Follow up: {title}",
         "due_date": activity.get("follow_up_date"),
-        "assigned_to": str(activity["author_id"]),
+        "assigned_to": assigned_to,
         "status": "open",
         "notes": activity.get("follow_up_notes") or "",
         "source": "activity_follow_up",
@@ -164,7 +125,7 @@ async def search_orgs(
     resp = (
         sb.table("organizations")
         .select("id, company_name, organization_type, city, country")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .ilike("company_name", f"%{q}%")
         .order("company_name")
         .limit(10)
@@ -209,7 +170,7 @@ async def search_people(
     resp = (
         sb.table("people")
         .select("id, first_name, last_name, email, job_title")
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .or_(f"first_name.ilike.%{q}%,last_name.ilike.%{q}%,email.ilike.%{q}%")
         .order("last_name")
         .limit(10)
@@ -272,7 +233,7 @@ async def org_people(
         sb.table("people")
         .select("id, first_name, last_name, email, job_title")
         .in_("id", person_ids)
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .order("last_name")
         .limit(20)
         .execute()
@@ -337,7 +298,7 @@ async def person_primary_org(
         sb.table("organizations")
         .select("id, company_name")
         .eq("id", org_id)
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -362,7 +323,7 @@ async def get_subtypes(
     if not activity_type:
         return HTMLResponse('<option value="">— Select subtype —</option>')
 
-    subtypes = _get_reference_data("activity_subtype", parent_value=activity_type)
+    subtypes = get_reference_data("activity_subtype", parent_value=activity_type)
     if not subtypes:
         return HTMLResponse('<option value="">No subtypes</option>')
 
@@ -380,151 +341,57 @@ async def get_subtypes(
 async def my_activities(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=10, le=100),
-    search: str = Query("", alias="q"),
-    activity_type: str = Query("", alias="type"),
-    author_id: str = Query("", alias="author"),
-    org_id: str = Query("", alias="org"),
-    date_from: str = Query("", alias="from"),
-    date_to: str = Query("", alias="to"),
-    sort_by: str = Query("effective_date"),
-    sort_dir: str = Query("desc"),
 ):
-    """List activities where user is author or has coverage over linked orgs/people."""
+    """List activities related to the current user's coverage."""
     sb = get_supabase()
 
-    # Step 1: Activities where user is author
-    author_resp = sb.table("activities").select("id").eq("is_archived", False).eq("author_id", str(current_user.id)).execute()
-    my_activity_ids = {str(r["id"]) for r in (author_resp.data or [])}
+    # Multi-step coverage query to find activity IDs
+    my_activity_ids = set()
 
-    # Step 2: Activities linked to people where user is coverage_owner
-    covered_people = sb.table("people").select("id").eq("coverage_owner", str(current_user.id)).eq("is_archived", False).execute()
+    # 1. Activities authored by user
+    auth_resp = sb.table("activities").select("id").eq("author_id", str(current_user.id)).eq("is_deleted", False).execute()
+    my_activity_ids |= {str(a["id"]) for a in (auth_resp.data or [])}
+
+    # 2. Activities linked to people where user is coverage owner
+    covered_people = sb.table("people").select("id").eq("coverage_owner", str(current_user.id)).eq("is_deleted", False).execute()
     person_ids = [str(p["id"]) for p in (covered_people.data or [])]
     if person_ids:
         apl_resp = sb.table("activity_people_links").select("activity_id").in_("person_id", person_ids).execute()
         my_activity_ids |= {str(r["activity_id"]) for r in (apl_resp.data or [])}
 
-    # Step 3: Activities linked to orgs where user is aksia_owner on leads
-    owned_leads = sb.table("leads").select("organization_id").eq("aksia_owner_id", str(current_user.id)).eq("is_archived", False).execute()
-    lead_org_ids = list({str(l["organization_id"]) for l in (owned_leads.data or []) if l.get("organization_id")})
-    if lead_org_ids:
-        aol_resp = sb.table("activity_organization_links").select("activity_id").in_("organization_id", lead_org_ids).execute()
+    # 3. Activities linked to orgs where user owns leads
+    owned_leads = sb.table("leads").select("organization_id").eq("aksia_owner_id", str(current_user.id)).eq("is_deleted", False).execute()
+    org_ids = list({str(l["organization_id"]) for l in (owned_leads.data or []) if l.get("organization_id")})
+    if org_ids:
+        aol_resp = sb.table("activity_organization_links").select("activity_id").in_("organization_id", org_ids).execute()
         my_activity_ids |= {str(r["activity_id"]) for r in (aol_resp.data or [])}
 
-    # Convert to list for query
-    my_activity_ids_list = list(my_activity_ids)
+    if not my_activity_ids:
+        my_activity_ids = {"00000000-0000-0000-0000-000000000000"}
 
-    if not my_activity_ids_list:
-        # No activities found for this user
-        activity_types = _get_reference_data("activity_type")
-        users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
-        context = {
-            "request": request,
-            "user": current_user,
-            "activities": [],
-            "total_count": 0,
-            "page": 1,
-            "page_size": page_size,
-            "total_pages": 1,
-            "search": search,
-            "activity_type": activity_type,
-            "author_id": author_id,
-            "org_id": org_id,
-            "date_from": date_from,
-            "date_to": date_to,
-            "sort_by": sort_by,
-            "sort_dir": sort_dir,
-            "activity_types": activity_types,
-            "users": users_resp.data or [],
-            "view_mode": "my_activities",
-        }
-        if request.headers.get("HX-Request"):
-            return templates.TemplateResponse("activities/_list_table.html", context)
-        return templates.TemplateResponse("activities/list.html", context)
-
-    # Now query activities with those IDs, applying filters/pagination
-    query = (
-        sb.table("activities")
-        .select("id, title, effective_date, activity_type, subtype, author_id, details, follow_up_required, created_at", count="exact")
-        .eq("is_archived", False)
-        .in_("id", my_activity_ids_list)
-    )
-
-    # Apply the same filters as list_activities
-    if search:
-        query = query.or_(f"title.ilike.%{search}%,details.ilike.%{search}%")
-    if activity_type:
-        query = query.eq("activity_type", activity_type)
-    if author_id:
-        query = query.eq("author_id", author_id)
-    if date_from:
-        query = query.gte("effective_date", date_from)
-    if date_to:
-        query = query.lte("effective_date", date_to)
-
-    # Sorting
-    valid_sort_cols = ["effective_date", "title", "activity_type", "created_at"]
-    if sort_by not in valid_sort_cols:
-        sort_by = "effective_date"
-    desc = sort_dir.lower() == "desc"
-    query = query.order(sort_by, desc=desc)
-
-    # Pagination
-    offset = (page - 1) * page_size
-    query = query.range(offset, offset + page_size - 1)
-
-    resp = query.execute()
-    activities = resp.data or []
-    total_count = resp.count or 0
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    # Same enrichment as list_activities
-    for act in activities:
-        if act.get("author_id"):
-            author_resp2 = sb.table("users").select("display_name").eq("id", str(act["author_id"])).maybe_single().execute()
-            act["author_name"] = author_resp2.data["display_name"] if author_resp2.data else "Unknown"
-        else:
-            act["author_name"] = "Unknown"
-
-        org_resp = (
-            sb.table("activity_organization_links")
-            .select("organization:organizations(id, company_name)")
-            .eq("activity_id", str(act["id"]))
-            .execute()
-        )
-        act["linked_orgs"] = [r["organization"] for r in (org_resp.data or []) if r.get("organization")]
-
-    if org_id:
-        activities = [a for a in activities if any(o["id"] == org_id for o in a.get("linked_orgs", []))]
-
-    activity_types_list = _get_reference_data("activity_type")
-    users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
-
-    context = {
-        "request": request,
-        "user": current_user,
-        "activities": activities,
-        "total_count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "search": search,
-        "activity_type": activity_type,
-        "author_id": author_id,
-        "org_id": org_id,
-        "date_from": date_from,
-        "date_to": date_to,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
-        "activity_types": activity_types_list,
-        "users": users_resp.data or [],
-        "view_mode": "my_activities",
-    }
+    ctx = build_grid_context("activity", request, current_user, base_url="/activities/my-activities",
+                             extra_filters={"_activity_ids": list(my_activity_ids)})
 
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("activities/_list_table.html", context)
-    return templates.TemplateResponse("activities/list.html", context)
+        return templates.TemplateResponse("components/_grid.html", {"request": request, **ctx})
+
+    activity_types = get_reference_data("activity_type")
+    users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+
+    ctx.update({
+        "user": current_user,
+        "view_mode": "my_activities",
+        "total_count": ctx["pagination"]["total"],
+        "search": ctx["filters"].get("q", ""),
+        "activity_type": ctx["filters"].get("type", ""),
+        "author_id": ctx["filters"].get("author", ""),
+        "org_id": ctx["filters"].get("org", ""),
+        "date_from": ctx["filters"].get("from", ""),
+        "date_to": ctx["filters"].get("to", ""),
+        "activity_types": activity_types,
+        "users": users_resp.data or [],
+    })
+    return templates.TemplateResponse("activities/list.html", {"request": request, **ctx})
 
 
 # ---------------------------------------------------------------------------
@@ -535,121 +402,31 @@ async def my_activities(
 async def list_activities(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=10, le=100),
-    search: str = Query("", alias="q"),
-    activity_type: str = Query("", alias="type"),
-    author_id: str = Query("", alias="author"),
-    org_id: str = Query("", alias="org"),
-    date_from: str = Query("", alias="from"),
-    date_to: str = Query("", alias="to"),
-    sort_by: str = Query("effective_date"),
-    sort_dir: str = Query("desc"),
 ):
     """List activities with filtering, search, sorting, and pagination."""
-    sb = get_supabase()
-
-    query = (
-        sb.table("activities")
-        .select("id, title, effective_date, activity_type, subtype, author_id, details, follow_up_required, created_at", count="exact")
-        .eq("is_archived", False)
-    )
-
-    # Full-text search on details
-    if search:
-        query = query.or_(f"title.ilike.%{search}%,details.ilike.%{search}%")
-
-    # Type filter
-    if activity_type:
-        query = query.eq("activity_type", activity_type)
-
-    # Author filter
-    if author_id:
-        query = query.eq("author_id", author_id)
-
-    # Date range
-    if date_from:
-        query = query.gte("effective_date", date_from)
-    if date_to:
-        query = query.lte("effective_date", date_to)
-
-    # Sorting
-    valid_sort_cols = ["effective_date", "title", "activity_type", "created_at"]
-    if sort_by not in valid_sort_cols:
-        sort_by = "effective_date"
-    desc = sort_dir.lower() == "desc"
-    query = query.order(sort_by, desc=desc)
-
-    # Pagination
-    offset = (page - 1) * page_size
-    query = query.range(offset, offset + page_size - 1)
-
-    resp = query.execute()
-    activities = resp.data or []
-    total_count = resp.count or 0
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    # Enrich with author name and linked orgs
-    for act in activities:
-        # Author name
-        if act.get("author_id"):
-            author_resp = (
-                sb.table("users")
-                .select("display_name")
-                .eq("id", str(act["author_id"]))
-                .maybe_single()
-                .execute()
-            )
-            act["author_name"] = author_resp.data["display_name"] if author_resp.data else "Unknown"
-        else:
-            act["author_name"] = "Unknown"
-
-        # Linked orgs
-        org_resp = (
-            sb.table("activity_organization_links")
-            .select("organization:organizations(id, company_name)")
-            .eq("activity_id", str(act["id"]))
-            .execute()
-        )
-        act["linked_orgs"] = [
-            r["organization"] for r in (org_resp.data or []) if r.get("organization")
-        ]
-
-    # If filtering by org, we need to filter after enrichment
-    if org_id:
-        activities = [
-            a for a in activities
-            if any(o["id"] == org_id for o in a.get("linked_orgs", []))
-        ]
-
-    # Reference data for filters
-    activity_types = _get_reference_data("activity_type")
-    users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
-
-    context = {
-        "request": request,
-        "user": current_user,
-        "activities": activities,
-        "total_count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "search": search,
-        "activity_type": activity_type,
-        "author_id": author_id,
-        "org_id": org_id,
-        "date_from": date_from,
-        "date_to": date_to,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
-        "activity_types": activity_types,
-        "users": users_resp.data or [],
-        "view_mode": "all_activities",
-    }
+    ctx = build_grid_context("activity", request, current_user, base_url="/activities")
 
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("activities/_list_table.html", context)
-    return templates.TemplateResponse("activities/list.html", context)
+        return templates.TemplateResponse("components/_grid.html", {"request": request, **ctx})
+
+    sb = get_supabase()
+    activity_types = get_reference_data("activity_type")
+    users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+
+    ctx.update({
+        "user": current_user,
+        "view_mode": "all_activities",
+        "total_count": ctx["pagination"]["total"],
+        "search": ctx["filters"].get("q", ""),
+        "activity_type": ctx["filters"].get("type", ""),
+        "author_id": ctx["filters"].get("author", ""),
+        "org_id": ctx["filters"].get("org", ""),
+        "date_from": ctx["filters"].get("from", ""),
+        "date_to": ctx["filters"].get("to", ""),
+        "activity_types": activity_types,
+        "users": users_resp.data or [],
+    })
+    return templates.TemplateResponse("activities/list.html", {"request": request, **ctx})
 
 
 # ---------------------------------------------------------------------------
@@ -675,7 +452,7 @@ async def new_activity_form(
             sb.table("organizations")
             .select("id, company_name")
             .eq("id", org_id)
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .maybe_single()
             .execute()
         )
@@ -689,7 +466,7 @@ async def new_activity_form(
             sb.table("people")
             .select("id, first_name, last_name")
             .eq("id", person_id)
-            .eq("is_archived", False)
+            .eq("is_deleted", False)
             .maybe_single()
             .execute()
         )
@@ -699,7 +476,10 @@ async def new_activity_form(
             pre_people = [p]
 
     users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+    users_list = users_resp.data or []
     funds_resp = sb.table("funds").select("id, fund_name, ticker").eq("is_active", True).order("fund_name").execute()
+
+    form_ctx = build_form_context("activity", record=None, extra_context={"users": users_list})
 
     context = {
         "request": request,
@@ -707,10 +487,12 @@ async def new_activity_form(
         "activity": None,
         "pre_orgs": pre_orgs,
         "pre_people": pre_people,
-        "activity_types": _get_reference_data("activity_type"),
+        "activity_types": get_reference_data("activity_type"),
         "activity_subtypes": [],
-        "users": users_resp.data or [],
+        "users": users_list,
         "funds": funds_resp.data or [],
+        "sections": form_ctx["sections"],
+        "field_defs": form_ctx["field_defs"],
     }
     return templates.TemplateResponse("activities/form.html", context)
 
@@ -732,7 +514,7 @@ async def get_activity(
         sb.table("activities")
         .select("*")
         .eq("id", str(activity_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -789,7 +571,7 @@ async def get_activity(
         .select("id, title, due_date, status, assigned_to")
         .eq("linked_record_type", "activity")
         .eq("linked_record_id", str(activity_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .order("created_at", desc=True)
         .execute()
     )
@@ -822,24 +604,22 @@ async def create_activity(
 
     form = await request.form()
     form_data = dict(form)
-    activity_data = _build_activity_data_from_form(form)
 
-    # Linked orgs and people from form
+    # Use dynamic form service for parsing and validation
+    field_defs = get_field_definitions("activity", active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    activity_data = parse_form_data("activity", form, field_defs)
+
+    # Linked orgs and people from form (entity-specific, not in field_defs)
     org_ids = form.getlist("linked_org_ids") if hasattr(form, "getlist") else []
     org_ids = [oid for oid in org_ids if oid]
     person_ids = form.getlist("linked_person_ids") if hasattr(form, "getlist") else []
     person_ids = [pid for pid in person_ids if pid]
 
-    # Validation
-    errors = []
-    if not activity_data.get("effective_date"):
-        errors.append("Effective Date is required.")
-    if not activity_data.get("activity_type"):
-        errors.append("Activity Type is required.")
-    if not activity_data.get("details"):
-        errors.append("Activity Details is required.")
-    if not activity_data.get("author_id"):
-        errors.append("Author is required.")
+    # Dynamic validation from field_defs
+    errors = validate_form_data("activity", activity_data, field_defs)
+
+    # Entity-specific validation (not captured by field_defs)
     if not org_ids:
         errors.append("At least one Linked Organization is required.")
     if activity_data.get("follow_up_required") and not activity_data.get("follow_up_notes"):
@@ -848,6 +628,7 @@ async def create_activity(
     if errors:
         sb = get_supabase()
         users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+        users_list = users_resp.data or []
         funds_resp = sb.table("funds").select("id, fund_name, ticker").eq("is_active", True).order("fund_name").execute()
 
         # Rebuild pre-selected orgs and people for re-rendering
@@ -864,7 +645,9 @@ async def create_activity(
                 p["display_name"] = f"{p['first_name']} {p['last_name']}"
                 pre_people.append(p)
 
-        subtypes = _get_reference_data("activity_subtype", parent_value=activity_data.get("activity_type")) if activity_data.get("activity_type") else []
+        subtypes = get_reference_data("activity_subtype", parent_value=activity_data.get("activity_type")) if activity_data.get("activity_type") else []
+
+        form_ctx = build_form_context("activity", record=None, extra_context={"users": users_list})
 
         context = {
             "request": request,
@@ -873,10 +656,12 @@ async def create_activity(
             "pre_orgs": pre_orgs,
             "pre_people": pre_people,
             "errors": errors,
-            "activity_types": _get_reference_data("activity_type"),
+            "activity_types": get_reference_data("activity_type"),
             "activity_subtypes": subtypes,
-            "users": users_resp.data or [],
+            "users": users_list,
             "funds": funds_resp.data or [],
+            "sections": form_ctx["sections"],
+            "field_defs": form_ctx["field_defs"],
         }
         return templates.TemplateResponse("activities/form.html", context)
 
@@ -898,11 +683,12 @@ async def create_activity(
         _sync_activity_person_links(str(activity_id), person_ids)
 
         # Audit log
-        _log_field_change("activity", str(activity_id), "_created", None, "record created", current_user.id)
+        log_field_change("activity", str(activity_id), "_created", None, "record created", current_user.id)
 
         # Auto-generate follow-up task
         if new_activity.get("follow_up_required"):
-            _create_follow_up_task(new_activity, current_user.id)
+            assignee_id = (form_data.get("follow_up_assignee_id") or "").strip() or None
+            _create_follow_up_task(new_activity, current_user.id, assignee_id=assignee_id)
 
         return RedirectResponse(url=f"/activities/{activity_id}", status_code=303)
 
@@ -927,7 +713,7 @@ async def edit_activity_form(
         sb.table("activities")
         .select("*")
         .eq("id", str(activity_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -961,10 +747,13 @@ async def edit_activity_form(
             pre_people.append(p)
 
     users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+    users_list = users_resp.data or []
     funds_resp = sb.table("funds").select("id, fund_name, ticker").eq("is_active", True).order("fund_name").execute()
 
     # Load subtypes for the current activity type
-    subtypes = _get_reference_data("activity_subtype", parent_value=activity.get("activity_type")) if activity.get("activity_type") else []
+    subtypes = get_reference_data("activity_subtype", parent_value=activity.get("activity_type")) if activity.get("activity_type") else []
+
+    form_ctx = build_form_context("activity", record=activity, extra_context={"users": users_list})
 
     context = {
         "request": request,
@@ -972,10 +761,12 @@ async def edit_activity_form(
         "activity": activity,
         "pre_orgs": pre_orgs,
         "pre_people": pre_people,
-        "activity_types": _get_reference_data("activity_type"),
+        "activity_types": get_reference_data("activity_type"),
         "activity_subtypes": subtypes,
-        "users": users_resp.data or [],
+        "users": users_list,
         "funds": funds_resp.data or [],
+        "sections": form_ctx["sections"],
+        "field_defs": form_ctx["field_defs"],
     }
     return templates.TemplateResponse("activities/form.html", context)
 
@@ -999,7 +790,7 @@ async def update_activity(
         sb.table("activities")
         .select("*")
         .eq("id", str(activity_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -1009,24 +800,22 @@ async def update_activity(
 
     form = await request.form()
     form_data = dict(form)
-    activity_data = _build_activity_data_from_form(form)
 
-    # Linked orgs and people
+    # Use dynamic form service for parsing and validation
+    field_defs = get_field_definitions("activity", active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    activity_data = parse_form_data("activity", form, field_defs)
+
+    # Linked orgs and people (entity-specific, not in field_defs)
     org_ids = form.getlist("linked_org_ids") if hasattr(form, "getlist") else []
     org_ids = [oid for oid in org_ids if oid]
     person_ids = form.getlist("linked_person_ids") if hasattr(form, "getlist") else []
     person_ids = [pid for pid in person_ids if pid]
 
-    # Validation
-    errors = []
-    if not activity_data.get("effective_date"):
-        errors.append("Effective Date is required.")
-    if not activity_data.get("activity_type"):
-        errors.append("Activity Type is required.")
-    if not activity_data.get("details"):
-        errors.append("Activity Details is required.")
-    if not activity_data.get("author_id"):
-        errors.append("Author is required.")
+    # Dynamic validation from field_defs
+    errors = validate_form_data("activity", activity_data, field_defs, record=old_activity)
+
+    # Entity-specific validation (not captured by field_defs)
     if not org_ids:
         errors.append("At least one Linked Organization is required.")
     if activity_data.get("follow_up_required") and not activity_data.get("follow_up_notes"):
@@ -1034,6 +823,7 @@ async def update_activity(
 
     if errors:
         users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+        users_list = users_resp.data or []
         funds_resp = sb.table("funds").select("id, fund_name, ticker").eq("is_active", True).order("fund_name").execute()
 
         pre_orgs = []
@@ -1049,7 +839,9 @@ async def update_activity(
                 p["display_name"] = f"{p['first_name']} {p['last_name']}"
                 pre_people.append(p)
 
-        subtypes = _get_reference_data("activity_subtype", parent_value=activity_data.get("activity_type")) if activity_data.get("activity_type") else []
+        subtypes = get_reference_data("activity_subtype", parent_value=activity_data.get("activity_type")) if activity_data.get("activity_type") else []
+
+        form_ctx = build_form_context("activity", record=old_activity, extra_context={"users": users_list})
 
         context = {
             "request": request,
@@ -1058,15 +850,17 @@ async def update_activity(
             "pre_orgs": pre_orgs,
             "pre_people": pre_people,
             "errors": errors,
-            "activity_types": _get_reference_data("activity_type"),
+            "activity_types": get_reference_data("activity_type"),
             "activity_subtypes": subtypes,
-            "users": users_resp.data or [],
+            "users": users_list,
             "funds": funds_resp.data or [],
+            "sections": form_ctx["sections"],
+            "field_defs": form_ctx["field_defs"],
         }
         return templates.TemplateResponse("activities/form.html", context)
 
     # Audit log every changed field
-    _audit_changes(str(activity_id), old_activity, activity_data, current_user.id)
+    audit_changes("activity", str(activity_id), old_activity, activity_data, current_user.id)
 
     # Update
     sb.table("activities").update(activity_data).eq("id", str(activity_id)).execute()
@@ -1080,7 +874,8 @@ async def update_activity(
     is_follow_up = activity_data.get("follow_up_required", False)
     if is_follow_up and not was_follow_up:
         updated_activity = {**old_activity, **activity_data, "id": str(activity_id)}
-        _create_follow_up_task(updated_activity, current_user.id)
+        assignee_id = (form_data.get("follow_up_assignee_id") or "").strip() or None
+        _create_follow_up_task(updated_activity, current_user.id, assignee_id=assignee_id)
 
     return RedirectResponse(url=f"/activities/{activity_id}", status_code=303)
 
@@ -1099,8 +894,8 @@ async def archive_activity(
     require_role(current_user, ["admin"])
 
     sb = get_supabase()
-    sb.table("activities").update({"is_archived": True}).eq("id", str(activity_id)).execute()
-    _log_field_change("activity", str(activity_id), "is_archived", False, True, current_user.id)
+    sb.table("activities").update({"is_deleted": True}).eq("id", str(activity_id)).execute()
+    log_field_change("activity", str(activity_id), "is_deleted", False, True, current_user.id)
 
     if request.headers.get("HX-Request"):
         return HTMLResponse('<p class="text-sm text-green-600">Activity archived.</p>')

@@ -17,7 +17,7 @@ class ContractCreate(BaseModel):
     actual_revenue: Decimal
     inflation_provision: Optional[str] = None
     escalator_clause: Optional[str] = None
-    is_archived: bool = False
+    is_deleted: bool = False
     created_by: Optional[UUID] = None
 
 
@@ -32,7 +32,7 @@ class ContractUpdate(BaseModel):
     actual_revenue: Optional[Decimal] = None
     inflation_provision: Optional[str] = None
     escalator_clause: Optional[str] = None
-    is_archived: Optional[bool] = None
+    is_deleted: Optional[bool] = None
 
 
 class ContractResponse(BaseModel):
@@ -49,7 +49,7 @@ class ContractResponse(BaseModel):
     actual_revenue: Decimal
     inflation_provision: Optional[str] = None
     escalator_clause: Optional[str] = None
-    is_archived: bool
+    is_deleted: bool
     created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime

@@ -13,11 +13,12 @@ from routers import (
     activities,
     leads,
     contracts,
-    fund_prospects,
     distribution_lists,
     tasks,
     dashboards,
     admin,
+    documents,
+    views,
 )
 
 settings = get_settings()
@@ -47,11 +48,12 @@ app.include_router(people.router)
 app.include_router(activities.router)
 app.include_router(leads.router)
 app.include_router(contracts.router)
-app.include_router(fund_prospects.router)
 app.include_router(distribution_lists.router)
 app.include_router(tasks.router)
 app.include_router(dashboards.router)
 app.include_router(admin.router)
+app.include_router(documents.router)
+app.include_router(views.router)
 
 # ---------------------------------------------------------------------------
 # Root / Homepage

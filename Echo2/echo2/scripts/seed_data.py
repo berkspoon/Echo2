@@ -189,7 +189,7 @@ def seed_organizations(user_ids: list[str], ref: dict) -> list[dict]:
             "website": f"https://www.{name.lower().replace(' ', '').replace(',', '')[:20]}.com" if _pct(60) else None,
             "aum_mn": float(round(random.uniform(50, 50000), 2)) if _pct(70) else None,
             "rfp_hold": _pct(5),
-            "is_archived": _pct(1),
+            "is_deleted": _pct(1),
             "created_by": random.choice(user_ids),
         }
         rows.append(row)
@@ -218,7 +218,7 @@ def seed_people(user_ids: list[str], ref: dict) -> list[dict]:
             "asset_classes_of_interest": random.sample(asset_classes, k=random.randint(1, min(4, len(asset_classes)))) if _pct(50) else None,
             "coverage_owner": random.choice(user_ids),
             "do_not_contact": _pct(3),
-            "is_archived": _pct(1),
+            "is_deleted": _pct(1),
             "created_by": random.choice(user_ids),
         }
         rows.append(row)
@@ -306,7 +306,7 @@ def seed_activities(user_ids: list[str], orgs: list[dict], people: list[dict], f
             "follow_up_date": (date.fromisoformat(eff_date) + timedelta(days=random.randint(7, 28))).isoformat() if follow_up else None,
             "follow_up_notes": fake.sentence() if follow_up else None,
             "fund_tags": random.sample(fund_id_list, k=random.randint(1, min(2, len(fund_id_list)))) if _pct(20) else None,
-            "is_archived": _pct(1),
+            "is_deleted": _pct(1),
             "created_by": random.choice(user_ids),
         }
         activity_rows.append(row)
@@ -385,6 +385,7 @@ def seed_leads(user_ids: list[str], orgs: list[dict], ref: dict) -> tuple[list[d
 
         row = {
             "organization_id": random.choice(org_ids),
+            "lead_type": "advisory",
             "start_date": start,
             "rating": stage,
             "relationship": rel,
@@ -393,7 +394,7 @@ def seed_leads(user_ids: list[str], orgs: list[dict], ref: dict) -> tuple[list[d
             "asset_classes": acs,
             "source": fake.sentence(nb_words=4)[:100] if rank >= 2 else None,
             "summary": fake.sentence(nb_words=8)[:200] if _pct(70) else None,
-            "is_archived": _pct(1),
+            "is_deleted": _pct(1),
             "created_by": random.choice(user_ids),
         }
 
@@ -430,7 +431,22 @@ def seed_leads(user_ids: list[str], orgs: list[dict], ref: dict) -> tuple[list[d
         lead_rows.append(row)
 
     leads = _batch_insert("leads", lead_rows)
-    print(f"    -> {len(leads)} leads")
+
+    # Create lead_owners for each advisory lead
+    print("  Seeding lead owners for advisory leads...")
+    lo_rows = []
+    for lead in leads:
+        owner_id = lead.get("aksia_owner_id")
+        if owner_id:
+            lo_rows.append({
+                "lead_id": lead["id"],
+                "user_id": owner_id,
+                "is_primary": True,
+            })
+    if lo_rows:
+        _batch_insert("lead_owners", lo_rows)
+    print(f"    -> {len(lo_rows)} lead owners")
+    print(f"    -> {len(leads)} advisory leads")
 
     # Create contracts from won leads
     print("  Seeding contracts from won leads...")
@@ -453,22 +469,22 @@ def seed_leads(user_ids: list[str], orgs: list[dict], ref: dict) -> tuple[list[d
     return leads, contracts
 
 
-def seed_fund_prospects(user_ids: list[str], orgs: list[dict], fund_ids: dict, leads: list[dict], ref: dict) -> list[dict]:
-    """Seed ~150 fund prospects."""
-    print("  Seeding fund prospects...")
+def seed_fundraise_leads(user_ids: list[str], orgs: list[dict], fund_ids: dict, ref: dict) -> list[dict]:
+    """Seed ~150 fundraise leads (lead_type='fundraise')."""
+    print("  Seeding fundraise leads...")
 
     org_ids = [o["id"] for o in orgs]
     fund_tickers = list(fund_ids.keys())
     decline_reasons = ref.get("decline_reason", ["strategy_fit", "timing", "competitive"])
 
-    # Stage distribution
+    # Stage distribution (stored in leads.rating)
     stage_dist = [
         ("target_identified", 15), ("intro_scheduled", 12), ("initial_meeting_complete", 12),
         ("ddq_materials_sent", 10), ("due_diligence", 12), ("ic_review", 10),
         ("soft_circle", 8), ("legal_docs", 6), ("closed", 10), ("declined", 5),
     ]
-    fp_stages = [s[0] for s in stage_dist]
-    fp_weights = [s[1] for s in stage_dist]
+    fr_stages = [s[0] for s in stage_dist]
+    fr_weights = [s[1] for s in stage_dist]
 
     # Probability by stage
     prob_ranges = {
@@ -479,48 +495,57 @@ def seed_fund_prospects(user_ids: list[str], orgs: list[dict], fund_ids: dict, l
         "closed": (100, 100), "declined": (0, 0),
     }
 
-    # Build a list of lead IDs per org for linked_lead_id
-    leads_by_org = {}
-    for lead in leads:
-        leads_by_org.setdefault(lead["organization_id"], []).append(lead["id"])
-
     rows = []
     for i in range(150):
-        stage = random.choices(fp_stages, weights=fp_weights)[0]
+        stage = random.choices(fr_stages, weights=fr_weights)[0]
         ticker = random.choice(fund_tickers)
         org_id = random.choice(org_ids)
         prob = prob_ranges.get(stage, (10, 50))
+        owner = random.choice(user_ids)
 
         row = {
             "organization_id": org_id,
+            "lead_type": "fundraise",
+            "rating": stage,
             "fund_id": fund_ids[ticker],
             "share_class": "domestic" if _pct(60) else "offshore",
-            "stage": stage,
-            "aksia_owner_id": random.choice(user_ids),
+            "aksia_owner_id": owner,
             "target_allocation_mn": float(round(random.uniform(0.5, 50), 2)) if _pct(80) else None,
             "soft_circle_mn": float(round(random.uniform(0.5, 30), 2)) if stage in ("soft_circle", "legal_docs", "closed") else None,
             "hard_circle_mn": float(round(random.uniform(0.5, 25), 2)) if stage in ("legal_docs", "closed") else None,
             "probability_pct": random.randint(prob[0], prob[1]) if prob[1] > 0 else 0,
             "stage_entry_date": _random_date(365),
             "decline_reason": random.choice(decline_reasons) if stage == "declined" else None,
-            "notes": fake.sentence() if _pct(40) else None,
-            "is_archived": _pct(1),
+            "summary": fake.sentence() if _pct(40) else None,
+            "start_date": _random_date(540),
+            "is_deleted": _pct(1),
             "created_by": random.choice(user_ids),
         }
 
-        # Link to a lead for this org if one exists
-        if org_id in leads_by_org and _pct(30):
-            row["linked_lead_id"] = random.choice(leads_by_org[org_id])
-
-        # Next steps for active prospects
+        # Next steps for active fundraise leads
         if stage not in ("closed", "declined") and _pct(25):
             row["next_steps"] = fake.sentence()
             row["next_steps_date"] = _random_future_date(7, 60)
 
         rows.append(row)
 
-    results = _batch_insert("fund_prospects", rows)
-    print(f"    -> {len(results)} fund prospects")
+    results = _batch_insert("leads", rows)
+
+    # Create lead_owners for each fundraise lead
+    print("  Seeding lead owners for fundraise leads...")
+    lo_rows = []
+    for lead in results:
+        owner_id = lead.get("aksia_owner_id")
+        if owner_id:
+            lo_rows.append({
+                "lead_id": lead["id"],
+                "user_id": owner_id,
+                "is_primary": True,
+            })
+    if lo_rows:
+        _batch_insert("lead_owners", lo_rows)
+    print(f"    -> {len(lo_rows)} lead owners")
+    print(f"    -> {len(results)} fundraise leads")
     return results
 
 
@@ -637,7 +662,7 @@ def seed_distribution_list_members(dist_lists: list[dict], people: list[dict], u
     print("  Seeding distribution list members...")
 
     # Filter out DNC people
-    eligible_people = [p for p in people if not p.get("do_not_contact", False) and not p.get("is_archived", False)]
+    eligible_people = [p for p in people if not p.get("do_not_contact", False) and not p.get("is_deleted", False)]
     eligible_ids = [p["id"] for p in eligible_people]
 
     if not eligible_ids:
@@ -670,7 +695,7 @@ def seed_distribution_list_members(dist_lists: list[dict], people: list[dict], u
 
 
 def seed_tasks(user_ids: list[str], activities: list[dict], leads: list[dict],
-               fund_prospects: list[dict], orgs: list[dict], people: list[dict]) -> list[dict]:
+               fundraise_leads: list[dict], orgs: list[dict], people: list[dict]) -> list[dict]:
     """Seed ~200 tasks: manual + system-generated types."""
     print("  Seeding tasks...")
 
@@ -707,16 +732,17 @@ def seed_tasks(user_ids: list[str], activities: list[dict], leads: list[dict],
         linked_type = None
         linked_id = None
         if _pct(40):
-            link_choice = random.choice(["organization", "person", "lead", "fund_prospect"])
+            link_choice = random.choice(["organization", "person", "lead"])
             linked_type = link_choice
             if link_choice == "organization":
                 linked_id = random.choice(org_ids)
             elif link_choice == "person":
                 linked_id = random.choice(person_ids)
-            elif link_choice == "lead" and leads:
-                linked_id = random.choice(leads)["id"]
-            elif link_choice == "fund_prospect" and fund_prospects:
-                linked_id = random.choice(fund_prospects)["id"]
+            elif link_choice == "lead":
+                # Link to either advisory or fundraise leads
+                all_leads = leads + fundraise_leads
+                if all_leads:
+                    linked_id = random.choice(all_leads)["id"]
 
         rows.append({
             "title": title,
@@ -727,7 +753,7 @@ def seed_tasks(user_ids: list[str], activities: list[dict], leads: list[dict],
             "source": "manual",
             "linked_record_type": linked_type,
             "linked_record_id": linked_id,
-            "is_archived": _pct(1),
+            "is_deleted": _pct(1),
             "created_by": random.choice(user_ids),
         })
 
@@ -761,19 +787,19 @@ def seed_tasks(user_ids: list[str], activities: list[dict], leads: list[dict],
             "created_by": lead.get("created_by") or random.choice(user_ids),
         })
 
-    # Fund prospect next-steps tasks (~30)
-    fps_with_ns = [fp for fp in fund_prospects if fp.get("next_steps_date")][:30]
-    for fp in fps_with_ns:
+    # Fundraise lead next-steps tasks (~30)
+    fr_with_ns = [fl for fl in fundraise_leads if fl.get("next_steps_date")][:30]
+    for fl in fr_with_ns:
         rows.append({
-            "title": f"Fund prospect next step: {(fp.get('notes') or 'Follow up')[:50]}",
-            "due_date": fp["next_steps_date"],
-            "assigned_to": fp.get("aksia_owner_id") or random.choice(user_ids),
+            "title": f"Fundraise lead next step: {(fl.get('summary') or 'Follow up')[:50]}",
+            "due_date": fl["next_steps_date"],
+            "assigned_to": fl.get("aksia_owner_id") or random.choice(user_ids),
             "status": random.choices(["open", "in_progress", "complete"], weights=[50, 20, 30])[0],
-            "notes": fp.get("next_steps"),
-            "source": "fund_prospect_next_steps",
-            "linked_record_type": "fund_prospect",
-            "linked_record_id": fp["id"],
-            "created_by": fp.get("created_by") or random.choice(user_ids),
+            "notes": fl.get("next_steps"),
+            "source": "lead_next_steps",
+            "linked_record_type": "lead",
+            "linked_record_id": fl["id"],
+            "created_by": fl.get("created_by") or random.choice(user_ids),
         })
 
     results = _batch_insert("tasks", rows)
@@ -785,7 +811,7 @@ def seed_fee_arrangements(user_ids: list[str], orgs: list[dict], ref: dict) -> l
     """Seed ~50 fee arrangements for client organizations."""
     print("  Seeding fee arrangements...")
 
-    client_orgs = [o for o in orgs if o.get("relationship_type") == "client" and not o.get("is_archived")]
+    client_orgs = [o for o in orgs if o.get("relationship_type") == "client" and not o.get("is_deleted")]
     if not client_orgs:
         print("    -> 0 fee arrangements (no client orgs)")
         return []
@@ -812,7 +838,7 @@ def seed_fee_arrangements(user_ids: list[str], orgs: list[dict], ref: dict) -> l
             "start_date": start,
             "end_date": _random_date(90) if not active else None,
             "notes": fake.sentence() if _pct(30) else None,
-            "is_archived": _pct(1),
+            "is_deleted": _pct(1),
             "created_by": random.choice(user_ids),
         })
 
@@ -848,6 +874,7 @@ def cleanup_seed_data():
         "fee_arrangements",
         "tasks",
         "fund_prospects",
+        "lead_owners",
         "contracts",
         "leads",
         "activity_people_links",
@@ -904,10 +931,10 @@ def seed_all():
     seed_person_org_links(people, orgs)
     activities = seed_activities(user_ids, orgs, people, fund_ids, ref)
     leads, contracts = seed_leads(user_ids, orgs, ref)
-    fund_prospects = seed_fund_prospects(user_ids, orgs, fund_ids, leads, ref)
+    fundraise_leads = seed_fundraise_leads(user_ids, orgs, fund_ids, ref)
     dist_lists = seed_distribution_lists(user_ids, ref)
     seed_distribution_list_members(dist_lists, people, user_ids)
-    seed_tasks(user_ids, activities, leads, fund_prospects, orgs, people)
+    seed_tasks(user_ids, activities, leads, fundraise_leads, orgs, people)
     seed_fee_arrangements(user_ids, orgs, ref)
 
     print("\n" + "=" * 60)

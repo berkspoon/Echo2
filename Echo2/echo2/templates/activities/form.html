@@ -161,7 +161,7 @@
                        class="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
                        onchange="toggleFollowUp(this.checked)">
                 <span class="text-sm font-medium text-gray-700">Follow-Up Required</span>
-                <span class="text-xs text-gray-400">Auto-generates a task assigned to the author</span>
+                <span class="text-xs text-gray-400">Auto-generates a task (assigned to author by default)</span>
             </label>
 
             <div id="follow-up-fields" class="{{ '' if activity and activity.follow_up_required else 'hidden' }}">
@@ -179,6 +179,19 @@
                                placeholder="Pre-populates the task description"
                                {{ 'required' if activity and activity.follow_up_required else '' }}
                                class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="follow_up_assignee_id" class="block text-sm font-medium text-gray-700">Assign Follow-Up To</label>
+                        <select name="follow_up_assignee_id" id="follow_up_assignee_id"
+                                class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                            <option value="">— Activity Author (default) —</option>
+                            {% for u in users %}
+                            <option value="{{ u.id }}" {% if (activity and activity.follow_up_assignee_id is defined and activity.follow_up_assignee_id and activity.follow_up_assignee_id|string == u.id|string) or (not activity and u.id|string == user.id|string) %}selected{% endif %}>
+                                {{ u.display_name }}{% if u.id|string == user.id|string %} (me){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Leave empty to assign to the activity author</p>
                     </div>
                 </div>
             </div>

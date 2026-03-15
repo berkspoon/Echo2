@@ -14,7 +14,7 @@ class TaskCreate(BaseModel):
     source: str = "manual"
     linked_record_type: Optional[str] = None
     linked_record_id: Optional[UUID] = None
-    is_archived: bool = False
+    is_deleted: bool = False
     created_by: Optional[UUID] = None
 
 
@@ -27,7 +27,7 @@ class TaskUpdate(BaseModel):
     source: Optional[str] = None
     linked_record_type: Optional[str] = None
     linked_record_id: Optional[UUID] = None
-    is_archived: Optional[bool] = None
+    is_deleted: Optional[bool] = None
 
 
 class TaskResponse(BaseModel):
@@ -42,7 +42,7 @@ class TaskResponse(BaseModel):
     source: str
     linked_record_type: Optional[str] = None
     linked_record_id: Optional[UUID] = None
-    is_archived: bool
+    is_deleted: bool
     created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime

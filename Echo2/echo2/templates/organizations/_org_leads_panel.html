@@ -1,0 +1,91 @@
+{# Inline leads panel — HTMX partial rendered inside the grid's expandable row.
+   Shows active leads for an organization with stage badges, service type, owner, revenue.
+
+   Expected context:
+     org_id  — UUID string of the organization
+     leads   — list of lead dicts (enriched with owner_name, stage_label)
+#}
+
+{% if leads %}
+<div class="bg-blue-50 border-l-4 border-blue-400 px-4 py-3">
+  <div class="flex items-center justify-between mb-2">
+    <span class="text-xs font-semibold text-blue-700 uppercase tracking-wide">Active Leads ({{ leads|length }})</span>
+    <button class="text-xs text-gray-500 hover:text-gray-700 px-2 py-0.5 rounded hover:bg-gray-100"
+            onclick="document.getElementById('leads-panel-{{ org_id }}').innerHTML = ''">
+      <svg class="inline h-3 w-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      Close
+    </button>
+  </div>
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-xs text-gray-500 uppercase border-b border-blue-200">
+        <th class="pb-1 pr-3">Summary</th>
+        <th class="pb-1 pr-3">Stage</th>
+        <th class="pb-1 pr-3">Type</th>
+        <th class="pb-1 pr-3">Service</th>
+        <th class="pb-1 pr-3">Owner</th>
+        <th class="pb-1 text-right">Revenue</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lead in leads %}
+      <tr class="border-b border-blue-100 last:border-0">
+        <td class="py-1.5 pr-3">
+          <a href="/leads/{{ lead.id }}" class="text-brand-600 hover:underline font-medium">
+            {{ (lead.summary or 'Untitled')[:60] }}{% if lead.summary and lead.summary|length > 60 %}...{% endif %}
+          </a>
+        </td>
+        <td class="py-1.5 pr-3 whitespace-nowrap">
+          {% set stage = lead.rating %}
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+            {% if stage == 'exploratory' %}bg-gray-100 text-gray-800
+            {% elif stage == 'radar' %}bg-blue-100 text-blue-800
+            {% elif stage == 'focus' %}bg-yellow-100 text-yellow-800
+            {% elif stage == 'verbal_mandate' %}bg-purple-100 text-purple-800
+            {% elif stage == 'target_identified' %}bg-gray-100 text-gray-800
+            {% elif stage == 'intro_scheduled' %}bg-blue-100 text-blue-800
+            {% elif stage == 'initial_meeting_complete' %}bg-indigo-100 text-indigo-800
+            {% elif stage == 'ddq_materials_sent' %}bg-cyan-100 text-cyan-800
+            {% elif stage == 'due_diligence' %}bg-yellow-100 text-yellow-800
+            {% elif stage == 'ic_review' %}bg-orange-100 text-orange-800
+            {% elif stage == 'soft_circle' %}bg-purple-100 text-purple-800
+            {% elif stage == 'legal_docs' %}bg-pink-100 text-pink-800
+            {% else %}bg-gray-100 text-gray-800{% endif %}">
+            {{ lead.stage_label }}
+          </span>
+        </td>
+        <td class="py-1.5 pr-3 whitespace-nowrap">
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+            {% if lead.lead_type == 'advisory' %}bg-blue-100 text-blue-800
+            {% elif lead.lead_type == 'fundraise' %}bg-purple-100 text-purple-800
+            {% elif lead.lead_type == 'product' %}bg-orange-100 text-orange-800
+            {% else %}bg-gray-100 text-gray-800{% endif %}">
+            {{ (lead.lead_type or 'advisory') | title }}
+          </span>
+        </td>
+        <td class="py-1.5 pr-3 whitespace-nowrap text-gray-600">
+          {{ (lead.service_type or '') | replace('_', ' ') | title or '—' }}
+        </td>
+        <td class="py-1.5 pr-3 whitespace-nowrap text-gray-600">
+          {{ lead.owner_name or '—' }}
+        </td>
+        <td class="py-1.5 text-right whitespace-nowrap text-gray-700 font-medium">
+          {% if lead.expected_revenue is not none and lead.expected_revenue %}${{ '{:,.0f}'.format(lead.expected_revenue) }}{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="bg-gray-50 border-l-4 border-gray-300 px-4 py-3">
+  <div class="flex items-center justify-between">
+    <span class="text-sm text-gray-500">No active leads for this organization.</span>
+    <button class="text-xs text-gray-500 hover:text-gray-700 px-2 py-0.5 rounded hover:bg-gray-100"
+            onclick="document.getElementById('leads-panel-{{ org_id }}').innerHTML = ''">
+      <svg class="inline h-3 w-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      Close
+    </button>
+  </div>
+</div>
+{% endif %}

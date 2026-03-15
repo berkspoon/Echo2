@@ -38,7 +38,7 @@ class LeadCreate(BaseModel):
     legacy_onboarding_holdings: Optional[str] = None
     potential_coverage: Optional[str] = None
 
-    is_archived: bool = False
+    is_deleted: bool = False
     created_by: Optional[UUID] = None
 
 
@@ -72,7 +72,7 @@ class LeadUpdate(BaseModel):
     legacy_onboarding_holdings: Optional[str] = None
     potential_coverage: Optional[str] = None
 
-    is_archived: Optional[bool] = None
+    is_deleted: Optional[bool] = None
 
 
 class LeadResponse(BaseModel):
@@ -108,7 +108,7 @@ class LeadResponse(BaseModel):
     legacy_onboarding_holdings: Optional[str] = None
     potential_coverage: Optional[str] = None
 
-    is_archived: bool
+    is_deleted: bool
     created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime

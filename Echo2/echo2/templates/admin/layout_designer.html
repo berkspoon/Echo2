@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}Page Layout Designer — Echo 2.0{% endblock %}
+{% block page_title %}Page Layout Designer{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Entity type selector -->
+    <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <label for="layout-entity-type" class="text-sm font-medium text-gray-700">Entity Type:</label>
+            <select id="layout-entity-type"
+                    onchange="window.location.href='/admin/layouts?entity_type=' + this.value"
+                    class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                {% for et in entity_types %}
+                <option value="{{ et }}" {{ 'selected' if et == entity_type else '' }}>{{ et | replace('_', ' ') | title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="button" onclick="showNewLayoutModal()"
+                class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            New Layout
+        </button>
+    </div>
+
+    <!-- Existing Layouts -->
+    {% if layouts %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for layout in layouts %}
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900">{{ layout.layout_type | title }} Layout</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">{{ entity_type | replace('_', ' ') | title }}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    {% if layout.is_active %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">Active</span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">Inactive</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Sections preview -->
+            <div class="space-y-2 mb-4">
+                {% set sections = layout.sections if layout.sections else [] %}
+                {% for section in sections %}
+                <div class="border border-gray-200 rounded p-2">
+                    <p class="text-xs font-medium text-gray-700">{{ section.name if section is mapping else section }}</p>
+                    {% if section is mapping and section.fields %}
+                    <p class="text-xs text-gray-400">{{ section.fields | length }} field{{ 's' if section.fields | length != 1 else '' }}</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% if not sections %}
+                <p class="text-xs text-gray-400 italic">No sections configured</p>
+                {% endif %}
+            </div>
+
+            <div class="flex items-center gap-2 border-t border-gray-100 pt-3">
+                <button type="button" onclick="editLayout('{{ layout.id }}', '{{ layout.layout_type }}', {{ layout.sections | tojson | e }}, {{ 'true' if layout.is_active else 'false' }})"
+                        class="text-sm text-brand-500 hover:text-brand-700 font-medium">Edit</button>
+                <form method="post" action="/admin/layouts/{{ layout.id }}/delete" class="inline"
+                      onsubmit="return confirm('Delete this layout?')">
+                    <button type="submit" class="text-sm text-red-500 hover:text-red-700 font-medium">Delete</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="bg-white rounded-lg shadow p-12 text-center">
+        <p class="text-gray-500">No page layouts defined for {{ entity_type | replace('_', ' ') }}. Create one to customize the view/edit pages.</p>
+    </div>
+    {% endif %}
+
+    <!-- Layout Editor Modal (hidden by default) -->
+    <div id="layout-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-auto">
+            <form method="post" action="/admin/layouts" id="layout-form">
+                <input type="hidden" name="entity_type" value="{{ entity_type }}">
+                <input type="hidden" name="layout_id" id="layout-id" value="">
+                <input type="hidden" name="sections" id="layout-sections-json" value="[]">
+
+                <div class="p-6 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900" id="layout-modal-title">New Layout</h3>
+                </div>
+
+                <div class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Layout Type</label>
+                        <select name="layout_type" id="layout-type"
+                                class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                            <option value="view">View (Detail Page)</option>
+                            <option value="edit">Edit (Form Page)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Sections</label>
+                        <div id="layout-sections-list" class="space-y-2 mb-2"></div>
+                        <button type="button" onclick="addSection()"
+                                class="text-sm text-brand-500 hover:text-brand-700 font-medium">
+                            + Add Section
+                        </button>
+                    </div>
+
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" name="is_active" id="layout-is-active" checked
+                               class="h-4 w-4 rounded border-gray-300 text-brand-500">
+                        <span class="text-sm text-gray-700">Active</span>
+                    </label>
+                </div>
+
+                <div class="p-6 border-t border-gray-200 flex justify-end gap-3">
+                    <button type="button" onclick="closeLayoutModal()"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600">
+                        Save Layout
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+let sections = [];
+
+function showNewLayoutModal() {
+    sections = [];
+    document.getElementById('layout-id').value = '';
+    document.getElementById('layout-type').value = 'view';
+    document.getElementById('layout-is-active').checked = true;
+    document.getElementById('layout-modal-title').textContent = 'New Layout';
+    renderSections();
+    document.getElementById('layout-modal').classList.remove('hidden');
+}
+
+function editLayout(id, type, existingSections, isActive) {
+    sections = existingSections || [];
+    document.getElementById('layout-id').value = id;
+    document.getElementById('layout-type').value = type;
+    document.getElementById('layout-is-active').checked = isActive;
+    document.getElementById('layout-modal-title').textContent = 'Edit Layout';
+    renderSections();
+    document.getElementById('layout-modal').classList.remove('hidden');
+}
+
+function closeLayoutModal() {
+    document.getElementById('layout-modal').classList.add('hidden');
+}
+
+function addSection() {
+    sections.push({ name: 'New Section', fields: [] });
+    renderSections();
+}
+
+function removeSection(idx) {
+    sections.splice(idx, 1);
+    renderSections();
+}
+
+function updateSectionName(idx, name) {
+    sections[idx].name = name;
+}
+
+function renderSections() {
+    const container = document.getElementById('layout-sections-list');
+    container.innerHTML = '';
+    sections.forEach((s, i) => {
+        const name = (typeof s === 'string') ? s : (s.name || 'Section');
+        const div = document.createElement('div');
+        div.className = 'flex items-center gap-2';
+        div.innerHTML = `
+            <input type="text" value="${name}" onchange="updateSectionName(${i}, this.value)"
+                   class="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm">
+            <button type="button" onclick="removeSection(${i})"
+                    class="text-red-400 hover:text-red-600 p-1">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        `;
+        container.appendChild(div);
+    });
+}
+
+document.getElementById('layout-form').addEventListener('submit', function() {
+    document.getElementById('layout-sections-json').value = JSON.stringify(sections);
+});
+</script>
+{% endblock %}
+{% endblock %}

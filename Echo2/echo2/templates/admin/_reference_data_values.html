@@ -1,0 +1,182 @@
+<!-- HTMX partial: Reference data values list for a category -->
+<div>
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <h3 class="text-lg font-semibold text-gray-900">{{ category_label }}</h3>
+            <p class="text-sm text-gray-500">{{ all_values | length }} value{{ 's' if all_values | length != 1 else '' }} total</p>
+        </div>
+        <button
+            hx-get="/admin/reference-data/{{ category }}/new"
+            hx-target="#rd-form-panel"
+            hx-swap="innerHTML"
+            class="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-brand-500 hover:bg-brand-600 transition-colors">
+            <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Add New Value
+        </button>
+    </div>
+
+    <!-- Form panel (forms load here via HTMX) -->
+    <div id="rd-form-panel" class="mb-4"></div>
+
+    {% if is_hierarchical %}
+    <!-- Hierarchical view: grouped by parent_value -->
+    {% for parent_key, items in grouped_values.items() %}
+    <div class="mb-6">
+        <div class="flex items-center gap-2 mb-2">
+            <h4 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                {% if parent_key == "(No Parent)" %}
+                    Ungrouped
+                {% else %}
+                    {% for pv in parent_values %}
+                        {% if pv.value == parent_key %}{{ pv.label }}{% endif %}
+                    {% endfor %}
+                    {% if not parent_values %}{{ parent_key }}{% endif %}
+                {% endif %}
+            </h4>
+            <span class="text-xs text-gray-400">({{ items | length }})</span>
+        </div>
+        <div class="overflow-hidden border border-gray-200 rounded-lg">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-16">Order</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Value (Code)</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Label</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-24">Status</th>
+                        <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-48">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for item in items %}
+                    <tr class="{% if not item.is_active %}bg-gray-50 opacity-60{% endif %}">
+                        <td class="px-4 py-2 text-sm text-gray-500">{{ item.display_order }}</td>
+                        <td class="px-4 py-2 text-sm font-mono text-gray-700">{{ item.value }}</td>
+                        <td class="px-4 py-2 text-sm text-gray-900">{{ item.label }}</td>
+                        <td class="px-4 py-2">
+                            {% if item.is_active %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-right">
+                            <div class="flex items-center justify-end gap-1">
+                                <!-- Move up -->
+                                <form hx-post="/admin/reference-data/{{ category }}/{{ item.id }}/reorder" hx-target="#rd-values-panel" hx-swap="innerHTML" class="inline">
+                                    <input type="hidden" name="direction" value="up">
+                                    <button type="submit" class="p-1 text-gray-400 hover:text-gray-600" title="Move up">
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+                                    </button>
+                                </form>
+                                <!-- Move down -->
+                                <form hx-post="/admin/reference-data/{{ category }}/{{ item.id }}/reorder" hx-target="#rd-values-panel" hx-swap="innerHTML" class="inline">
+                                    <input type="hidden" name="direction" value="down">
+                                    <button type="submit" class="p-1 text-gray-400 hover:text-gray-600" title="Move down">
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                    </button>
+                                </form>
+                                <!-- Edit -->
+                                <button
+                                    hx-get="/admin/reference-data/{{ category }}/{{ item.id }}/edit"
+                                    hx-target="#rd-form-panel"
+                                    hx-swap="innerHTML"
+                                    class="p-1 text-brand-500 hover:text-brand-700" title="Edit">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                </button>
+                                <!-- Toggle -->
+                                <form hx-post="/admin/reference-data/{{ category }}/{{ item.id }}/toggle" hx-target="#rd-values-panel" hx-swap="innerHTML" class="inline"
+                                    {% if item.is_active %}hx-confirm="Deactivate '{{ item.label }}'? It will no longer appear in dropdowns."{% endif %}>
+                                    <button type="submit" class="p-1 {% if item.is_active %}text-yellow-500 hover:text-yellow-700{% else %}text-green-500 hover:text-green-700{% endif %}" title="{% if item.is_active %}Deactivate{% else %}Activate{% endif %}">
+                                        {% if item.is_active %}
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                                        {% else %}
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                        {% endif %}
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% else %}
+    <!-- Flat view: single table -->
+    <div class="overflow-hidden border border-gray-200 rounded-lg">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-16">Order</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Value (Code)</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Label</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-24">Status</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase w-48">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for item in all_values %}
+                <tr class="{% if not item.is_active %}bg-gray-50 opacity-60{% endif %}">
+                    <td class="px-4 py-2 text-sm text-gray-500">{{ item.display_order }}</td>
+                    <td class="px-4 py-2 text-sm font-mono text-gray-700">{{ item.value }}</td>
+                    <td class="px-4 py-2 text-sm text-gray-900">{{ item.label }}</td>
+                    <td class="px-4 py-2">
+                        {% if item.is_active %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2 text-right">
+                        <div class="flex items-center justify-end gap-1">
+                            <!-- Move up -->
+                            <form hx-post="/admin/reference-data/{{ category }}/{{ item.id }}/reorder" hx-target="#rd-values-panel" hx-swap="innerHTML" class="inline">
+                                <input type="hidden" name="direction" value="up">
+                                <button type="submit" class="p-1 text-gray-400 hover:text-gray-600" title="Move up">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+                                </button>
+                            </form>
+                            <!-- Move down -->
+                            <form hx-post="/admin/reference-data/{{ category }}/{{ item.id }}/reorder" hx-target="#rd-values-panel" hx-swap="innerHTML" class="inline">
+                                <input type="hidden" name="direction" value="down">
+                                <button type="submit" class="p-1 text-gray-400 hover:text-gray-600" title="Move down">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                </button>
+                            </form>
+                            <!-- Edit -->
+                            <button
+                                hx-get="/admin/reference-data/{{ category }}/{{ item.id }}/edit"
+                                hx-target="#rd-form-panel"
+                                hx-swap="innerHTML"
+                                class="p-1 text-brand-500 hover:text-brand-700" title="Edit">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            </button>
+                            <!-- Toggle -->
+                            <form hx-post="/admin/reference-data/{{ category }}/{{ item.id }}/toggle" hx-target="#rd-values-panel" hx-swap="innerHTML" class="inline"
+                                {% if item.is_active %}hx-confirm="Deactivate '{{ item.label }}'? It will no longer appear in dropdowns."{% endif %}>
+                                <button type="submit" class="p-1 {% if item.is_active %}text-yellow-500 hover:text-yellow-700{% else %}text-green-500 hover:text-green-700{% endif %}" title="{% if item.is_active %}Deactivate{% else %}Activate{% endif %}">
+                                    {% if item.is_active %}
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                                    {% else %}
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    {% endif %}
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not all_values %}
+                <tr>
+                    <td colspan="5" class="px-4 py-8 text-center text-sm text-gray-500">No values in this category yet. Click "Add New Value" to create one.</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>

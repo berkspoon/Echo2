@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Field Management — Echo 2.0{% endblock %}
+{% block page_title %}Field Management{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Entity type selector -->
+    <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <label for="entity-type-select" class="text-sm font-medium text-gray-700">Entity Type:</label>
+            <select id="entity-type-select"
+                    hx-get="/admin/fields"
+                    hx-target="#field-list-container"
+                    hx-push-url="true"
+                    name="entity_type"
+                    class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                {% for et in entity_types %}
+                <option value="{{ et }}" {{ 'selected' if et == entity_type else '' }}>{{ et | replace('_', ' ') | title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <a href="/admin/fields/new?entity_type={{ entity_type }}"
+           class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Add Custom Field
+        </a>
+    </div>
+
+    <!-- Field list -->
+    <div id="field-list-container">
+        {% include "admin/_field_list_partial.html" %}
+    </div>
+
+</div>
+{% endblock %}

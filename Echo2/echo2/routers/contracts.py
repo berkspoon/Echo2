@@ -10,7 +10,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
+from db.helpers import get_reference_data, log_field_change, audit_changes, get_org_name, get_user_name
+from db.field_service import get_field_definitions, enrich_field_definitions
+from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup
 from dependencies import CurrentUser, get_current_user, require_role
+from services.grid_service import build_grid_context
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])
 templates = Jinja2Templates(directory="templates")
@@ -19,67 +23,6 @@ templates = Jinja2Templates(directory="templates")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _get_reference_data(category: str) -> list[dict]:
-    """Fetch active reference data for a dropdown category."""
-    sb = get_supabase()
-    return (
-        sb.table("reference_data")
-        .select("value, label")
-        .eq("category", category)
-        .eq("is_active", True)
-        .order("display_order")
-        .execute()
-        .data or []
-    )
-
-
-def _log_field_change(
-    record_type: str,
-    record_id: str,
-    field_name: str,
-    old_value,
-    new_value,
-    changed_by: UUID,
-) -> None:
-    """Write a single field change to the audit_log table."""
-    sb = get_supabase()
-    sb.table("audit_log").insert({
-        "record_type": record_type,
-        "record_id": record_id,
-        "field_name": field_name,
-        "old_value": str(old_value) if old_value is not None else None,
-        "new_value": str(new_value) if new_value is not None else None,
-        "changed_by": str(changed_by),
-    }).execute()
-
-
-def _audit_changes(
-    record_type: str,
-    record_id: str,
-    old_record: dict,
-    new_data: dict,
-    changed_by: UUID,
-) -> None:
-    """Compare old record with new data and log every changed field."""
-    for field, new_val in new_data.items():
-        old_val = old_record.get(field)
-        if str(old_val) != str(new_val) and not (old_val is None and new_val is None):
-            _log_field_change(record_type, record_id, field, old_val, new_val, changed_by)
-
-
-def _get_org_name(org_id: str) -> str:
-    """Look up an org name by ID."""
-    sb = get_supabase()
-    resp = sb.table("organizations").select("company_name").eq("id", org_id).maybe_single().execute()
-    return resp.data["company_name"] if resp.data else "Unknown"
-
-
-def _get_user_name(user_id: str) -> str:
-    """Look up a user display_name by ID."""
-    sb = get_supabase()
-    resp = sb.table("users").select("display_name").eq("id", user_id).maybe_single().execute()
-    return resp.data["display_name"] if resp.data else "Unknown"
 
 
 # ===========================================================================
@@ -108,8 +51,8 @@ async def new_fee_arrangement_form(
         "user": current_user,
         "fa": None,
         "org_id": org,
-        "frequencies": _get_reference_data("fee_frequency"),
-        "fee_statuses": _get_reference_data("fee_status"),
+        "frequencies": get_reference_data("fee_frequency"),
+        "fee_statuses": get_reference_data("fee_status"),
         "errors": [],
     }
     return templates.TemplateResponse("organizations/_fee_arrangement_form.html", context)
@@ -163,8 +106,8 @@ async def create_fee_arrangement(
             "user": current_user,
             "fa": fa_data,
             "org_id": org_id,
-            "frequencies": _get_reference_data("fee_frequency"),
-            "fee_statuses": _get_reference_data("fee_status"),
+            "frequencies": get_reference_data("fee_frequency"),
+            "fee_statuses": get_reference_data("fee_status"),
             "errors": errors,
         }
         return templates.TemplateResponse("organizations/_fee_arrangement_form.html", context)
@@ -174,7 +117,7 @@ async def create_fee_arrangement(
 
     if resp.data:
         fa_id = resp.data[0]["id"]
-        _log_field_change("fee_arrangement", str(fa_id), "_created", None, "record created", current_user.id)
+        log_field_change("fee_arrangement", str(fa_id), "_created", None, "record created", current_user.id)
 
     response = HTMLResponse("")
     response.headers["HX-Redirect"] = f"/organizations/{org_id}?tab=fee_arrangements"
@@ -199,7 +142,7 @@ async def edit_fee_arrangement_form(
         sb.table("fee_arrangements")
         .select("*")
         .eq("id", str(fa_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -212,8 +155,8 @@ async def edit_fee_arrangement_form(
         "user": current_user,
         "fa": fa,
         "org_id": str(fa["organization_id"]),
-        "frequencies": _get_reference_data("fee_frequency"),
-        "fee_statuses": _get_reference_data("fee_status"),
+        "frequencies": get_reference_data("fee_frequency"),
+        "fee_statuses": get_reference_data("fee_status"),
         "errors": [],
     }
     return templates.TemplateResponse("organizations/_fee_arrangement_form.html", context)
@@ -237,7 +180,7 @@ async def update_fee_arrangement(
         sb.table("fee_arrangements")
         .select("*")
         .eq("id", str(fa_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -275,14 +218,14 @@ async def update_fee_arrangement(
             "user": current_user,
             "fa": {**old_fa, **update_data},
             "org_id": org_id,
-            "frequencies": _get_reference_data("fee_frequency"),
-            "fee_statuses": _get_reference_data("fee_status"),
+            "frequencies": get_reference_data("fee_frequency"),
+            "fee_statuses": get_reference_data("fee_status"),
             "errors": errors,
         }
         return templates.TemplateResponse("organizations/_fee_arrangement_form.html", context)
 
     # Audit log changes
-    _audit_changes("fee_arrangement", str(fa_id), old_fa, update_data, current_user.id)
+    audit_changes("fee_arrangement", str(fa_id), old_fa, update_data, current_user.id)
 
     # Update
     sb.table("fee_arrangements").update(update_data).eq("id", str(fa_id)).execute()
@@ -317,8 +260,8 @@ async def archive_fee_arrangement(
     )
     org_id = fa_resp.data["organization_id"] if fa_resp.data else ""
 
-    sb.table("fee_arrangements").update({"is_archived": True}).eq("id", str(fa_id)).execute()
-    _log_field_change("fee_arrangement", str(fa_id), "is_archived", False, True, current_user.id)
+    sb.table("fee_arrangements").update({"is_deleted": True}).eq("id", str(fa_id)).execute()
+    log_field_change("fee_arrangement", str(fa_id), "is_deleted", False, True, current_user.id)
 
     response = HTMLResponse("")
     response.headers["HX-Redirect"] = f"/organizations/{org_id}?tab=fee_arrangements"
@@ -330,6 +273,204 @@ async def archive_fee_arrangement(
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
+# NEW CONTRACT FORM — GET /contracts/new
+# ---------------------------------------------------------------------------
+
+@router.get("/new", response_class=HTMLResponse)
+async def new_contract_form(
+    request: Request,
+    lead_id: UUID = Query(...),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Render the contract creation form, pre-filled from a won lead."""
+    require_role(current_user, ["admin", "legal"])
+
+    sb = get_supabase()
+
+    # Load the originating lead
+    lead_resp = (
+        sb.table("leads")
+        .select("*")
+        .eq("id", str(lead_id))
+        .eq("is_deleted", False)
+        .maybe_single()
+        .execute()
+    )
+    lead = lead_resp.data
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    # Check lead is in a Won stage
+    rating = lead.get("rating", "")
+    lead_type = lead.get("lead_type", "advisory")
+    won_stages = {"won"} if lead_type == "advisory" else {"closed"}
+    if rating not in won_stages:
+        raise HTTPException(status_code=400, detail="Lead must be in a Won/Closed stage to create a contract")
+
+    # Check no existing contract for this lead
+    existing_resp = (
+        sb.table("contracts")
+        .select("id")
+        .eq("originating_lead_id", str(lead_id))
+        .eq("is_deleted", False)
+        .limit(1)
+        .execute()
+    )
+    if existing_resp.data:
+        raise HTTPException(status_code=400, detail="A contract already exists for this lead")
+
+    # Org name
+    org_name = get_org_name(str(lead["organization_id"])) if lead.get("organization_id") else "—"
+
+    # Pre-fill contract fields from the lead
+    contract = {
+        "id": None,
+        "organization_id": lead.get("organization_id"),
+        "originating_lead_id": str(lead_id),
+        "start_date": str(date_type.today()),
+        "service_type": lead.get("service_type") or "",
+        "asset_classes": lead.get("asset_classes") or [],
+        "actual_revenue": lead.get("expected_revenue"),
+        "client_coverage": lead.get("potential_coverage") or "",
+        "summary": lead.get("summary") or "",
+        "inflation_provision": "",
+        "escalator_clause": "",
+    }
+
+    lead_summary = {
+        "id": str(lead_id),
+        "summary": lead.get("summary"),
+        "rating": lead.get("rating"),
+    }
+
+    context = {
+        "request": request,
+        "user": current_user,
+        "contract": contract,
+        "org_name": org_name,
+        "lead_summary": lead_summary,
+        "mode": "create",
+        "lead_id": str(lead_id),
+        "service_types": get_reference_data("service_type"),
+        "asset_classes": get_reference_data("asset_class"),
+        "errors": [],
+    }
+    return templates.TemplateResponse("contracts/form.html", context)
+
+
+# ---------------------------------------------------------------------------
+# CREATE — POST /contracts/create
+# ---------------------------------------------------------------------------
+
+@router.post("/create", response_class=HTMLResponse)
+async def create_contract(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Create a new contract from a won lead."""
+    require_role(current_user, ["admin", "legal"])
+
+    form = await request.form()
+    lead_id = (form.get("lead_id") or "").strip()
+
+    if not lead_id:
+        raise HTTPException(status_code=400, detail="Lead ID is required")
+
+    sb = get_supabase()
+
+    # Load and validate the lead
+    lead_resp = (
+        sb.table("leads")
+        .select("*")
+        .eq("id", lead_id)
+        .eq("is_deleted", False)
+        .maybe_single()
+        .execute()
+    )
+    lead = lead_resp.data
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    rating = lead.get("rating", "")
+    lead_type = lead.get("lead_type", "advisory")
+    won_stages = {"won"} if lead_type == "advisory" else {"closed"}
+    if rating not in won_stages:
+        raise HTTPException(status_code=400, detail="Lead must be in a Won/Closed stage to create a contract")
+
+    # Check no existing contract
+    existing_resp = (
+        sb.table("contracts")
+        .select("id")
+        .eq("originating_lead_id", lead_id)
+        .eq("is_deleted", False)
+        .limit(1)
+        .execute()
+    )
+    if existing_resp.data:
+        raise HTTPException(status_code=400, detail="A contract already exists for this lead")
+
+    # Parse form data
+    raw_acs = form.getlist("asset_classes")
+    contract_data = {
+        "organization_id": str(lead["organization_id"]),
+        "originating_lead_id": lead_id,
+        "start_date": (form.get("start_date") or "").strip() or str(date_type.today()),
+        "service_type": (form.get("service_type") or "").strip(),
+        "asset_classes": [a for a in raw_acs if a],
+        "actual_revenue": float(form.get("actual_revenue") or 0),
+        "client_coverage": (form.get("client_coverage") or "").strip() or None,
+        "summary": (form.get("summary") or "").strip() or None,
+        "inflation_provision": (form.get("inflation_provision") or "").strip() or None,
+        "escalator_clause": (form.get("escalator_clause") or "").strip() or None,
+        "created_by": str(current_user.id),
+    }
+
+    # Validate required fields
+    errors = []
+    if not contract_data["start_date"]:
+        errors.append("Start Date is required.")
+    if not contract_data["service_type"]:
+        errors.append("Service Type is required.")
+    if not contract_data["asset_classes"]:
+        errors.append("At least one Asset Class is required.")
+
+    if errors:
+        org_name = get_org_name(str(lead["organization_id"])) if lead.get("organization_id") else "—"
+        lead_summary = {
+            "id": lead_id,
+            "summary": lead.get("summary"),
+            "rating": lead.get("rating"),
+        }
+        context = {
+            "request": request,
+            "user": current_user,
+            "contract": {**contract_data, "id": None},
+            "org_name": org_name,
+            "lead_summary": lead_summary,
+            "mode": "create",
+            "lead_id": lead_id,
+            "service_types": get_reference_data("service_type"),
+            "asset_classes": get_reference_data("asset_class"),
+            "errors": errors,
+        }
+        return templates.TemplateResponse("contracts/form.html", context)
+
+    # Create the contract
+    resp = sb.table("contracts").insert(contract_data).execute()
+
+    if resp.data:
+        contract_id = resp.data[0]["id"]
+
+        # Audit log the creation
+        log_field_change("contract", str(contract_id), "_created", None, f"manually created from lead {lead_id}", current_user.id)
+        log_field_change("lead", lead_id, "_contract_created", None, str(contract_id), current_user.id)
+
+        return RedirectResponse(url=f"/contracts/{contract_id}", status_code=303)
+
+    raise HTTPException(status_code=500, detail="Failed to create contract")
+
+
+# ---------------------------------------------------------------------------
 # LIST — GET /contracts
 # ---------------------------------------------------------------------------
 
@@ -337,100 +478,24 @@ async def archive_fee_arrangement(
 async def list_contracts(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=10, le=100),
-    search: str = Query("", alias="q"),
-    service_type: str = Query("", alias="service"),
-    date_from: str = Query("", alias="from"),
-    date_to: str = Query("", alias="to"),
-    sort_by: str = Query("start_date"),
-    sort_dir: str = Query("desc"),
 ):
     """List contracts with filtering, search, sorting, and pagination."""
-    sb = get_supabase()
-
-    # If searching by org name, get matching org IDs first
-    org_id_filter = None
-    if search:
-        org_search_resp = (
-            sb.table("organizations")
-            .select("id")
-            .eq("is_archived", False)
-            .ilike("company_name", f"%{search}%")
-            .limit(100)
-            .execute()
-        )
-        org_id_filter = [o["id"] for o in (org_search_resp.data or [])]
-
-    query = (
-        sb.table("contracts")
-        .select("id, organization_id, originating_lead_id, start_date, service_type, "
-                "asset_classes, client_coverage, actual_revenue, created_at", count="exact")
-        .eq("is_archived", False)
-    )
-
-    # Search: match org name (via IDs)
-    if search:
-        if org_id_filter:
-            query = query.in_("organization_id", org_id_filter)
-        else:
-            # No matching orgs — return empty
-            query = query.eq("id", "00000000-0000-0000-0000-000000000000")
-
-    # Filters
-    if service_type:
-        query = query.eq("service_type", service_type)
-    if date_from:
-        query = query.gte("start_date", date_from)
-    if date_to:
-        query = query.lte("start_date", date_to)
-
-    # Sorting
-    valid_sort_cols = ["start_date", "actual_revenue", "service_type", "created_at"]
-    if sort_by not in valid_sort_cols:
-        sort_by = "start_date"
-    desc = sort_dir.lower() == "desc"
-    query = query.order(sort_by, desc=desc)
-
-    # Pagination
-    offset = (page - 1) * page_size
-    query = query.range(offset, offset + page_size - 1)
-
-    resp = query.execute()
-    contracts = resp.data or []
-    total_count = resp.count or 0
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    # Enrich with org name
-    for c in contracts:
-        if c.get("organization_id"):
-            c["org_name"] = _get_org_name(str(c["organization_id"]))
-        else:
-            c["org_name"] = "—"
-
-    # Reference data for filter dropdowns
-    service_types = _get_reference_data("service_type")
-
-    context = {
-        "request": request,
-        "user": current_user,
-        "contracts": contracts,
-        "total_count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "search": search,
-        "service_type": service_type,
-        "date_from": date_from,
-        "date_to": date_to,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
-        "service_types": service_types,
-    }
+    ctx = build_grid_context("contract", request, current_user, base_url="/contracts")
 
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("contracts/_list_table.html", context)
-    return templates.TemplateResponse("contracts/list.html", context)
+        return templates.TemplateResponse("components/_grid.html", {"request": request, **ctx})
+
+    service_types = get_reference_data("service_type")
+    ctx.update({
+        "user": current_user,
+        "total_count": ctx["pagination"]["total"],
+        "search": ctx["filters"].get("q", ""),
+        "service_type": ctx["filters"].get("service", ""),
+        "date_from": ctx["filters"].get("from", ""),
+        "date_to": ctx["filters"].get("to", ""),
+        "service_types": service_types,
+    })
+    return templates.TemplateResponse("contracts/list.html", {"request": request, **ctx})
 
 
 # ---------------------------------------------------------------------------
@@ -450,7 +515,7 @@ async def get_contract(
         sb.table("contracts")
         .select("*")
         .eq("id", str(contract_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -459,7 +524,7 @@ async def get_contract(
         raise HTTPException(status_code=404, detail="Contract not found")
 
     # Org name
-    org_name = _get_org_name(str(contract["organization_id"])) if contract.get("organization_id") else "—"
+    org_name = get_org_name(str(contract["organization_id"])) if contract.get("organization_id") else "—"
 
     # Originating lead info
     lead_info = None
@@ -474,15 +539,15 @@ async def get_contract(
         lead_info = lead_resp.data
 
     # Lead stage labels
-    lead_stages = _get_reference_data("lead_stage")
+    lead_stages = get_reference_data("lead_stage")
     stage_labels = {s["value"]: s["label"] for s in lead_stages}
 
     # Asset class labels
-    asset_class_data = _get_reference_data("asset_class")
+    asset_class_data = get_reference_data("asset_class")
     ac_labels = {a["value"]: a["label"] for a in asset_class_data}
 
     # Service type labels
-    service_type_data = _get_reference_data("service_type")
+    service_type_data = get_reference_data("service_type")
     st_labels = {s["value"]: s["label"] for s in service_type_data}
 
     # Audit history
@@ -500,7 +565,7 @@ async def get_contract(
     # Enrich audit entries with user names
     for entry in audit_entries:
         if entry.get("changed_by"):
-            entry["changed_by_name"] = _get_user_name(str(entry["changed_by"]))
+            entry["changed_by_name"] = get_user_name(str(entry["changed_by"]))
         else:
             entry["changed_by_name"] = "System"
 
@@ -536,7 +601,7 @@ async def edit_contract_form(
         sb.table("contracts")
         .select("*")
         .eq("id", str(contract_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -545,7 +610,7 @@ async def edit_contract_form(
         raise HTTPException(status_code=404, detail="Contract not found")
 
     # Org name for read-only display
-    org_name = _get_org_name(str(contract["organization_id"])) if contract.get("organization_id") else "—"
+    org_name = get_org_name(str(contract["organization_id"])) if contract.get("organization_id") else "—"
 
     # Originating lead summary for read-only display
     lead_summary = None
@@ -559,14 +624,18 @@ async def edit_contract_form(
         )
         lead_summary = lead_resp.data
 
+    form_ctx = build_form_context("contract", record=contract)
+
     context = {
         "request": request,
         "user": current_user,
         "contract": contract,
         "org_name": org_name,
         "lead_summary": lead_summary,
-        "service_types": _get_reference_data("service_type"),
-        "asset_classes": _get_reference_data("asset_class"),
+        "service_types": get_reference_data("service_type"),
+        "asset_classes": get_reference_data("asset_class"),
+        "sections": form_ctx["sections"],
+        "field_defs": form_ctx["field_defs"],
         "errors": [],
     }
     return templates.TemplateResponse("contracts/form.html", context)
@@ -591,7 +660,7 @@ async def update_contract(
         sb.table("contracts")
         .select("*")
         .eq("id", str(contract_id))
-        .eq("is_archived", False)
+        .eq("is_deleted", False)
         .maybe_single()
         .execute()
     )
@@ -601,33 +670,14 @@ async def update_contract(
 
     form = await request.form()
 
-    # Only extract editable fields — organization_id and originating_lead_id are read-only
-    update_data = {
-        "start_date": (form.get("start_date") or "").strip() or None,
-        "service_type": (form.get("service_type") or "").strip(),
-        "asset_classes": form.getlist("asset_classes"),
-        "client_coverage": (form.get("client_coverage") or "").strip() or None,
-        "summary": (form.get("summary") or "").strip() or None,
-        "actual_revenue": form.get("actual_revenue") or 0,
-        "inflation_provision": (form.get("inflation_provision") or "").strip() or None,
-        "escalator_clause": (form.get("escalator_clause") or "").strip() or None,
-    }
-
-    # Validate required fields
-    errors = []
-    if not update_data["start_date"]:
-        errors.append("Start Date is required.")
-    if not update_data["service_type"]:
-        errors.append("Service Type is required.")
-    if not update_data["asset_classes"]:
-        errors.append("At least one Asset Class is required.")
-    try:
-        float(update_data["actual_revenue"])
-    except (TypeError, ValueError):
-        errors.append("Actual Revenue must be a valid number.")
+    # Use dynamic form service for parsing and validation
+    field_defs = get_field_definitions("contract", active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    update_data = parse_form_data("contract", form, field_defs)
+    errors = validate_form_data("contract", update_data, field_defs, record=old_contract)
 
     if errors:
-        org_name = _get_org_name(str(old_contract["organization_id"]))
+        org_name = get_org_name(str(old_contract["organization_id"]))
         lead_summary = None
         if old_contract.get("originating_lead_id"):
             lead_resp = (
@@ -639,20 +689,24 @@ async def update_contract(
             )
             lead_summary = lead_resp.data
 
+        form_ctx = build_form_context("contract", record={**old_contract, **update_data})
+
         context = {
             "request": request,
             "user": current_user,
             "contract": {**old_contract, **update_data},
             "org_name": org_name,
             "lead_summary": lead_summary,
-            "service_types": _get_reference_data("service_type"),
-            "asset_classes": _get_reference_data("asset_class"),
+            "service_types": get_reference_data("service_type"),
+            "asset_classes": get_reference_data("asset_class"),
+            "sections": form_ctx["sections"],
+            "field_defs": form_ctx["field_defs"],
             "errors": errors,
         }
         return templates.TemplateResponse("contracts/form.html", context)
 
     # Audit log changes
-    _audit_changes("contract", str(contract_id), old_contract, update_data, current_user.id)
+    audit_changes("contract", str(contract_id), old_contract, update_data, current_user.id)
 
     # Update
     sb.table("contracts").update(update_data).eq("id", str(contract_id)).execute()
@@ -674,8 +728,8 @@ async def archive_contract(
     require_role(current_user, ["admin"])
 
     sb = get_supabase()
-    sb.table("contracts").update({"is_archived": True}).eq("id", str(contract_id)).execute()
-    _log_field_change("contract", str(contract_id), "is_archived", False, True, current_user.id)
+    sb.table("contracts").update({"is_deleted": True}).eq("id", str(contract_id)).execute()
+    log_field_change("contract", str(contract_id), "is_deleted", False, True, current_user.id)
 
     if request.headers.get("HX-Request"):
         return HTMLResponse('<p class="text-sm text-green-600">Contract archived.</p>')

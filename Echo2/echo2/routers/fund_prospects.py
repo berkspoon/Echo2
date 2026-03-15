@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
+from db.helpers import get_reference_data, log_field_change, audit_changes, get_org_name, get_user_name
 from dependencies import CurrentUser, get_current_user, require_role
 
 router = APIRouter(prefix="/fund-prospects", tags=["fund_prospects"])
@@ -32,52 +33,6 @@ STAGE_ORDER = {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _get_reference_data(category: str) -> list[dict]:
-    """Fetch active reference data for a dropdown category."""
-    sb = get_supabase()
-    return (
-        sb.table("reference_data")
-        .select("value, label")
-        .eq("category", category)
-        .eq("is_active", True)
-        .order("display_order")
-        .execute()
-        .data or []
-    )
-
-
-def _log_field_change(
-    record_type: str,
-    record_id: str,
-    field_name: str,
-    old_value,
-    new_value,
-    changed_by: UUID,
-) -> None:
-    """Write a single field change to the audit_log table."""
-    sb = get_supabase()
-    sb.table("audit_log").insert({
-        "record_type": record_type,
-        "record_id": record_id,
-        "field_name": field_name,
-        "old_value": str(old_value) if old_value is not None else None,
-        "new_value": str(new_value) if new_value is not None else None,
-        "changed_by": str(changed_by),
-    }).execute()
-
-
-def _audit_changes(
-    record_id: str,
-    old_record: dict,
-    new_data: dict,
-    changed_by: UUID,
-) -> None:
-    """Compare old record with new data and log every changed field."""
-    for field, new_val in new_data.items():
-        old_val = old_record.get(field)
-        if str(old_val) != str(new_val) and not (old_val is None and new_val is None):
-            _log_field_change("fund_prospect", record_id, field, old_val, new_val, changed_by)
 
 
 def _build_prospect_data_from_form(form: dict) -> dict:
@@ -201,19 +156,6 @@ def _create_next_steps_task(
     }).execute()
 
 
-def _get_org_name(org_id: str) -> str:
-    """Look up an org name by ID."""
-    sb = get_supabase()
-    resp = sb.table("organizations").select("company_name").eq("id", org_id).maybe_single().execute()
-    return resp.data["company_name"] if resp.data else "Unknown"
-
-
-def _get_user_name(user_id: str) -> str:
-    """Look up a user display_name by ID."""
-    sb = get_supabase()
-    resp = sb.table("users").select("display_name").eq("id", user_id).maybe_single().execute()
-    return resp.data["display_name"] if resp.data else "Unknown"
-
 
 def _get_fund_info(fund_id: str) -> dict:
     """Look up fund details by ID."""
@@ -253,8 +195,8 @@ def _load_form_context(sb, current_user, prospect=None, pre_org=None, errors=Non
         leads_for_org = leads_resp.data or []
 
     return {
-        "stages": _get_reference_data("fund_prospect_stage"),
-        "decline_reasons": _get_reference_data("decline_reason"),
+        "stages": get_reference_data("fund_prospect_stage"),
+        "decline_reasons": get_reference_data("decline_reason"),
         "funds": funds_resp.data or [],
         "users": users_resp.data or [],
         "leads_for_org": leads_for_org,
@@ -434,12 +376,12 @@ async def list_fund_prospects(
     # Enrich each prospect
     for fp in prospects:
         if fp.get("organization_id"):
-            fp["org_name"] = _get_org_name(str(fp["organization_id"]))
+            fp["org_name"] = get_org_name(str(fp["organization_id"]))
         else:
             fp["org_name"] = "—"
 
         if fp.get("aksia_owner_id"):
-            fp["owner_name"] = _get_user_name(str(fp["aksia_owner_id"]))
+            fp["owner_name"] = get_user_name(str(fp["aksia_owner_id"]))
         else:
             fp["owner_name"] = "—"
 
@@ -448,7 +390,7 @@ async def list_fund_prospects(
         fp["fund_name"] = fund.get("fund_name", "Unknown")
 
     # Reference data for filter dropdowns and stage labels
-    stages = _get_reference_data("fund_prospect_stage")
+    stages = get_reference_data("fund_prospect_stage")
     stage_labels = {s["value"]: s["label"] for s in stages}
     funds_list = [{"id": f["id"], "fund_name": f["fund_name"], "ticker": f["ticker"], "brand": f["brand"]}
                   for f in (funds_resp.data or [])]
@@ -579,12 +521,12 @@ async def my_fund_prospects(
     # Enrich each prospect
     for fp in prospects:
         if fp.get("organization_id"):
-            fp["org_name"] = _get_org_name(str(fp["organization_id"]))
+            fp["org_name"] = get_org_name(str(fp["organization_id"]))
         else:
             fp["org_name"] = "—"
 
         if fp.get("aksia_owner_id"):
-            fp["owner_name"] = _get_user_name(str(fp["aksia_owner_id"]))
+            fp["owner_name"] = get_user_name(str(fp["aksia_owner_id"]))
         else:
             fp["owner_name"] = "—"
 
@@ -593,7 +535,7 @@ async def my_fund_prospects(
         fp["fund_name"] = fund.get("fund_name", "Unknown")
 
     # Reference data for filter dropdowns and stage labels
-    stages = _get_reference_data("fund_prospect_stage")
+    stages = get_reference_data("fund_prospect_stage")
     stage_labels = {s["value"]: s["label"] for s in stages}
     funds_list = [{"id": f["id"], "fund_name": f["fund_name"], "ticker": f["ticker"], "brand": f["brand"]}
                   for f in (funds_resp.data or [])]
@@ -700,10 +642,10 @@ async def get_prospect(
         raise HTTPException(status_code=404, detail="Fund prospect not found")
 
     # Enrich: org name
-    org_name = _get_org_name(str(prospect["organization_id"])) if prospect.get("organization_id") else "—"
+    org_name = get_org_name(str(prospect["organization_id"])) if prospect.get("organization_id") else "—"
 
     # Enrich: owner name
-    owner_name = _get_user_name(str(prospect["aksia_owner_id"])) if prospect.get("aksia_owner_id") else "—"
+    owner_name = get_user_name(str(prospect["aksia_owner_id"])) if prospect.get("aksia_owner_id") else "—"
 
     # Enrich: fund info
     fund_info = _get_fund_info(str(prospect["fund_id"])) if prospect.get("fund_id") else {}
@@ -735,10 +677,10 @@ async def get_prospect(
     related_tasks = tasks_resp.data or []
 
     # Reference data for labels
-    stages = _get_reference_data("fund_prospect_stage")
+    stages = get_reference_data("fund_prospect_stage")
     stage_labels = {s["value"]: s["label"] for s in stages}
 
-    decline_reasons = _get_reference_data("decline_reason")
+    decline_reasons = get_reference_data("decline_reason")
     decline_labels = {d["value"]: d["label"] for d in decline_reasons}
 
     context = {
@@ -807,11 +749,11 @@ async def create_prospect(
         prospect_id = new_prospect["id"]
 
         # Audit log
-        _log_field_change("fund_prospect", str(prospect_id), "_created", None, "record created", current_user.id)
+        log_field_change("fund_prospect", str(prospect_id), "_created", None, "record created", current_user.id)
 
         # Next steps task auto-generation
         if new_prospect.get("next_steps_date"):
-            org_name = _get_org_name(str(new_prospect["organization_id"])) if new_prospect.get("organization_id") else "Prospect"
+            org_name = get_org_name(str(new_prospect["organization_id"])) if new_prospect.get("organization_id") else "Prospect"
             fund_info = _get_fund_info(str(new_prospect["fund_id"])) if new_prospect.get("fund_id") else {}
             _create_next_steps_task(
                 str(prospect_id), org_name, fund_info.get("ticker", "?"),
@@ -929,7 +871,7 @@ async def update_prospect(
         prospect_data["stage_entry_date"] = str(date_type.today())
 
     # Audit log every changed field
-    _audit_changes(str(prospect_id), old_prospect, prospect_data, current_user.id)
+    audit_changes("fund_prospect", str(prospect_id), old_prospect, prospect_data, current_user.id)
 
     # Update
     sb.table("fund_prospects").update(prospect_data).eq("id", str(prospect_id)).execute()
@@ -939,7 +881,7 @@ async def update_prospect(
     new_nsd = prospect_data.get("next_steps_date")
     if new_nsd and str(old_nsd) != str(new_nsd):
         updated = {**old_prospect, **prospect_data, "id": str(prospect_id)}
-        org_name = _get_org_name(str(updated["organization_id"])) if updated.get("organization_id") else "Prospect"
+        org_name = get_org_name(str(updated["organization_id"])) if updated.get("organization_id") else "Prospect"
         fund_info = _get_fund_info(str(updated["fund_id"])) if updated.get("fund_id") else {}
         _create_next_steps_task(
             str(prospect_id), org_name, fund_info.get("ticker", "?"),
@@ -966,7 +908,7 @@ async def archive_prospect(
 
     sb = get_supabase()
     sb.table("fund_prospects").update({"is_archived": True}).eq("id", str(prospect_id)).execute()
-    _log_field_change("fund_prospect", str(prospect_id), "is_archived", False, True, current_user.id)
+    log_field_change("fund_prospect", str(prospect_id), "is_archived", False, True, current_user.id)
 
     if request.headers.get("HX-Request"):
         return HTMLResponse('<p class="text-sm text-green-600">Fund prospect archived.</p>')

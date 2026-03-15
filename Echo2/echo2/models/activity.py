@@ -17,7 +17,7 @@ class ActivityCreate(BaseModel):
     follow_up_notes: Optional[str] = None
     fund_tags: Optional[List[UUID]] = None
     notify_user_ids: Optional[List[UUID]] = None
-    is_archived: bool = False
+    is_deleted: bool = False
     created_by: Optional[UUID] = None
 
 
@@ -33,7 +33,7 @@ class ActivityUpdate(BaseModel):
     follow_up_notes: Optional[str] = None
     fund_tags: Optional[List[UUID]] = None
     notify_user_ids: Optional[List[UUID]] = None
-    is_archived: Optional[bool] = None
+    is_deleted: Optional[bool] = None
 
 
 class ActivityResponse(BaseModel):
@@ -51,7 +51,7 @@ class ActivityResponse(BaseModel):
     follow_up_notes: Optional[str] = None
     fund_tags: Optional[List[UUID]] = None
     notify_user_ids: Optional[List[UUID]] = None
-    is_archived: bool
+    is_deleted: bool
     created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime

@@ -196,6 +196,25 @@
     </div>
     {% endif %}
 
+    <!-- Documents -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Documents</h3>
+        </div>
+        <div class="p-6" id="documents-tab-content"
+             hx-get="/documents/for/contract/{{ contract.id }}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="flex items-center justify-center py-4">
+                <svg class="animate-spin h-5 w-5 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                <span class="text-sm text-gray-400">Loading documents…</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Back link -->
     <div>
         <a href="/contracts" class="text-sm text-brand-600 hover:underline">&larr; Back to Contracts</a>

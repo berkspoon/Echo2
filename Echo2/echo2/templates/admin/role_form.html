@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Role' if role and role.id is defined else 'New Role' }} — Echo 2.0{% endblock %}
+{% block page_title %}{{ 'Edit Role' if role and role.id is defined else 'New Role' }}{% endblock %}
+
+{% block content %}
+{% set is_editing = role and role.id is defined %}
+{% set is_system = role and role.is_system is defined and role.is_system %}
+{% set perms = role.permissions if role and role.permissions else {} %}
+{% set entities_perms = perms.get('entities', {}) if perms is mapping else {} %}
+
+<form class="space-y-6 max-w-4xl" method="post"
+      action="{{ '/admin/roles/' + role.id|string if is_editing else '/admin/roles' }}">
+
+    {% if errors is defined and errors %}
+    <div class="rounded-md bg-red-50 border border-red-200 p-4">
+        <ul class="list-disc list-inside text-sm text-red-700">
+            {% for err in errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if is_system %}
+    <div class="rounded-md bg-blue-50 border border-blue-200 p-4">
+        <p class="text-sm text-blue-700"><span class="font-medium">System role</span> — role name cannot be changed.</p>
+    </div>
+    {% endif %}
+
+    <!-- Basic Info -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Role Details</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label for="role_name" class="block text-sm font-medium text-gray-700">Role Name <span class="text-red-500">*</span></label>
+                <input type="text" name="role_name" id="role_name"
+                       value="{{ role.role_name if role else '' }}"
+                       {{ 'disabled' if is_system else '' }}
+                       placeholder="e.g., portfolio_manager"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm {{ 'bg-gray-100' if is_system else '' }} focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+            <div>
+                <label for="display_name" class="block text-sm font-medium text-gray-700">Display Name <span class="text-red-500">*</span></label>
+                <input type="text" name="display_name" id="display_name" required
+                       value="{{ role.display_name if role else '' }}"
+                       placeholder="e.g., Portfolio Manager"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+            <div class="md:col-span-2">
+                <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                <textarea name="description" id="description" rows="2"
+                          class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ role.description if role and role.description else '' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entity Permissions Grid -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Entity Permissions</h3>
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2 pr-4 font-medium text-gray-700">Entity</th>
+                        <th class="text-center py-2 px-3 font-medium text-gray-700">Create</th>
+                        <th class="text-center py-2 px-3 font-medium text-gray-700">Read</th>
+                        <th class="text-center py-2 px-3 font-medium text-gray-700">Update</th>
+                        <th class="text-center py-2 px-3 font-medium text-gray-700">Delete</th>
+                        <th class="text-center py-2 px-3 font-medium text-gray-700">Archive</th>
+                        <th class="text-center py-2 px-3 font-medium text-gray-700">Restore</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for et in entity_types %}
+                    {% set et_perms = entities_perms.get(et, []) if entities_perms is mapping else [] %}
+                    <tr>
+                        <td class="py-2 pr-4 font-medium text-gray-700">{{ et | replace('_', ' ') | title }}</td>
+                        {% for action in ['create', 'read', 'update', 'delete', 'archive', 'restore'] %}
+                        <td class="py-2 px-3 text-center">
+                            <input type="checkbox" name="perm_{{ et }}_{{ action }}"
+                                   {{ 'checked' if action in et_perms else '' }}
+                                   class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Admin Permissions -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Admin Permissions</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="flex items-center gap-2">
+                <input type="checkbox" name="admin_panel" {{ 'checked' if perms.get('admin_panel') else '' }}
+                       class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                <span class="text-sm text-gray-700">Access Admin Panel</span>
+            </label>
+            <label class="flex items-center gap-2">
+                <input type="checkbox" name="manage_users" {{ 'checked' if perms.get('manage_users') else '' }}
+                       class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                <span class="text-sm text-gray-700">Manage Users</span>
+            </label>
+            <label class="flex items-center gap-2">
+                <input type="checkbox" name="manage_roles" {{ 'checked' if perms.get('manage_roles') else '' }}
+                       class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                <span class="text-sm text-gray-700">Manage Roles</span>
+            </label>
+            <label class="flex items-center gap-2">
+                <input type="checkbox" name="manage_fields" {{ 'checked' if perms.get('manage_fields') else '' }}
+                       class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                <span class="text-sm text-gray-700">Manage Field Definitions</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="flex items-center justify-end gap-3">
+        <a href="/admin/roles"
+           class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            Cancel
+        </a>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+            {{ 'Save Changes' if is_editing else 'Create Role' }}
+        </button>
+    </div>
+</form>
+{% endblock %}

@@ -28,32 +28,41 @@ echo2/
 │   ├── activities.py
 │   ├── leads.py
 │   ├── contracts.py
-│   ├── fund_prospects.py
 │   ├── distribution_lists.py
 │   ├── tasks.py
 │   ├── dashboards.py
-│   └── admin.py
+│   ├── admin.py
+│   ├── documents.py
+│   └── views.py             # Saved views CRUD (save/delete/set-default)
 ├── models/                  # Pydantic models
 │   ├── organization.py
 │   ├── person.py
 │   ├── activity.py
 │   ├── lead.py
 │   ├── contract.py
-│   ├── fund_prospect.py
 │   ├── distribution_list.py
 │   ├── task.py
 │   └── user.py
+├── services/
+│   ├── form_service.py      # Dynamic form build/parse/validate/save
+│   └── grid_service.py      # Reusable grid: query, enrich, paginate, saved views
 ├── db/
 │   ├── client.py            # Supabase client init
-│   └── schema.sql           # Full database schema
+│   ├── schema.sql           # Full database schema
+│   ├── field_service.py     # EAV field definitions + custom values
+│   └── helpers.py           # Shared DB helpers (audit, reference_data, batch resolve)
 ├── templates/               # Jinja2 HTML templates
 │   ├── base.html
 │   ├── index.html
+│   ├── components/
+│   │   ├── _grid.html           # Reusable grid (table, pagination, badges, actions)
+│   │   ├── _column_selector.html # Column show/hide dropdown
+│   │   ├── _field_renderer.html
+│   │   └── _form_section.html
 │   ├── organizations/
 │   ├── people/
 │   ├── activities/
 │   ├── leads/
-│   ├── fund_prospects/
 │   ├── dashboards/
 │   └── admin/
 └── static/
@@ -66,7 +75,7 @@ Aksia has two distinct but connected business lines that share the same contacts
 
 1. **Advisory / Discretionary / Research** — relationship-driven, institutional clients, long RFP cycles. Pipeline tracked via Leads → Contracts. Revenue metric is FLAR (Forward-Looking Accrual Revenue = base fees only, no performance fees).
 
-2. **Products / AC Private Markets (ACPM)** — fundraising operation for commingled funds. Pipeline tracked via Fund Prospects. The four current funds are:
+2. **Products / AC Private Markets (ACPM)** — fundraising operation for commingled funds. Pipeline tracked via Leads with `lead_type='fundraise'` or `lead_type='product'` (merged from former Fund Prospects module). The four current funds are:
    - APC (Aksia Private Credit Fund) — Aksia brand
    - CAPIX (ACPM Private Credit) — ACPM brand
    - CAPVX (ACPM Private Equity) — ACPM brand
@@ -88,7 +97,7 @@ Aksia has two distinct but connected business lines that share the same contacts
 
 ## Database Rules — Always Follow These
 - Every table has: `id UUID PRIMARY KEY DEFAULT uuid_generate_v4()`, `created_at TIMESTAMPTZ DEFAULT now()`, `updated_at TIMESTAMPTZ DEFAULT now()`, `created_by UUID REFERENCES users(id)`
-- All deletes are SOFT deletes: every entity table has `is_archived BOOLEAN NOT NULL DEFAULT FALSE`. Never use SQL DELETE. Filter `WHERE is_archived = FALSE` on all queries.
+- All deletes are SOFT deletes: every entity table has `is_deleted BOOLEAN NOT NULL DEFAULT FALSE` (renamed from `is_archived` in Phase 5). Never use SQL DELETE. Filter `WHERE is_deleted = FALSE` on all queries.
 - Every field-level change must be written to the `audit_log` table: record_type, record_id, field_name, old_value, new_value, changed_by, changed_at
 - Dropdown values are NEVER hardcoded in Python or HTML. They always come from the `reference_data` table. Query by category (e.g. `WHERE category = 'organization_type'`). All 17 categories are seeded in schema.sql.
 - Row-level security is enforced in Supabase. The service role key is used server-side only — never expose it to the browser.
@@ -100,8 +109,9 @@ Aksia has two distinct but connected business lines that share the same contacts
 - **Lead → Contract promotion:** Only triggered when Lead rating changes to "Inactive [Won Mandate – Aksia Client]". System auto-sets end_date to today and creates a Contract record inheriting service_type, asset_classes, and expected_revenue from the Lead. Contract is then editable by Legal only.
 - **Coverage:** Stored at Contact level (optional) and Lead level (required). Organization page shows a read-only rollup of all contact and lead coverage — never stored at org level.
 - **FLAR:** Forward-Looking Accrual Revenue. Base advisory fees only. No performance or incentive fees included. Tracked as expected_yr1_flar and expected_longterm_flar on Leads.
-- **Fund Prospects:** Domestic and offshore are separate records (different share_class field). Same org can have both.
-- **Next Steps Date on Lead or Fund Prospect:** Auto-generates a Task assigned to the Aksia Owner when saved.
+- **Fundraise Leads:** Formerly "Fund Prospects" — now merged into Leads with `lead_type='fundraise'`. Domestic and offshore are separate records (different share_class field). Same org can have both. Fund_prospects table kept as backup but no longer actively used.
+- **Lead Types:** `lead_type` column discriminates: 'advisory' (default, existing pipeline), 'fundraise' (capital raise), 'product'. Stages are scoped by lead_type via `parent_value` on `lead_stage` reference_data.
+- **Next Steps Date on Lead:** Auto-generates a Task assigned to the Aksia Owner when saved.
 - **Activity Follow-Up Required:** Auto-generates a Task assigned to the activity author when saved.
 
 ## Coding Standards
@@ -134,7 +144,7 @@ BASE_URL=http://localhost:8000
 - [x] requirements.txt
 - [x] config.py (pydantic-settings v2 with model_validator)
 - [x] db/client.py (cached Supabase singleton)
-- [x] db/schema.sql (20 tables, all indexes, triggers, seed data for all reference_data categories)
+- [x] db/schema.sql (20+ tables, all indexes, triggers, seed data for all reference_data categories, field_definitions + entity_custom_values + lead_owners + documents tables)
 - [x] main.py (mounts all 10 routers, Jinja2 templates, session middleware)
 - [x] base.html (sidebar nav with grouped sections, global search, HTMX + Tailwind CDN)
 - [x] Pydantic models — Create/Update/Response for all 10 entities
@@ -143,16 +153,22 @@ BASE_URL=http://localhost:8000
 - [x] Organizations module (router logic, templates, HTMX partials, duplicate detection)
 - [x] People module (router logic, templates, HTMX org autocomplete, DNC enforcement, duplicate detection)
 - [x] Activities module (router logic, templates, HTMX org/person autocomplete, follow-up task generation, fund tags)
-- [x] Leads module (router logic, templates, stage-gated validation, Lead→Contract promotion, next-steps task generation)
+- [x] Leads module (router logic, templates, stage-gated validation, Lead→Contract promotion, next-steps task generation, lead_type support for advisory/fundraise/product)
 - [x] Contracts module (router logic, templates, Legal-only edit, fee arrangements CRUD)
-- [x] Fund Prospects module (router logic, templates, stage progression, next-steps task generation)
 - [x] Distribution Lists module (router logic, templates, member management, send preview/history, L2 superset, DNC/RFP Hold suppression)
 - [x] Tasks module (router logic, templates, My Tasks/All Tasks views, HTMX status transitions, polymorphic record linking, overdue highlighting)
 - [x] Dashboards module (router logic, 4 dashboards: Personal/Advisory Pipeline/Capital Raise/Management, HTMX lazy-load widgets, CSS-only visualizations, HTMX filters)
-- [ ] Admin module (router logic)
-- [ ] Reference Data management
-- [ ] SSO / Auth
-- [ ] Data migration
+- [x] Admin module — Phase 3 complete (field management CRUD, dynamic form rendering for all 6 entities, page layout designer, role management, user management)
+- [x] Dynamic form system (`services/form_service.py`, `components/_field_renderer.html`, `components/_form_section.html`)
+- [x] Reusable grid component (Phase 4 — `services/grid_service.py`, `components/_grid.html`, `components/_column_selector.html`, `routers/views.py`; deployed on all 7 entities)
+- [x] Reference Data management (Phase 5 — admin CRUD for all 16 categories, hierarchical data support, HTMX partials)
+- [x] Duplicate detection enhancements (Phase 5 — suppression pairs, "Not a Duplicate" buttons, admin batch scan page)
+- [x] Soft delete rename (`is_archived` → `is_deleted` globally, admin restore endpoint)
+- [x] Lead→Contract manual creation (removed auto-promotion, added contract creation form)
+- [x] Distribution list bulk add, people DL membership tab, follow-up task assignee dropdown
+- [x] Lead Finder virtual columns (active_leads_count on org grid, HTMX expandable panel)
+- [ ] SSO / Auth (Microsoft Entra ID — awaiting IT team app registration)
+- [ ] Data migration (scope TBD — awaiting Miles/Admin team)
 - [x] Dummy data seed script (`scripts/seed_data.py` — ~3,400 rows across all tables)
 
 ## Open Items (from PRD Section 15)
@@ -408,3 +424,121 @@ _Use this section to track decisions made during Claude Code sessions:_
   - `index.html` dashboard layout expanded: added "My Coverage + Missing Info" row and "Stale Contacts" row
   - "View All" links on existing widgets updated to point to "My" module URLs
 - Next step: Admin module
+
+### Session 13 — March 15, 2026 (Phase 2: Merge Fund Prospects into Leads)
+- Executed Phase 2 from Patrick Implementation Plan — merged Fund Prospects module into Leads via `lead_type` discriminator column
+- **Step 2.1 — Schema changes:** Added 9 columns to `leads` table (lead_type, fund_id, share_class, decline_reason, target_allocation_mn, soft_circle_mn, hard_circle_mn, probability_pct, stage_entry_date). Added `idx_leads_type` index. Seeded `lead_type` reference_data category (advisory/product/fundraise) and fundraise-scoped `lead_stage` values via `parent_value`
+- **Step 2.2 — Migration script:** Created `scripts/migrate_fund_prospects.py` — idempotent dry-run/apply script using `[migrated:fp:<uuid>]` marker in summary field for dedup. Migrates fund_prospect rows to leads with lead_type='fundraise', creates lead_owners, updates tasks/record_tags/audit_log references
+- **Step 2.3 — Codebase cleanup:**
+  - Removed fund_prospects router from `main.py` and sidebar from `base.html`
+  - Major rewrite of `routers/leads.py`: lead_type branching in `_build_lead_data_from_form()`, `_validate_lead_fields()`, `_load_form_context()`, all CRUD routes; fundraise stage constants; fund enrichment helpers; scoped stage loading by parent_value
+  - Updated `routers/dashboards.py`: Capital Raise + Management dashboards query leads instead of fund_prospects; backward-compatible batch_resolve for legacy `fund_prospect` linked records
+  - Updated `routers/tasks.py`: linked record resolution checks leads first, falls back to fund_prospects for unmigrated records
+  - Updated `routers/organizations.py` + templates: "Fund Prospects" tab → "Fundraise Leads" tab; created `_tab_fundraise_leads.html`
+  - Rewrote all lead templates (form.html, detail.html, list.html, _list_table.html) for dual advisory/fundraise support with JS toggles and conditional sections
+  - Updated `scripts/seed_data.py`: replaced `seed_fund_prospects()` with `seed_fundraise_leads()` creating leads with lead_type='fundraise' + lead_owners rows; updated task seeding to use `linked_record_type='lead'` and `source='lead_next_steps'`
+- **Step 2.4 — Field definitions:** Added lead_type + 8 fundraise fields to LEAD_FIELDS in `seed_field_definitions.py`; removed standalone FUND_PROSPECT_FIELDS entity
+- Key decisions: fund_prospects table NOT dropped (kept as backup); lead_type locked after creation; stages scoped via parent_value on reference_data; dashboard code normalizes rating→stage for template compatibility
+- Next step: Phase 3 (Admin Control Panel)
+
+### Session 14 — March 15, 2026 (Phase 3: Admin Control Panel)
+- Executed Phase 3 from Patrick Implementation Plan — Admin Control Panel (Changes 10.1, 10.2, 10.3)
+- **Step 3.1 — Field Management:**
+  - Rewrote `routers/admin.py` from stub: field list/create/edit/toggle/reorder endpoints, HTMX partials
+  - Created `templates/admin/fields.html` (entity type selector, field list), `templates/admin/_field_list_partial.html` (HTMX partial with section grouping, badges, reorder buttons), `templates/admin/field_form.html` (create/edit with system field restrictions)
+  - System fields (`is_system=true`) protected: cannot delete, cannot change field_name/storage_type/field_type
+- **Step 3.2 — Dynamic Form Rendering:**
+  - Created `services/form_service.py`: `build_form_context()`, `parse_form_data()`, `validate_form_data()`, `save_record()`, `_is_field_visible()` with visibility rules (when/equals/not_equals/in/not_in/min_stage/lead_type)
+  - Created `templates/components/_field_renderer.html`: Jinja2 macro rendering 12 field types (text, textarea, email, url, phone, number, currency, date, boolean, dropdown, multi_select, lookup) with data-vis-* attributes
+  - Created `templates/components/_form_section.html`: section card macro with grid layout, full-width for textareas
+  - Migrated all 6 entity forms to dynamic rendering: Tasks, Activities, Contracts, People, Organizations, Leads
+  - Each router now uses `build_form_context()` + `parse_form_data()` + `validate_form_data()` while preserving entity-specific UI (autocompletes, linked records, DNC, Lead→Contract promotion, etc.)
+- **Step 3.3 — Page Layout Designer:**
+  - Added `page_layouts` table to `db/schema.sql` (entity_type, layout_type, sections JSONB, is_active)
+  - Added layout CRUD endpoints to `routers/admin.py`
+  - Created `templates/admin/layout_designer.html` with modal form and dynamic section management
+- **Step 3.4 — Role + User Management:**
+  - Added role CRUD endpoints to `routers/admin.py` with entity permissions grid (6 entities x 6 actions) + admin permissions
+  - Created `templates/admin/roles.html` (list with system/custom badges), `templates/admin/role_form.html` (permissions grid)
+  - Rewrote `templates/admin/users.html` with inline role assignment, activate/deactivate
+  - System roles protected from deletion/rename
+- Updated `base.html` sidebar: Admin section with Roles, Fields, Layouts links (visible to admin role only)
+- All 11 Python files + 10 templates syntax-verified
+- Next step: Phase 4 (Reusable Grid Component) — prompt saved to `echo2/Phase_4_Prompt.md`
+
+### Session 15 — March 15, 2026 (Phase 4: Reusable Grid Component)
+- Executed Phase 4 from `echo2/Phase_4_Prompt.md` — replaced all 7 entity list pages with a unified reusable grid component
+- **Step 4.1 — Schema:** Added `saved_views` table to `db/schema.sql` (user_id, entity_type, view_name, columns JSONB, filters JSONB, sort_by, sort_dir, is_default, is_shared) with `idx_sv_user_entity` index
+- **Step 4.2 — Grid Service:** Created `services/grid_service.py` (~600 lines) — central replacement for per-router list logic:
+  - `build_grid_context()`: main entry point, returns dict with columns, rows, pagination, sort, filters, saved_views, grid_container_id, field_defs
+  - `_execute_query()`: Supabase query with entity-aware filters, sort, pagination
+  - `_apply_filters()`: handles text search, entity-specific dropdown filters, date ranges, privacy filters (dist lists), ID-scoped filters (`_org_ids`, `_activity_ids`)
+  - `_enrich_rows()`: dispatches to 7 entity-specific enrichment functions using batch resolution (no N+1)
+  - `save_view()`, `delete_view()`, `set_default_view()`: saved views CRUD
+  - Constants: `_ENTITY_TABLES`, `_DEFAULT_COLUMNS`, `_BASE_SELECT`, `_VALID_SORT`, `_DEFAULT_SORT` for all 7 entities
+- **Step 4.3 — Grid Template:** Created `templates/components/_grid.html` (~400 lines):
+  - Saved view selector dropdown (Alpine.js), column selector, page size selector
+  - Data table with sortable HTMX column headers (click toggles asc/desc)
+  - Entity-specific cell rendering: status/stage/type badges, currency formatting, date formatting, linked record links, action buttons
+  - Empty state with entity-specific messaging
+  - Pagination with page numbers, prev/next, all via HTMX partial swap
+  - Save View modal (name input, save button posting to `/views/save`)
+- **Step 4.4 — Column Selector:** Created `templates/components/_column_selector.html` — Alpine.js dropdown with checkboxes grouped by section, All/None toggles, Apply button fires HTMX reload with `visible_columns` param
+- **Step 4.5 — Views Router:** Created `routers/views.py` — `POST /views/save`, `POST /views/{id}/delete`, `POST /views/{id}/set-default`; registered in `main.py`
+- **Step 4.6 — All 7 Entity Routers Updated:**
+  - Organizations: `my_organizations` pre-computes org IDs via coverage, passes as `extra_filters={"_org_ids": ...}`
+  - People: `my_people` queries by coverage_owner, passes ID list
+  - Leads: handles `lead_type` + `view=my` via extra_filters
+  - Activities: `my_activities` does multi-step coverage query (author + covered people + covered orgs), passes `_activity_ids`
+  - Tasks: `my_tasks` passes `extra_filters={"assignee": user.id}`
+  - Contracts: simple delegation, no "My" view
+  - Distribution Lists: passes `_user_id`/`_user_role` for privacy filtering
+- **Step 4.7 — All 7 list.html Templates Updated:** Old `_list_table.html` includes replaced with `{% include "components/_grid.html" %}`, HTMX targets updated to `#{{ grid_container_id }}`
+- **Cleanup:** Deleted 8 old `_list_table.html` partials (7 entities + legacy fund_prospects)
+- Grid container IDs: `f"{entity_type.replace('_', '-')}-grid-container"` prevents HTMX target conflicts
+- Distribution lists: dual official/custom sections collapsed into single grid (privacy handled by grid_service)
+- Next step: Test by running server, then Reference Data management or SSO/Auth
+
+### Session 16 — March 15, 2026 (Phase 5: Remaining Changes)
+- Executed Phase 5 from `echo2/Phase_5_Prompt.md` — all 7 steps implementing Changes 9, 11, 12, 13, 14, 15 + Reference Data Admin CRUD
+- **Step 5.0 — Reference Data Admin CRUD:**
+  - 8 endpoints in `routers/admin.py`: list categories, list values, create/edit/update/toggle/reorder values
+  - `_CATEGORY_META` dict for 16 categories with labels and parent_category relationships
+  - 3 templates: `reference_data.html` (two-column layout), `_reference_data_values.html`, `_reference_data_form.html`
+  - Hierarchical support: `activity_subtype` → `activity_type`, `lead_stage` → `lead_type` via `parent_value`
+  - All endpoints HTMX-partial-aware
+- **Step 5.1 — Lead Finder + Grid Virtual Columns:**
+  - `_VIRTUAL_COLUMNS` dict in `services/grid_service.py` with `active_leads_count` for organization entity
+  - `_enrich_organizations()` batch-queries active leads count per org
+  - `build_grid_context()` merges virtual columns into field_defs
+  - Seed SQL for "Lead Finder" shared saved view (commented, ready to apply)
+- **Step 5.2 — Contract Creation from Won Leads:**
+  - Removed `_promote_lead_to_contract()` auto-promotion from `routers/leads.py`
+  - Added `GET /contracts/new` (pre-filled from lead) and `POST /contracts/create` to `routers/contracts.py`
+  - `contracts/form.html` now supports both create and edit modes
+  - Lead detail shows "Create Contract" button for won leads without existing contract
+- **Step 5.3 — Distribution List + Follow-Up Enhancements:**
+  - `POST /{list_id}/remove-member` and `POST /{list_id}/add-filtered` endpoints in `routers/distribution_lists.py`
+  - Distribution list membership tab on person detail (`people/_tab_distribution_lists.html`)
+  - "Assign Follow-Up To" dropdown on activity form; `_create_follow_up_task()` accepts `assignee_id` param
+- **Step 5.4 — Organization Leads Panel:**
+  - `GET /organizations/{org_id}/leads-panel` endpoint returns mini-table of active leads
+  - `_org_leads_panel.html` template; `_grid.html` renders expandable leads panel on `active_leads_count` cells
+- **Step 5.5 — Soft Delete Rename (`is_archived` → `is_deleted`):**
+  - Global rename across 10 routers, 8 Pydantic models, grid_service.py, seed_data.py, migrate_fund_prospects.py
+  - 11 ALTER TABLE RENAME COLUMN statements in schema.sql
+  - `duplicate_suppressions` table added to schema.sql
+  - Admin restore endpoint: `POST /admin/{entity_type}/{record_id}/restore` with audit logging
+  - `fund_prospects.py` intentionally kept with `is_archived` (legacy backup, not actively used)
+  - CLAUDE.md Database Rules updated to reference `is_deleted`
+- **Step 5.6 — Duplicate Detection Enhancements:**
+  - Suppression filtering in `_check_duplicates()` for both orgs and people — queries `duplicate_suppressions` table, filters both directions (a→b, b→a)
+  - `POST /organizations/{org_id}/suppress-duplicate` and `POST /people/{person_id}/suppress-duplicate` — normalize UUIDs (smaller as record_id_a), upsert suppression, audit log, return updated warning partial
+  - Updated `_duplicate_warning.html` templates: "Not a Duplicate" button per match row (HTMX-powered, swaps `#duplicate-warning` div)
+  - Admin batch scan: `GET /admin/duplicates/{entity_type}` — iterates all active records, calls existing similarity RPCs, excludes suppressed pairs, sorts by similarity desc, paginated (50/page, capped at 200 pairs)
+  - `POST /admin/duplicates/{entity_type}/suppress` — admin suppress from scan page, returns empty HTML to remove row
+  - `templates/admin/duplicates.html` — org/person tabs, similarity table with color-coded scores (red ≥80%, yellow ≥60%), empty state
+  - Sidebar "Duplicates" link added under Admin section
+  - Merge endpoint deferred as stretch goal per prompt spec
+- All 15 architectural changes from Patrick Implementation Plan now implemented across Phases 0–5
+- Next step: SSO/Auth (Microsoft Entra ID) or manual testing + data migration

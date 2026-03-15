@@ -1,19 +1,34 @@
 <!-- Duplicate warning fragment (HTMX target) -->
 {% if duplicates %}
-<div class="rounded-md bg-yellow-50 border border-yellow-200 p-4">
+<div id="duplicate-warning" class="rounded-md bg-yellow-50 border border-yellow-200 p-4">
     <div class="flex">
-        <svg class="h-5 w-5 text-yellow-400 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-        <div>
+        <svg class="h-5 w-5 text-yellow-400 mr-3 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+        <div class="flex-1">
             <h3 class="text-sm font-medium text-yellow-800">Possible duplicates</h3>
-            <ul class="mt-1 text-sm text-yellow-700 space-y-1">
+            <ul class="mt-1 text-sm text-yellow-700 space-y-2">
                 {% for dupe in duplicates %}
-                <li>
-                    <a href="/organizations/{{ dupe.id }}" target="_blank" class="underline hover:text-yellow-900">{{ dupe.company_name }}</a>
-                    {% if dupe.organization_type %} — {{ dupe.organization_type | replace('_', ' ') | title }}{% endif %}
+                <li class="flex items-center justify-between">
+                    <span>
+                        <a href="/organizations/{{ dupe.id }}" target="_blank" class="underline hover:text-yellow-900">{{ dupe.company_name }}</a>
+                        {% if dupe.organization_type %} — {{ dupe.organization_type | replace('_', ' ') | title }}{% endif %}
+                    </span>
+                    {% if source_id %}
+                    <form hx-post="/organizations/{{ source_id }}/suppress-duplicate"
+                          hx-target="#duplicate-warning" hx-swap="outerHTML"
+                          class="ml-3 flex-shrink-0">
+                        <input type="hidden" name="other_id" value="{{ dupe.id }}">
+                        <button type="submit"
+                                class="text-xs px-2 py-1 rounded bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-100">
+                            Not a Duplicate
+                        </button>
+                    </form>
+                    {% endif %}
                 </li>
                 {% endfor %}
             </ul>
         </div>
     </div>
 </div>
+{% elif source_id %}
+<!-- All duplicates suppressed -->
 {% endif %}

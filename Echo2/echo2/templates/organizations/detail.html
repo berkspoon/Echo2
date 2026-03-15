@@ -210,7 +210,7 @@
         {% endif %}
     </div>
 
-    <!-- Tabs: People, Activities, Leads, Contracts, Fund Prospects, Fee Arrangements -->
+    <!-- Tabs: People, Activities, Leads, Contracts, Fundraise Leads, Fee Arrangements -->
     <div class="bg-white rounded-lg shadow">
         <nav class="flex border-b border-gray-200 px-6 overflow-x-auto">
             {% set tabs = [
@@ -218,8 +218,9 @@
                 ("activities", "Activities", activities | length),
                 ("leads", "Leads", leads | length),
                 ("contracts", "Contracts", contracts | length),
-                ("fund_prospects", "Fund Prospects", fund_prospects | length),
+                ("fundraise_leads", "Fundraise Leads", fundraise_leads | length),
                 ("fee_arrangements", "Fee Arrangements", fee_arrangements | length),
+                ("documents", "Documents", none),
                 ("former_employees", "Former Employees", former_employees | length),
             ] %}
             {% for tab_id, tab_label, tab_count in tabs %}
@@ -229,7 +230,7 @@
                 hx-target="#org-tab-content"
                 hx-push-url="false">
                 {{ tab_label }}
-                <span class="ml-1 text-xs text-gray-400">({{ tab_count }})</span>
+                {% if tab_count is not none %}<span class="ml-1 text-xs text-gray-400">({{ tab_count }})</span>{% endif %}
             </button>
             {% endfor %}
         </nav>
