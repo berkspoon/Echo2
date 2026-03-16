@@ -648,7 +648,9 @@ function applyColumnFilter(fieldName, op, value) {
   var url = new URL(window.location);
   url.searchParams.set('cf_' + fieldName, op + ':' + value);
   url.searchParams.set('page', '1');
-  htmx.ajax('GET', url.pathname + url.search, {target: '#{{ grid_container_id }}', pushUrl: true});
+  var fullUrl = url.pathname + url.search;
+  history.pushState(null, '', fullUrl);
+  htmx.ajax('GET', fullUrl, {target: '#{{ grid_container_id }}'});
 }
 
 /** Apply a checkbox-based multi-select column filter */
@@ -668,7 +670,9 @@ function clearColumnFilter(fieldName) {
   var url = new URL(window.location);
   url.searchParams.delete('cf_' + fieldName);
   url.searchParams.set('page', '1');
-  htmx.ajax('GET', url.pathname + url.search, {target: '#{{ grid_container_id }}', pushUrl: true});
+  var fullUrl = url.pathname + url.search;
+  history.pushState(null, '', fullUrl);
+  htmx.ajax('GET', fullUrl, {target: '#{{ grid_container_id }}'});
 }
 
 /** Clear all column filters */
@@ -680,7 +684,9 @@ function clearAllColumnFilters() {
   });
   keysToDelete.forEach(function(k) { url.searchParams.delete(k); });
   url.searchParams.set('page', '1');
-  htmx.ajax('GET', url.pathname + url.search, {target: '#{{ grid_container_id }}', pushUrl: true});
+  var fullUrl = url.pathname + url.search;
+  history.pushState(null, '', fullUrl);
+  htmx.ajax('GET', fullUrl, {target: '#{{ grid_container_id }}'});
 }
 
 /** Apply sort from column filter dropdown */
@@ -689,7 +695,9 @@ function applyColumnSort(fieldName, dir) {
   url.searchParams.set('sort_by', fieldName);
   url.searchParams.set('sort_dir', dir);
   url.searchParams.set('page', '1');
-  htmx.ajax('GET', url.pathname + url.search, {target: '#{{ grid_container_id }}', pushUrl: true});
+  var fullUrl = url.pathname + url.search;
+  history.pushState(null, '', fullUrl);
+  htmx.ajax('GET', fullUrl, {target: '#{{ grid_container_id }}'});
 }
 
 /** Duplicate a screener — prompt for name, then POST */

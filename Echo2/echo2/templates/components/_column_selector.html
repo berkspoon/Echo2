@@ -181,7 +181,9 @@ function columnSelector() {
         }
       });
       keysToRemove.forEach(function(k) { url.searchParams.delete(k); });
-      htmx.ajax('GET', url.pathname + url.search, {target: '#{{ grid_container_id }}', pushUrl: true});
+      var fullUrl = url.pathname + url.search;
+      history.pushState(null, '', fullUrl);
+      htmx.ajax('GET', fullUrl, {target: '#{{ grid_container_id }}'});
       this.open = false;
     }
   };
