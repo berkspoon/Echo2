@@ -98,6 +98,13 @@
         </div>
       </div>
     </div>
+    {% else %}
+    {# No screeners yet — show standalone Save Screener button #}
+    <button onclick="document.getElementById('save-view-modal').classList.remove('hidden')"
+            class="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50">
+      <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+      Save Screener
+    </button>
     {% endif %}
 
     {# Column selector toggle #}

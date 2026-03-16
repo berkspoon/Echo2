@@ -139,7 +139,7 @@ async def edit_field_form(
 
     sb = get_supabase()
     resp = sb.table("field_definitions").select("*").eq("id", field_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Field not found")
 
     field = resp.data
@@ -210,7 +210,7 @@ async def create_field(
             .maybe_single()
             .execute()
         )
-        if dup.data:
+        if dup and dup.data:
             errors.append(f"Field '{field_name}' already exists for {entity_type}.")
 
     if errors:
@@ -282,7 +282,7 @@ async def update_field(
 
     sb = get_supabase()
     resp = sb.table("field_definitions").select("*").eq("id", field_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Field not found")
 
     old_field = resp.data
@@ -357,7 +357,7 @@ async def toggle_field(
 
     sb = get_supabase()
     resp = sb.table("field_definitions").select("*").eq("id", field_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Field not found")
 
     field = resp.data
@@ -402,7 +402,7 @@ async def reorder_field(
 
     sb = get_supabase()
     resp = sb.table("field_definitions").select("*").eq("id", field_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Field not found")
 
     field = resp.data
@@ -539,7 +539,7 @@ async def delete_layout(
 
     sb = get_supabase()
     resp = sb.table("page_layouts").select("entity_type").eq("id", layout_id).maybe_single().execute()
-    entity_type = resp.data["entity_type"] if resp.data else "organization"
+    entity_type = resp.data["entity_type"] if resp and resp.data else "organization"
 
     sb.table("page_layouts").delete().eq("id", layout_id).execute()
 
@@ -606,7 +606,7 @@ async def edit_role_form(
 
     sb = get_supabase()
     resp = sb.table("roles").select("*").eq("id", role_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Role not found")
 
     return templates.TemplateResponse("admin/role_form.html", {
@@ -643,7 +643,7 @@ async def create_role(
     if not errors:
         sb = get_supabase()
         dup = sb.table("roles").select("id").eq("role_name", role_name).maybe_single().execute()
-        if dup.data:
+        if dup and dup.data:
             errors.append(f"Role '{role_name}' already exists.")
 
     if errors:
@@ -679,7 +679,7 @@ async def update_role(
 
     sb = get_supabase()
     resp = sb.table("roles").select("*").eq("id", role_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Role not found")
 
     old_role = resp.data
@@ -799,7 +799,7 @@ async def update_user_roles(
 
     # Verify user exists
     user_resp = sb.table("users").select("id").eq("id", user_id).maybe_single().execute()
-    if not user_resp.data:
+    if not user_resp or not user_resp.data:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Delete existing assignments
@@ -1046,7 +1046,7 @@ async def reference_data_create(
             .maybe_single()
             .execute()
         )
-        if dup.data:
+        if dup and dup.data:
             errors.append(f"Value '{value}' already exists in {meta['label']}.")
 
     if errors:
@@ -1129,7 +1129,7 @@ async def reference_data_edit_form(
     sb = get_supabase()
 
     resp = sb.table("reference_data").select("*").eq("id", rd_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Value not found")
 
     parent_values = []
@@ -1173,7 +1173,7 @@ async def reference_data_update(
     sb = get_supabase()
 
     resp = sb.table("reference_data").select("*").eq("id", rd_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Value not found")
 
     old_record = resp.data
@@ -1250,7 +1250,7 @@ async def reference_data_toggle(
 
     sb = get_supabase()
     resp = sb.table("reference_data").select("*").eq("id", rd_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Value not found")
 
     old_record = resp.data
@@ -1308,7 +1308,7 @@ async def reference_data_reorder(
 
     sb = get_supabase()
     resp = sb.table("reference_data").select("*").eq("id", rd_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Value not found")
 
     item = resp.data
@@ -1382,7 +1382,7 @@ async def restore_record(
 
     # Verify record exists and is deleted
     resp = sb.table(table).select("id, is_deleted").eq("id", record_id).maybe_single().execute()
-    if not resp.data:
+    if not resp or not resp.data:
         raise HTTPException(status_code=404, detail="Record not found")
     if not resp.data.get("is_deleted"):
         raise HTTPException(status_code=400, detail="Record is not deleted")

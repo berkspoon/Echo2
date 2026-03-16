@@ -520,9 +520,13 @@ async def list_distribution_lists(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """List distribution lists with filtering, search, sorting, and pagination."""
+    params = dict(request.query_params)
+    list_view = params.get("list_view", "custom")  # 'custom' or 'official'
+
     extra_filters = {
         "_user_id": str(current_user.id),
         "_user_role": current_user.role,
+        "_list_view": list_view,
     }
     ctx = build_grid_context("distribution_list", request, current_user, base_url="/distribution-lists", extra_filters=extra_filters)
 
@@ -540,7 +544,7 @@ async def list_distribution_lists(
         "list_type": ctx["filters"].get("type", ""),
         "brand": ctx["filters"].get("brand", ""),
         "asset_class": ctx["filters"].get("asset_class", ""),
-        "official": ctx["filters"].get("official", ""),
+        "list_view": list_view,
         "list_types": list_types,
         "brands": brands,
         "asset_classes": asset_classes,

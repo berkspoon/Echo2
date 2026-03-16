@@ -5,10 +5,19 @@
 {% block content %}
 <div class="space-y-6">
 
-    <!-- Header row -->
+    <!-- Header row with tabs -->
     <div class="flex items-center justify-between">
         <div>
-            <h2 class="text-lg font-semibold text-gray-900">Distribution Lists</h2>
+            <div class="flex items-center gap-2 mb-1">
+                <a href="/distribution-lists?list_view=custom"
+                   class="text-sm font-medium px-3 py-1.5 rounded-md {{ 'bg-brand-500 text-white' if list_view|default('custom') == 'custom' else 'text-gray-600 hover:bg-gray-100' }}">
+                    Custom / Private
+                </a>
+                <a href="/distribution-lists?list_view=official"
+                   class="text-sm font-medium px-3 py-1.5 rounded-md {{ 'bg-brand-500 text-white' if list_view|default('custom') == 'official' else 'text-gray-600 hover:bg-gray-100' }}">
+                    Official
+                </a>
+            </div>
             <p class="text-sm text-gray-500">{{ total_count }} list{{ 's' if total_count != 1 else '' }}</p>
         </div>
         {% if user.role in ['admin', 'standard_user', 'rfp_team'] %}
@@ -23,6 +32,7 @@
     <!-- Search -->
     <div class="bg-white rounded-lg shadow p-4">
         <form id="filter-form" hx-get="/distribution-lists" hx-target="#{{ grid_container_id }}" hx-push-url="true" class="flex flex-wrap items-end gap-4">
+            <input type="hidden" name="list_view" value="{{ list_view|default('custom') }}">
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs font-medium text-gray-600 mb-1">Search</label>
                 <input type="text" name="q" value="{{ search }}"

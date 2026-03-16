@@ -59,7 +59,7 @@ _DEFAULT_COLUMNS: dict[str, list[str]] = {
     ],
     "distribution_list": [
         "list_name", "list_type", "brand", "asset_class", "frequency",
-        "is_official", "created_at",
+        "created_at",
     ],
 }
 
@@ -437,15 +437,16 @@ def _apply_filters(entity_type: str, query, filters: dict):
             query = query.eq("brand", filters["brand"])
         if filters.get("asset_class"):
             query = query.eq("asset_class", filters["asset_class"])
-        official = filters.get("official", "")
-        if official == "official":
+        # Tab-based view: official vs custom/private
+        list_view = filters.get("_list_view", "custom")
+        if list_view == "official":
             query = query.eq("is_official", True)
-        elif official == "custom":
+        else:
+            # Custom/private view — apply privacy filter for non-admins
             query = query.eq("is_official", False)
-        # Privacy filter for non-admins
-        if filters.get("_user_role") != "admin" and filters.get("_user_id"):
-            uid = filters["_user_id"]
-            query = query.or_(f"is_official.eq.true,owner_id.eq.{uid},is_private.eq.false")
+            if filters.get("_user_role") != "admin" and filters.get("_user_id"):
+                uid = filters["_user_id"]
+                query = query.or_(f"owner_id.eq.{uid},is_private.eq.false")
 
     # ── Date range (generic) ─────────────────────────────────────────────
     date_field = _date_field_for_entity(entity_type)
@@ -822,7 +823,8 @@ def _extract_filters(entity_type: str, params: dict, fd_map: dict) -> dict:
             "linked_type": "linked_type", "overdue": "overdue",
         },
         "distribution_list": {
-            "type": "type", "brand": "brand", "asset_class": "asset_class", "official": "official",
+            "type": "type", "brand": "brand", "asset_class": "asset_class",
+            "list_view": "list_view",
         },
     }
 
@@ -927,22 +929,44 @@ def _apply_column_filters(query, col_filters: dict, entity_type: str):
 # Visible columns resolution
 # ═══════════════════════════════════════════════════════════════════════════
 
+_TOGGLABLE_EXCEPTIONS: dict[str, set[str]] = {
+    "organization": {"relationship_type", "organization_type"},
+    "lead": {"rating", "share_class"},
+    "task": {"assigned_to", "status"},
+}
+
+
+def _pin_required_columns_left(
+    entity_type: str, field_defs: list[dict], cols: list[str]
+) -> list[str]:
+    """Ensure required columns (non-togglable) are always first in the list."""
+    exceptions = _TOGGLABLE_EXCEPTIONS.get(entity_type, set())
+    pinned = {
+        fd["field_name"]
+        for fd in field_defs
+        if fd.get("is_required") and fd["field_name"] not in exceptions
+    }
+    required_cols = [c for c in cols if c in pinned]
+    other_cols = [c for c in cols if c not in pinned]
+    return required_cols + other_cols
+
+
 def _resolve_visible_columns(
     entity_type: str,
     field_defs: list[dict],
     saved_view: Optional[dict],
     visible_columns_param: Optional[str],
 ) -> list[str]:
-    """Determine which columns to show."""
+    """Determine which columns to show, with required columns pinned left."""
     if visible_columns_param:
-        return [c.strip() for c in visible_columns_param.split(",") if c.strip()]
-
-    if saved_view and saved_view.get("columns"):
+        raw = [c.strip() for c in visible_columns_param.split(",") if c.strip()]
+    elif saved_view and saved_view.get("columns"):
         cols = saved_view["columns"]
-        if isinstance(cols, list) and cols:
-            return cols
+        raw = cols if isinstance(cols, list) and cols else get_default_columns(entity_type, field_defs)
+    else:
+        raw = get_default_columns(entity_type, field_defs)
 
-    return get_default_columns(entity_type, field_defs)
+    return _pin_required_columns_left(entity_type, field_defs, raw)
 
 
 def get_default_columns(entity_type: str, field_defs: list[dict]) -> list[str]:

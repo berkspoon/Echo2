@@ -2,15 +2,20 @@
 <!-- Expects: funnel_stages = [{label, count, pct, bg_class}, ...] -->
 
 {% if funnel_stages %}
-<div class="funnel-container">
+<div class="flex flex-col items-center gap-1.5 w-full">
     {% for stage in funnel_stages %}
     {% set total_stages = funnel_stages|length %}
-    {% set indent = loop.index0 * 8 %}
-    <div class="funnel-stage {{ stage.bg_class }}"
-         style="clip-path: polygon({{ indent }}% 0%, {{ 100 - indent }}% 0%, {{ indent + 8 }}% 100%, {{ 100 - indent - 8 }}% 100%);">
-        <div class="flex justify-between items-center px-2">
-            <span class="font-medium">{{ stage.label }}</span>
-            <span>{{ stage.count }} ({{ stage.pct }}%)</span>
+    {% set min_width = 40 %}
+    {% if total_stages > 1 %}
+      {% set width_pct = 100 - (loop.index0 * (100 - min_width) / (total_stages - 1)) %}
+    {% else %}
+      {% set width_pct = 100 %}
+    {% endif %}
+    <div class="rounded-lg {{ stage.bg_class }} text-white px-4 py-3 mx-auto transition-all hover:opacity-90 cursor-pointer"
+         style="width: {{ width_pct | round(1) }}%;">
+        <div class="flex justify-between items-center">
+            <span class="font-medium text-sm">{{ stage.label }}</span>
+            <span class="text-sm">{{ stage.count }} ({{ stage.pct | round(1) }}%)</span>
         </div>
     </div>
     {% endfor %}

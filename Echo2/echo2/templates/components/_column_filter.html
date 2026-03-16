@@ -111,7 +111,8 @@
         <option value="eq">= Equal</option>
         <option value="between">Between</option>
       </select>
-      <input type="number" step="any" x-model="numVal" placeholder="{{ 'Min' if numOp === 'between' else 'Value' }}"
+      <input type="number" step="any" x-model="numVal"
+             :placeholder="numOp === 'between' ? 'Min' : 'Value'"
              class="w-full rounded border border-gray-300 px-2 py-1 text-xs">
       <input x-show="numOp === 'between'" type="number" step="any" x-model="numVal2" placeholder="Max"
              class="w-full rounded border border-gray-300 px-2 py-1 text-xs">
