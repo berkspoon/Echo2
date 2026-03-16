@@ -18,9 +18,14 @@
      grid_container_id — e.g. "organization-grid-container"
 #}
 
-{# ── Helper: build query string from current filters + col_filters ─── #}
+{# ── Helper: build query string from current filters + col_filters + visible_columns ─── #}
 {% set ns = namespace(qs_parts=[]) %}
-{% for key, val in filters.items() if val and not key.startswith('_') %}
+{# Preserve visible column selection across sort/paginate/filter links #}
+{% set vis_col_names = columns | map(attribute='field_name') | list | join(',') %}
+{% if vis_col_names %}
+  {% set ns.qs_parts = ns.qs_parts + ['visible_columns=' ~ vis_col_names] %}
+{% endif %}
+{% for key, val in filters.items() if val and not key.startswith('_') and not key.startswith('cf_') %}
   {% set ns.qs_parts = ns.qs_parts + [key ~ '=' ~ val] %}
 {% endfor %}
 {% if col_filters is defined and col_filters %}
@@ -29,6 +34,11 @@
 {% endfor %}
 {% endif %}
 {% set filter_qs = ns.qs_parts | join('&') %}
+
+{# Merged filters for screener save/overwrite — includes col_filters so they persist #}
+{% set merged_filters = {} %}
+{% for k, v in filters.items() if v and not k.startswith('_') and not k.startswith('cf_') %}{% set _ = merged_filters.update({k: v}) %}{% endfor %}
+{% if col_filters is defined and col_filters %}{% for k, v in col_filters.items() %}{% set _ = merged_filters.update({k: v}) %}{% endfor %}{% endif %}
 
 <div id="{{ grid_container_id }}">
 
@@ -64,7 +74,7 @@
             <form method="POST" action="/views/{{ sv.id }}/overwrite" class="inline"
                   onsubmit="return confirm('Overwrite screener &quot;{{ sv.view_name }}&quot; with current grid state?');">
               <input type="hidden" name="columns" value="{{ columns | map(attribute='field_name') | list | join(',') }}">
-              <input type="hidden" name="filters" value="{{ filters | tojson }}">
+              <input type="hidden" name="filters" value="{{ merged_filters | tojson }}">
               <input type="hidden" name="sort_by" value="{{ sort_by }}">
               <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
               <button type="submit" title="Overwrite with current state" class="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600">
@@ -611,7 +621,7 @@
     <form method="POST" action="/views/save">
       <input type="hidden" name="entity_type" value="{{ entity_type }}">
       <input type="hidden" name="columns" value="{{ columns | map(attribute='field_name') | list | join(',') }}">
-      <input type="hidden" name="filters" value="{{ filters | tojson }}">
+      <input type="hidden" name="filters" value="{{ merged_filters | tojson }}">
       <input type="hidden" name="sort_by" value="{{ sort_by }}">
       <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
       <div class="mb-4">

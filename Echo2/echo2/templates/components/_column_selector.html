@@ -64,7 +64,7 @@
           <span x-text="col.label" class="flex-1 truncate"></span>
           <span class="text-xs text-gray-400 mr-1" x-text="col.type"></span>
           {# Up/Down arrow buttons #}
-          <div class="flex flex-col flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="flex flex-col flex-shrink-0">
             <button @click.stop="moveUp(idx)" :disabled="idx === 0"
                     class="p-0 leading-none text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed"
                     title="Move up">
@@ -169,9 +169,18 @@ function columnSelector() {
       this.optionalCols.forEach(function(c) {
         if (c.visible) cols.push(c.name);
       });
+      var colSet = new Set(cols);
       var url = new URL(window.location);
       url.searchParams.set('visible_columns', cols.join(','));
       url.searchParams.set('page', '1');
+      // Remove column filters for columns that are no longer visible
+      var keysToRemove = [];
+      url.searchParams.forEach(function(val, key) {
+        if (key.startsWith('cf_') && !colSet.has(key.substring(3))) {
+          keysToRemove.push(key);
+        }
+      });
+      keysToRemove.forEach(function(k) { url.searchParams.delete(k); });
       htmx.ajax('GET', url.pathname + url.search, {target: '#{{ grid_container_id }}', pushUrl: true});
       this.open = false;
     }
