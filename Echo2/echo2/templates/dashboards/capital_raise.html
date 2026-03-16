@@ -80,29 +80,43 @@
         {% endif %}
     </div>
 
-    <!-- 2. Pipeline by Stage -->
-    <div class="bg-white rounded-lg shadow p-6">
-        <h3 class="text-sm font-semibold text-gray-900 mb-4">Pipeline by Stage</h3>
-        {% if fp_pipeline %}
-        <div class="space-y-3">
-            {% for item in fp_pipeline %}
-            <div class="flex items-center gap-3">
-                <div class="w-36 text-sm text-gray-600 truncate">{{ item.label }}</div>
-                <div class="flex-1 bg-gray-100 rounded-full h-6 relative overflow-hidden">
-                    <div class="h-6 rounded-full {{ item.color }} transition-all duration-300" style="width: {{ item.bar_pct }}%; min-width: {% if item.count > 0 %}2rem{% else %}0{% endif %};"></div>
-                    <span class="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-700">
-                        {{ item.count }} prospect{{ 's' if item.count != 1 else '' }} &middot; ${{ item.allocation_fmt }}M
-                    </span>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- 2. Pipeline Chart with Group-by Selector -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-semibold text-gray-900">Pipeline Analysis</h3>
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-gray-500">Group by:</label>
+                    <select class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                            hx-get="/dashboards/capital-raise/chart"
+                            hx-trigger="change"
+                            hx-target="#cr-pipeline-chart"
+                            hx-vals='{"fund_ticker": "{{ current_fund_ticker or "" }}"}'
+                            name="group_by">
+                        <option value="stage" {{ 'selected' if cr_group_by == 'stage' else '' }}>Stage</option>
+                        <option value="lp_type" {{ 'selected' if cr_group_by == 'lp_type' else '' }}>LP Type</option>
+                        <option value="fund" {{ 'selected' if cr_group_by == 'fund' else '' }}>Fund</option>
+                    </select>
                 </div>
             </div>
-            {% endfor %}
+            <div id="cr-pipeline-chart">
+                {% include "dashboards/_capital_raise_chart.html" %}
+            </div>
         </div>
-        {% else %}
-        <p class="text-sm text-gray-400">No prospects in pipeline.</p>
-        {% endif %}
+
+        <!-- 3. Conversion Funnel (Vertical Trapezoid) -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-sm font-semibold text-gray-900 mb-4">Conversion Funnel</h3>
+            {% include "dashboards/_funnel.html" %}
+        </div>
+
     </div>
 
-    <!-- 3. Investor Breakdown by Org Type -->
+    <!-- Drill-down Panel (populated via HTMX on bar click) -->
+    <div id="cr-drilldown-panel"></div>
+
+    <!-- 4. Investor Breakdown by Org Type -->
     <div class="bg-white rounded-lg shadow p-6">
         <h3 class="text-sm font-semibold text-gray-900 mb-4">Investor Breakdown by LP Type</h3>
         {% if investor_breakdown %}
@@ -135,7 +149,7 @@
         {% endif %}
     </div>
 
-    <!-- 4. Declined Prospects -->
+    <!-- 5. Declined Prospects -->
     {% if declined %}
     <div class="bg-white rounded-lg shadow p-6">
         <h3 class="text-sm font-semibold text-gray-900 mb-4">Declined Prospects ({{ declined|length }})</h3>

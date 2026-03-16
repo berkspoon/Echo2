@@ -1,0 +1,22 @@
+<!-- Capital Raise Chart Partial (HTMX target: #cr-pipeline-chart) -->
+
+{% if fp_pipeline %}
+<div class="space-y-3">
+    {% for item in fp_pipeline %}
+    <div class="flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-md p-1 -m-1 transition-colors"
+         hx-get="/dashboards/capital-raise/drilldown?dimension={{ cr_group_by }}&value={{ item.key }}&fund_ticker={{ current_fund_ticker }}"
+         hx-target="#cr-drilldown-panel"
+         hx-swap="innerHTML">
+        <div class="w-36 text-sm text-gray-600 truncate">{{ item.label }}</div>
+        <div class="flex-1 bg-gray-100 rounded-full h-6 relative overflow-hidden">
+            <div class="h-6 rounded-full {{ item.color }} transition-all duration-300" style="width: {{ item.bar_pct }}%; min-width: {% if item.count > 0 %}2rem{% else %}0{% endif %};"></div>
+            <span class="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-700">
+                {{ item.count }} prospect{{ 's' if item.count != 1 else '' }} &middot; ${{ item.allocation_fmt }}M
+            </span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-sm text-gray-400">No prospects in pipeline.</p>
+{% endif %}

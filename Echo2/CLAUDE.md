@@ -15,8 +15,9 @@ Echo 2.0 is a purpose-built CRM system for Aksia, an investment management and a
 ## Project Structure
 ```
 echo2/
-├── main.py                  # FastAPI app entry point
+├── main.py                  # FastAPI app entry point (11 routers mounted)
 ├── config.py                # Settings loaded from environment variables
+├── dependencies.py          # Auth: CurrentUser (multi-role), get_current_user, require_role
 ├── requirements.txt
 ├── .env                     # Never commit this
 ├── .env.example
@@ -26,20 +27,22 @@ echo2/
 │   ├── organizations.py
 │   ├── people.py
 │   ├── activities.py
-│   ├── leads.py
+│   ├── leads.py             # Handles advisory + fundraise + product lead types
 │   ├── contracts.py
 │   ├── distribution_lists.py
 │   ├── tasks.py
-│   ├── dashboards.py
-│   ├── admin.py
+│   ├── dashboards.py        # 4 dashboards: Personal, Advisory Pipeline, Capital Raise, Management
+│   ├── admin.py             # Fields, layouts, roles, users, reference data, duplicates
 │   ├── documents.py
-│   └── views.py             # Saved views CRUD (save/delete/set-default)
+│   ├── views.py             # Saved views CRUD (save/delete/set-default)
+│   └── fund_prospects.py    # LEGACY BACKUP — NOT mounted in main.py, do not use
 ├── models/                  # Pydantic models
 │   ├── organization.py
 │   ├── person.py
 │   ├── activity.py
 │   ├── lead.py
 │   ├── contract.py
+│   ├── fee_arrangement.py
 │   ├── distribution_list.py
 │   ├── task.py
 │   └── user.py
@@ -48,23 +51,30 @@ echo2/
 │   └── grid_service.py      # Reusable grid: query, enrich, paginate, saved views
 ├── db/
 │   ├── client.py            # Supabase client init
-│   ├── schema.sql           # Full database schema
+│   ├── schema.sql           # Full database schema (30+ tables)
+│   ├── migrate_schema.sql   # Migration script for Phases 1–5 (idempotent, run in Supabase SQL Editor)
 │   ├── field_service.py     # EAV field definitions + custom values
 │   └── helpers.py           # Shared DB helpers (audit, reference_data, batch resolve)
+├── scripts/
+│   ├── seed_data.py         # Dummy data seed (~3,400 rows). Run: python -m scripts.seed_data [--force]
+│   ├── seed_field_definitions.py  # Seeds field_definitions for all 6 entities
+│   └── migrate_fund_prospects.py  # One-time migration: fund_prospects → leads (lead_type='fundraise')
 ├── templates/               # Jinja2 HTML templates
 │   ├── base.html
-│   ├── index.html
+│   ├── index.html           # Personal dashboard with 7 HTMX lazy-load widgets
 │   ├── components/
 │   │   ├── _grid.html           # Reusable grid (table, pagination, badges, actions)
-│   │   ├── _column_selector.html # Column show/hide dropdown
-│   │   ├── _field_renderer.html
-│   │   └── _form_section.html
+│   │   ├── _column_selector.html # Column show/hide dropdown (Alpine.js)
+│   │   ├── _field_renderer.html  # Dynamic field rendering macro (12 field types)
+│   │   └── _form_section.html    # Section card macro with grid layout
 │   ├── organizations/
 │   ├── people/
 │   ├── activities/
 │   ├── leads/
-│   ├── dashboards/
-│   └── admin/
+│   ├── contracts/
+│   ├── dashboards/          # 4 full pages + 7 widget partials + 2 content partials
+│   └── admin/               # fields, field_form, layout_designer, roles, role_form,
+│                            # users, reference_data, duplicates + HTMX partials
 └── static/
     └── css/
         └── custom.css
@@ -86,14 +96,18 @@ Aksia has two distinct but connected business lines that share the same contacts
 | Role | Key Permissions |
 |------|----------------|
 | Admin | Full access. User management, reference data, audit log, duplicate merge, data quality alerts. |
-| Legal | View all. Edit Contracts only (start date, service type, asset classes, fees). |
+| Legal | View all. Create and edit Contracts only. |
 | RFP Team | Standard access + can edit RFP Hold field on Organizations. |
-| Standard User | Create/edit Orgs, People, Activities, Leads, Fund Prospects. Cannot edit Contracts or RFP Hold. Cannot hard-delete. |
+| BD | Business Development — standard access plus lead ownership. |
+| Standard User | Create/edit Orgs, People, Activities, Leads. Cannot edit Contracts or RFP Hold. Cannot hard-delete. |
 | Read Only | View and export only. No create or edit. |
 
-- All auth via Microsoft Entra ID SSO (MSAL)
+- All auth via Microsoft Entra ID SSO (MSAL) — currently using dev stub user until SSO is wired up
 - New users auto-provisioned as Standard User on first login
-- Role stored in users table, checked on every request via dependency injection
+- **Multi-role system:** Users can have multiple roles via `user_roles` junction table. Permissions are additive across roles. JSONB `permissions` column on `roles` table defines per-entity action grants.
+- `CurrentUser` in `dependencies.py` has `roles: list[str]` (plural), with backward-compatible `role` property returning the primary role
+- `require_role()` checks `if not any(r in allowed_roles for r in user.roles)`
+- 6 system roles seeded in `roles` table (cannot be deleted/renamed). Custom roles can be created via admin panel.
 
 ## Database Rules — Always Follow These
 - Every table has: `id UUID PRIMARY KEY DEFAULT uuid_generate_v4()`, `created_at TIMESTAMPTZ DEFAULT now()`, `updated_at TIMESTAMPTZ DEFAULT now()`, `created_by UUID REFERENCES users(id)`
@@ -106,23 +120,26 @@ Aksia has two distinct but connected business lines that share the same contacts
 - **Do Not Contact:** When enabled on a Person, automatically remove them from all distribution lists (log the removal in audit_log) and suppress from all future sends.
 - **RFP Hold:** When enabled on an Organization, suppress all contacts at that org from distribution list send previews.
 - **L2 superset of L1:** For each asset class publication list, L2 members automatically receive L1. Enforced at data level.
-- **Lead → Contract promotion:** Only triggered when Lead rating changes to "Inactive [Won Mandate – Aksia Client]". System auto-sets end_date to today and creates a Contract record inheriting service_type, asset_classes, and expected_revenue from the Lead. Contract is then editable by Legal only.
+- **Lead → Contract creation:** Manual, not automatic. When a Lead reaches "Won" stage, a "Create Contract" button appears on the Lead detail page (visible to Legal/Admin only). The contract creation form pre-fills from the Lead's fields. Auto-promotion was removed in Phase 5.
 - **Coverage:** Stored at Contact level (optional) and Lead level (required). Organization page shows a read-only rollup of all contact and lead coverage — never stored at org level.
 - **FLAR:** Forward-Looking Accrual Revenue. Base advisory fees only. No performance or incentive fees included. Tracked as expected_yr1_flar and expected_longterm_flar on Leads.
 - **Fundraise Leads:** Formerly "Fund Prospects" — now merged into Leads with `lead_type='fundraise'`. Domestic and offshore are separate records (different share_class field). Same org can have both. Fund_prospects table kept as backup but no longer actively used.
 - **Lead Types:** `lead_type` column discriminates: 'advisory' (default, existing pipeline), 'fundraise' (capital raise), 'product'. Stages are scoped by lead_type via `parent_value` on `lead_stage` reference_data.
 - **Next Steps Date on Lead:** Auto-generates a Task assigned to the Aksia Owner when saved.
-- **Activity Follow-Up Required:** Auto-generates a Task assigned to the activity author when saved.
+- **Activity Follow-Up Required:** Auto-generates a Task. Assignee can be selected via dropdown (defaults to activity author; suggests coverage owners at linked orgs). Follow-up notes are required when follow-up is enabled.
 
 ## Coding Standards
-- Use FastAPI dependency injection for auth on every route: `current_user: User = Depends(get_current_user)`
+- Use FastAPI dependency injection for auth on every route: `current_user: CurrentUser = Depends(get_current_user)`
 - Check role permissions inside each router using a helper: `require_role(current_user, ["admin", "standard"])`
 - All Supabase queries go through `db/client.py` — never import supabase directly in routers
-- Use Pydantic models for all request/response validation
+- Use shared helpers from `db/helpers.py` — never duplicate `audit_changes`, `get_reference_data`, `batch_resolve_users`, etc. in routers
+- Use `services/form_service.py` for form build/parse/validate — do not hardcode form field lists in routers
+- Use `services/grid_service.py` + `build_grid_context()` for all entity list pages — do not write custom list query logic
 - Jinja2 templates extend `base.html` using `{% extends "base.html" %}` and `{% block content %}{% endblock %}`
 - HTMX responses return partial HTML fragments (not full pages) when the request has `HX-Request` header
 - Always check `request.headers.get("HX-Request")` to determine whether to return a full page or a partial
 - Never put sensitive data (Supabase keys, MSAL secrets) in templates or static files
+- Route ordering matters: static paths (`/new`, `/my-tasks`, `/search-*`) must be defined BEFORE `/{id}` to avoid UUID parse conflicts
 
 ## Environment Variables (never hardcode these)
 Defined in `config.py` via pydantic-settings. See `.env.example` for the full list.
@@ -170,12 +187,21 @@ BASE_URL=http://localhost:8000
 - [ ] SSO / Auth (Microsoft Entra ID — awaiting IT team app registration)
 - [ ] Data migration (scope TBD — awaiting Miles/Admin team)
 - [x] Dummy data seed script (`scripts/seed_data.py` — ~3,400 rows across all tables)
+- [x] "My X" views — My Organizations, My People, My Activities, My Fund Prospects (sidebar defaults to "My" views)
+- [x] Personal dashboard coverage widgets — My Coverage, Missing Info Alerts, Stale Contacts (90+ day inactivity)
+- [x] Patrick Implementation Plan — ALL 15 architectural changes complete across Phases 0–5:
+  - Phase 0: Shared utilities extraction (`db/helpers.py`)
+  - Phase 1: Schema foundation (field_definitions, roles/user_roles, documents, lead_owners, person-org date tracking)
+  - Phase 2: Fund Prospects merged into Leads (`lead_type` discriminator, migration script)
+  - Phase 3: Admin Control Panel (field management, dynamic forms for all 6 entities, page layouts, role/user management)
+  - Phase 4: Reusable Grid Component (grid_service.py, _grid.html, saved views, deployed on all 7 entities)
+  - Phase 5: Reference Data CRUD, Lead Finder, manual contract creation, DL improvements, soft delete rename, duplicate detection enhancements
 
 ## Open Items (from PRD Section 15)
 1. Entra ID Tenant ID and SSO app registration — IT team
 2. Ostrako NDA export format — Ostrako/IT team
 3. Authorized senders for publication lists — Marketing Publications
-4. Declined reason codes for Fund Prospects — Product team
+4. Declined reason codes for Fundraise Leads (formerly Fund Prospects) — Product team
 5. Offshore feeder fund distribution list structure — Product/IR team
 6. Soft Circle vs Hard Circle logic — Product team
 7. Management dashboard access list — Leadership
@@ -188,8 +214,8 @@ BASE_URL=http://localhost:8000
 14. Railway deployment configuration — Miles/IT
 
 ## Schema Design Decisions
-- `reference_data` table uses composite unique on `(category, value)` with optional `parent_value` for subtypes (e.g. activity subtypes scoped to parent type)
-- Person ↔ Org is a many-to-many via `person_organization_links` with `link_type` (primary/secondary/former)
+- `reference_data` table uses composite unique on `(category, value)` with optional `parent_value` for subtypes (e.g. activity subtypes scoped to parent type, lead stages scoped to lead_type)
+- Person ↔ Org is a many-to-many via `person_organization_links` with `link_type` (primary/secondary/former) and `start_date`/`end_date` tracking
 - Activity ↔ Org and Activity ↔ Person are separate junction tables
 - Tags are polymorphic: `record_tags` has `record_type` + `record_id` columns
 - Tasks are polymorphic: `linked_record_type` + `linked_record_id`
@@ -198,6 +224,43 @@ BASE_URL=http://localhost:8000
 - All `updated_at` columns have `BEFORE UPDATE` triggers via `update_updated_at()` function
 - Distribution lists have `l2_superset_of` self-referencing FK for L2→L1 enforcement
 - 4 funds seeded: APC, CAPIX, CAPVX, HEDGX
+- **Hybrid EAV:** `field_definitions` table stores metadata for all entity fields (core_column + eav storage types). `entity_custom_values` stores EAV field values with typed columns (value_text, value_number, value_date, value_boolean, value_json). Core columns remain on entity tables for performance; custom fields use EAV.
+- **Multi-role auth:** `roles` table with JSONB `permissions` column; `user_roles` junction table for many-to-many user↔role assignment. 6 system roles seeded.
+- **Lead owners:** `lead_owners` junction table allows multiple owners per lead with `is_primary` flag. Replaces single `aksia_owner_id` (kept for backward compat).
+- **Leads unify advisory + fundraise + product:** `lead_type` discriminator column. Fundraise-specific columns (fund_id, share_class, target_allocation_mn, etc.) added directly to leads table. `fund_prospects` table kept as legacy backup.
+- **Page layouts:** `page_layouts` table stores JSONB section configurations per entity (admin-editable via layout designer).
+- **Saved views:** `saved_views` table stores per-user column/filter/sort configurations per entity type. Supports shared views.
+- **Duplicate suppressions:** `duplicate_suppressions` table stores acknowledged non-duplicate pairs, filtered out of future duplicate checks. Normalized: smaller UUID always stored as `record_id_a`.
+- **Documents:** `documents` table stores file metadata (entity_type + entity_id polymorphic). Actual files served via file_url.
+
+## Key Architecture (Post-Patrick Plan)
+These are the major systems introduced during the Patrick Implementation Plan (Phases 0–5). Understanding these is critical for working on the codebase.
+
+### Dynamic Form System (`services/form_service.py`)
+All 6 entity forms (Tasks, Activities, Contracts, People, Organizations, Leads) are rendered dynamically from `field_definitions` metadata. Key functions:
+- `build_form_context(entity_type, record)` — loads field defs, groups by section, resolves dropdown options
+- `parse_form_data(entity_type, form_data, field_defs)` — replaces per-router hardcoded form parsing
+- `validate_form_data(entity_type, data, field_defs)` — field-level validation from metadata
+- `save_record(entity_type, data, field_defs, record_id)` — splits core vs EAV, writes both
+- Visibility rules in field_definitions JSONB: `when`/`equals`/`not_equals`/`in`/`not_in`/`min_stage`/`lead_type`
+- Entity-specific UI (autocompletes, linked records, DNC, Lead→Contract) preserved alongside dynamic fields
+
+### Reusable Grid (`services/grid_service.py`)
+All 7 entity list pages use `build_grid_context()` instead of custom query logic. Key features:
+- `_execute_query()` — Supabase query with entity-aware filters, sort, pagination, soft-delete filter
+- `_enrich_rows()` — 7 entity-specific enrichment functions with batch resolution (no N+1)
+- `_VIRTUAL_COLUMNS` — computed columns like `active_leads_count` on organizations
+- Saved views — per-user column/filter/sort presets via `saved_views` table
+- Column selector — Alpine.js dropdown with field grouping
+
+### Admin Panel (`routers/admin.py`)
+Full admin control panel with 6 sections (sidebar links visible to admin role only):
+- **Fields:** CRUD for `field_definitions` per entity. System fields protected from deletion.
+- **Layouts:** Page layout designer with JSONB section management.
+- **Roles:** Role CRUD with entity permissions grid (6 entities × 6 actions). System roles protected.
+- **Users:** Inline role assignment, activate/deactivate.
+- **Reference Data:** CRUD for all 16 reference_data categories, hierarchical data support.
+- **Duplicates:** Admin batch scan for orgs/people, similarity table, suppress button.
 
 ## Session Notes
 _Use this section to track decisions made during Claude Code sessions:_
@@ -542,3 +605,22 @@ _Use this section to track decisions made during Claude Code sessions:_
   - Merge endpoint deferred as stretch goal per prompt spec
 - All 15 architectural changes from Patrick Implementation Plan now implemented across Phases 0–5
 - Next step: SSO/Auth (Microsoft Entra ID) or manual testing + data migration
+
+### Session 17 — March 15, 2026 (Post-Migration Debugging + CLAUDE.md Update)
+- Updated CLAUDE.md to reflect all Patrick Implementation Plan changes (Phases 0–5): project structure, multi-role auth, schema design decisions, key architecture sections, coding standards
+- Debugged dashboard/list page 500 errors (`column X.is_archived does not exist`) after running `migrate_schema.sql`
+- Source code was correct (`is_deleted` everywhere) but browser was getting errors referencing `is_archived`
+- Root cause: old uvicorn processes still running on the same port. Windows allows multiple processes to bind to the same port via SO_REUSEADDR. The browser was hitting the OLD server with pre-Phase 5 code, not the restarted one.
+- **Dev workflow rule:** Before restarting the server on Windows, always kill ALL existing Python/uvicorn processes first. Use `tasklist | grep python` and `netstat -ano | grep :800` to verify. A fresh `uvicorn` start succeeding does NOT mean old servers are gone.
+
+### Session 18 — March 15, 2026 (Final Feedback Round — 8 Items)
+- Implemented 8 feedback items: 4 bug fixes + 4 feature enhancements
+- **Bug Fix: Alpine.js missing** — Added Alpine.js CDN to `base.html` + `[x-cloak]` CSS to `custom.css`. Column selector and saved views dropdowns were always visible because Alpine.js directives were silently ignored without the library.
+- **Bug Fix: Person dead link** — Removed generic `onclick` on line 130 of `_grid.html` that generated `/persons/{id}` instead of `/people/{id}`. HTML uses the FIRST attribute when duplicates exist, so entity-specific overrides were ignored.
+- **Bug Fix: Distribution lists empty** — Added `DISTRIBUTION_LIST_FIELDS` (10 fields) to `seed_field_definitions.py` and re-seeded. Grid depends on field_definitions for column metadata.
+- **Bug Fix: Required fields togglable** — Updated `_column_selector.html` to lock required fields (`is_required=True`) as checked+disabled, with exceptions: org can toggle relationship_type/organization_type, lead can toggle rating/share_class, task can toggle assigned_to/status.
+- **Dashboard customizable views** — Added group-by selector dropdowns to Advisory Pipeline and Capital Raise dashboards. Users can switch between grouping dimensions (stage, service_type, asset_class, owner, fund). Added drill-down: clicking a bar opens a table of matching leads. New endpoints: `GET /dashboards/advisory-pipeline/chart`, `/drilldown`, `GET /dashboards/capital-raise/chart`, `/drilldown`. New templates: `_advisory_chart.html`, `_advisory_drilldown.html`, `_capital_raise_chart.html`, `_capital_raise_drilldown.html`.
+- **Vertical funnel charts** — Replaced horizontal bar/box funnels with CSS `clip-path: polygon()` trapezoid shapes. Reusable `_funnel.html` partial. Funnel CSS in `custom.css`. Advisory funnel: Total → Active → Won → Lost. Capital raise funnel: Total → Active → DD+ → Soft Circle+ → Closed.
+- **Per-column filters** — Added filter icon to each column header with data-type-specific filter dropdowns (multi-select checkboxes for dropdowns, contains/not-contains for text, inequality operators for numbers, date pickers for dates, yes/no for booleans). URL format: `cf_<field>=<op>:<value>`. Removed entity-specific filter dropdowns from all 7 list templates, kept search box only. New template: `_column_filter.html`. New functions in `grid_service.py`: `_extract_column_filters()`, `_apply_column_filters()`.
+- **Screeners** — Renamed "Saved Views" to "Screeners" throughout UI. Added overwrite, duplicate, and rename capabilities. 3 new endpoints in `views.py`: `POST /{id}/overwrite`, `/duplicate`, `/rename`. 3 new functions in `grid_service.py`: `update_view()`, `duplicate_view()`, `rename_view()`. Hover-revealed action buttons per screener in dropdown.
+- All feedback logged in `feedback.md` under "Final Feedback — Round 4"

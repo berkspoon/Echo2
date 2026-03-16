@@ -3,36 +3,43 @@
    Expected context:
      columns          — list of field_def dicts for visible columns
      rows             — list of enriched record dicts
-     entity_type      — string (organization, lead, …)
+     entity_type      — string (organization, lead, ...)
      pagination       — {page, page_size, total, total_pages}
      sort_by          — current sort column name
      sort_dir         — "asc" or "desc"
      filters          — dict of active filters {key: value}
+     col_filters      — dict of per-column filters {cf_field: op:value}
      base_url         — the list endpoint URL
      saved_views      — list of saved view dicts
      current_view_id  — UUID or None
+     current_user_id  — string UUID of logged-in user
      users            — list of user dicts for lookup dropdowns
      extra_columns    — optional computed columns
      grid_container_id — e.g. "organization-grid-container"
 #}
 
-{# ── Helper: build query string from current filters ─── #}
+{# ── Helper: build query string from current filters + col_filters ─── #}
 {% set ns = namespace(qs_parts=[]) %}
 {% for key, val in filters.items() if val and not key.startswith('_') %}
   {% set ns.qs_parts = ns.qs_parts + [key ~ '=' ~ val] %}
 {% endfor %}
+{% if col_filters is defined and col_filters %}
+{% for key, val in col_filters.items() if val %}
+  {% set ns.qs_parts = ns.qs_parts + [key ~ '=' ~ val] %}
+{% endfor %}
+{% endif %}
 {% set filter_qs = ns.qs_parts | join('&') %}
 
 <div id="{{ grid_container_id }}">
 
-{# ── Saved View Selector + Column Toggle Bar ─── #}
+{# ── Screener Selector + Column Toggle Bar ─── #}
 <div class="flex items-center justify-between mb-3">
   <div class="flex items-center gap-3">
-    {# Saved Views dropdown #}
+    {# Screener dropdown #}
     {% if saved_views %}
     <div class="relative" x-data="{ open: false }">
       <button @click="open = !open" class="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50">
-        <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+        <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
         {% if current_view_id %}
           {% for sv in saved_views if sv.id == current_view_id %}{{ sv.view_name }}{% endfor %}
         {% else %}
@@ -41,19 +48,52 @@
         <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
       </button>
       <div x-show="open" @click.away="open = false" x-cloak
-           class="absolute left-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
+           class="absolute left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
         <a href="{{ base_url }}?{{ filter_qs }}" class="block px-4 py-2 text-sm hover:bg-gray-50 {{ 'font-medium text-brand-600' if not current_view_id else '' }}">Default View</a>
         {% for sv in saved_views %}
-        <a href="{{ base_url }}?view_id={{ sv.id }}" class="block px-4 py-2 text-sm hover:bg-gray-50 {{ 'font-medium text-brand-600' if current_view_id == sv.id else '' }}">
-          {{ sv.view_name }}
-          {% if sv.is_shared %}<span class="ml-1 text-xs text-gray-400">(shared)</span>{% endif %}
-          {% if sv.is_default %}<span class="ml-1 text-xs text-green-600">(default)</span>{% endif %}
-        </a>
+        <div class="group flex items-center hover:bg-gray-50 {{ 'font-medium text-brand-600' if current_view_id == sv.id else '' }}">
+          <a href="{{ base_url }}?view_id={{ sv.id }}" class="flex-1 px-4 py-2 text-sm">
+            {{ sv.view_name }}
+            {% if sv.is_shared %}<span class="ml-1 text-xs text-gray-400">(shared)</span>{% endif %}
+            {% if sv.is_default %}<span class="ml-1 text-xs text-green-600">(default)</span>{% endif %}
+          </a>
+          {# Action buttons — only for owner #}
+          {% if sv.user_id == current_user_id %}
+          <div class="hidden group-hover:flex items-center gap-0.5 pr-2">
+            {# Overwrite #}
+            <form method="POST" action="/views/{{ sv.id }}/overwrite" class="inline"
+                  onsubmit="return confirm('Overwrite screener &quot;{{ sv.view_name }}&quot; with current grid state?');">
+              <input type="hidden" name="columns" value="{{ columns | map(attribute='field_name') | list | join(',') }}">
+              <input type="hidden" name="filters" value="{{ filters | tojson }}">
+              <input type="hidden" name="sort_by" value="{{ sort_by }}">
+              <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
+              <button type="submit" title="Overwrite with current state" class="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600">
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+              </button>
+            </form>
+            {# Duplicate #}
+            <button onclick="duplicateScreener('{{ sv.id }}', '{{ sv.view_name }}')" title="Duplicate" class="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600">
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+            {# Rename #}
+            <button onclick="renameScreener('{{ sv.id }}', '{{ sv.view_name }}')" title="Rename" class="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600">
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            </button>
+            {# Delete #}
+            <form method="POST" action="/views/{{ sv.id }}/delete" class="inline"
+                  onsubmit="return confirm('Delete screener &quot;{{ sv.view_name }}&quot;?');">
+              <button type="submit" title="Delete" class="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600">
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              </button>
+            </form>
+          </div>
+          {% endif %}
+        </div>
         {% endfor %}
         <div class="border-t border-gray-100 mt-1 pt-1">
           <button onclick="document.getElementById('save-view-modal').classList.remove('hidden')"
                   class="block w-full text-left px-4 py-2 text-sm text-brand-600 hover:bg-gray-50">
-            Save Current View
+            Save as Screener
           </button>
         </div>
       </div>
@@ -62,6 +102,19 @@
 
     {# Column selector toggle #}
     {% include "components/_column_selector.html" %}
+
+    {# Active column filter badges #}
+    {% if col_filters is defined and col_filters %}
+    <div class="flex items-center gap-1 flex-wrap">
+      {% for cf_key, cf_val in col_filters.items() %}
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-brand-50 text-brand-700 rounded-full border border-brand-200">
+        {{ cf_key[3:] | replace('_', ' ') | title }}: {{ cf_val }}
+        <button onclick="clearColumnFilter('{{ cf_key[3:] }}')" class="hover:text-brand-900">&times;</button>
+      </span>
+      {% endfor %}
+      <button onclick="clearAllColumnFilters()" class="text-xs text-gray-500 hover:text-red-600 ml-1">Clear all</button>
+    </div>
+    {% endif %}
   </div>
 
   {# Page size selector #}
@@ -92,20 +145,30 @@
 
         {% for col in columns %}
         {% set is_sortable = col.field_name in ['company_name','relationship_type','organization_type','country','aum_mn','first_name','last_name','email','job_title','phone','rating','service_type','expected_revenue','expected_yr1_flar','start_date','effective_date','title','activity_type','actual_revenue','due_date','status','list_name','list_type','brand','created_at'] %}
-        {% if is_sortable %}
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-            hx-get="{{ base_url }}?{{ filter_qs }}&sort_by={{ col.field_name }}&sort_dir={{ 'desc' if sort_by == col.field_name and sort_dir == 'asc' else 'asc' }}&page_size={{ pagination.page_size }}"
-            hx-target="#{{ grid_container_id }}" hx-push-url="true">
+        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
           <div class="flex items-center gap-1">
-            {{ col.display_name }}
+            {# Column name — sortable click #}
+            {% if is_sortable %}
+            <span class="cursor-pointer hover:text-gray-700"
+                  hx-get="{{ base_url }}?{{ filter_qs }}&sort_by={{ col.field_name }}&sort_dir={{ 'desc' if sort_by == col.field_name and sort_dir == 'asc' else 'asc' }}&page_size={{ pagination.page_size }}"
+                  hx-target="#{{ grid_container_id }}" hx-push-url="true">
+              {{ col.display_name }}
+            </span>
+            {# Sort indicator #}
             {% if sort_by == col.field_name %}
             <svg class="h-3 w-3 {{ 'rotate-180' if sort_dir == 'desc' else '' }}" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
             {% endif %}
+            {% else %}
+            <span>{{ col.display_name }}</span>
+            {% endif %}
+
+            {# Per-column filter icon + dropdown #}
+            {% set cf_key_check = 'cf_' ~ col.field_name %}
+            {% if col.get('filterable', true) is not false %}
+            {% include "components/_column_filter.html" %}
+            {% endif %}
           </div>
         </th>
-        {% else %}
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ col.display_name }}</th>
-        {% endif %}
         {% endfor %}
 
         {# Extra computed columns #}
@@ -127,7 +190,7 @@
         {% set row_classes = row_classes ~ ' bg-red-50' %}
       {% endif %}
 
-      <tr class="{{ row_classes }}" onclick="window.location='/{{ entity_type | replace('_', '-') }}s/{{ row.id }}'{% if entity_type == 'distribution_list' %};window.location='/distribution-lists/{{ row.id }}'{% endif %}"
+      <tr class="{{ row_classes }}"
           {% if entity_type == 'organization' %}onclick="window.location='/organizations/{{ row.id }}'"
           {% elif entity_type == 'person' %}onclick="window.location='/people/{{ row.id }}'"
           {% elif entity_type == 'lead' %}onclick="window.location='/leads/{{ row.id }}'"
@@ -187,7 +250,7 @@
           {% elif entity_type == 'person' and fname == 'last_name' %}
             {# rendered with first_name #}
 
-          {# Lead: organization_id → org_name with summary #}
+          {# Lead: organization_id -> org_name with summary #}
           {% elif entity_type == 'lead' and fname == 'organization_id' %}
             <div class="font-medium text-brand-600 hover:text-brand-700">{{ row.org_name }}</div>
             {% if row.summary %}<p class="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{{ row.summary[:80] }}{% if row.summary|length > 80 %}...{% endif %}</p>{% endif %}
@@ -223,21 +286,21 @@
               {{ (val or 'advisory') | title }}
             </span>
 
-          {# Lead: aksia_owner_id → owner name #}
+          {# Lead: aksia_owner_id -> owner name #}
           {% elif entity_type == 'lead' and fname == 'aksia_owner_id' %}
-            {{ row.owner_name or '—' }}
+            {{ row.owner_name or '---' }}
 
-          {# Lead: fund_id → ticker badge #}
+          {# Lead: fund_id -> ticker badge #}
           {% elif entity_type == 'lead' and fname == 'fund_id' %}
             {% if row.fund_ticker %}
             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-gray-100 text-gray-800">{{ row.fund_ticker }}</span>
-            {% else %}—{% endif %}
+            {% else %}---{% endif %}
 
           {# Lead: share_class badge #}
           {% elif entity_type == 'lead' and fname == 'share_class' %}
             {% if val %}
             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ 'bg-blue-100 text-blue-800' if val == 'domestic' else 'bg-teal-100 text-teal-800' }}">{{ val | title }}</span>
-            {% else %}—{% endif %}
+            {% else %}---{% endif %}
 
           {# Activity: title with details subtitle #}
           {% elif entity_type == 'activity' and fname == 'title' %}
@@ -258,9 +321,9 @@
             </span>
             {% if row.subtype %}<span class="text-xs text-gray-400 ml-1">({{ row.subtype | replace('_', ' ') | title }})</span>{% endif %}
 
-          {# Activity: author_id → name #}
+          {# Activity: author_id -> name #}
           {% elif entity_type == 'activity' and fname == 'author_id' %}
-            {{ row.author_name or '—' }}
+            {{ row.author_name or '---' }}
 
           {# Activity: linked orgs column (virtual via enrichment) #}
           {% elif entity_type == 'activity' and fname == 'linked_orgs' %}
@@ -269,9 +332,9 @@
               <a href="/organizations/{{ org.id }}" class="text-brand-600 hover:underline text-sm" onclick="event.stopPropagation()">{{ org.company_name }}</a>{{ ', ' if not loop.last else '' }}
               {% endfor %}
               {% if row.linked_orgs|length > 2 %}<span class="text-xs text-gray-400">+{{ row.linked_orgs|length - 2 }} more</span>{% endif %}
-            {% else %}—{% endif %}
+            {% else %}---{% endif %}
 
-          {# Contract: organization_id → org name #}
+          {# Contract: organization_id -> org name #}
           {% elif entity_type == 'contract' and fname == 'organization_id' %}
             <div class="font-medium text-brand-600 hover:text-brand-700">{{ row.org_name }}</div>
 
@@ -290,7 +353,7 @@
 
           {# Contract: asset_classes array #}
           {% elif entity_type == 'contract' and fname == 'asset_classes' %}
-            {{ (val or []) | join(', ') | upper if val else '—' }}
+            {{ (val or []) | join(', ') | upper if val else '---' }}
 
           {# Task: title with notes subtitle #}
           {% elif entity_type == 'task' and fname == 'title' %}
@@ -300,13 +363,13 @@
           {# Task: due_date with overdue styling #}
           {% elif entity_type == 'task' and fname == 'due_date' %}
             <span class="{{ 'text-red-600 font-semibold' if row.is_overdue else 'text-gray-600' }}">
-              {{ val[:10] if val else '—' }}
+              {{ val[:10] if val else '---' }}
               {% if row.is_overdue %}<span class="ml-1 text-xs text-red-500">(overdue)</span>{% endif %}
             </span>
 
-          {# Task: assigned_to → name #}
+          {# Task: assigned_to -> name #}
           {% elif entity_type == 'task' and fname == 'assigned_to' %}
-            {{ row.assigned_to_name or '—' }}
+            {{ row.assigned_to_name or '---' }}
 
           {# Task: source badge #}
           {% elif entity_type == 'task' and fname == 'source' %}
@@ -319,7 +382,7 @@
               {{ row.source_label or 'Manual' }}
             </span>
 
-          {# Task: linked_record_type → linked record info #}
+          {# Task: linked_record_type -> linked record info #}
           {% elif entity_type == 'task' and fname == 'linked_record_type' %}
             {% if row.linked_record_info %}
             <a href="{{ row.linked_record_info.url }}" class="text-brand-600 hover:underline text-sm" onclick="event.stopPropagation()">
@@ -328,7 +391,7 @@
             {% if row.linked_record_info.subtitle is defined and row.linked_record_info.subtitle %}
             <p class="text-xs text-gray-400 truncate max-w-xs">{{ row.linked_record_info.subtitle }}</p>
             {% endif %}
-            {% else %}—{% endif %}
+            {% else %}---{% endif %}
 
           {# Dist list: list_name #}
           {% elif entity_type == 'distribution_list' and fname == 'list_name' %}
@@ -349,7 +412,7 @@
           {% elif entity_type == 'distribution_list' and fname == 'brand' %}
             {% if val %}
             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ 'bg-brand-50 text-brand-700' if val == 'aksia' else 'bg-indigo-50 text-indigo-700' }}">{{ val | title }}</span>
-            {% else %}—{% endif %}
+            {% else %}---{% endif %}
 
           {# Dist list: is_official badge #}
           {% elif entity_type == 'distribution_list' and fname == 'is_official' %}
@@ -383,8 +446,6 @@
               {{ (val or '') | replace('_', ' ') | title }}
             </span>
 
-          {# Org: rfp_hold in status column — handled via extra logic below #}
-
           {# Person: do_not_contact badge #}
           {% elif fname == 'do_not_contact' and val %}
             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">DNC</span>
@@ -393,15 +454,15 @@
 
           {# Currency #}
           {% elif ftype == 'currency' %}
-            {% if val is not none %}${{ '{:,.0f}'.format(val) }}{% else %}—{% endif %}
+            {% if val is not none %}${{ '{:,.0f}'.format(val) }}{% else %}---{% endif %}
 
           {# Number #}
           {% elif ftype == 'number' %}
-            {% if val is not none %}{{ '{:,.1f}'.format(val) if '.' in (val|string) else '{:,.0f}'.format(val) }}{% else %}—{% endif %}
+            {% if val is not none %}{{ '{:,.1f}'.format(val) if '.' in (val|string) else '{:,.0f}'.format(val) }}{% else %}---{% endif %}
 
           {# Date #}
           {% elif ftype == 'date' %}
-            {{ val[:10] if val else '—' }}
+            {{ val[:10] if val else '---' }}
 
           {# Boolean #}
           {% elif ftype == 'boolean' %}
@@ -413,34 +474,33 @@
 
           {# Dropdown / enum #}
           {% elif ftype == 'dropdown' %}
-            {{ (val or '—') | replace('_', ' ') | title }}
+            {{ (val or '---') | replace('_', ' ') | title }}
 
           {# Multi-select #}
           {% elif ftype == 'multi_select' %}
             {% if val and val is iterable and val is not string %}
               {{ val | join(', ') | replace('_', ' ') | title }}
-            {% else %}—{% endif %}
+            {% else %}---{% endif %}
 
           {# URL #}
           {% elif ftype == 'url' %}
             {% if val %}
             <a href="{{ val }}" target="_blank" class="text-brand-600 hover:underline truncate max-w-[200px] block" onclick="event.stopPropagation()">{{ val[:50] }}{% if val|length > 50 %}...{% endif %}</a>
-            {% else %}—{% endif %}
+            {% else %}---{% endif %}
 
           {# Email #}
           {% elif ftype == 'email' %}
             {% if val %}
             <a href="mailto:{{ val }}" class="text-brand-600 hover:underline" onclick="event.stopPropagation()">{{ val }}</a>
-            {% else %}—{% endif %}
+            {% else %}---{% endif %}
 
           {# Lookup (user) #}
           {% elif ftype == 'lookup' %}
-            {# Try to show resolved name if available #}
-            {{ val or '—' }}
+            {{ val or '---' }}
 
           {# Text / textarea / phone / default #}
           {% else %}
-            {% if val %}{{ val[:80] }}{% if val is string and val|length > 80 %}...{% endif %}{% else %}—{% endif %}
+            {% if val %}{{ val[:80] }}{% if val is string and val|length > 80 %}...{% endif %}{% else %}---{% endif %}
           {% endif %}
         </td>
         {% endfor %}
@@ -448,7 +508,7 @@
         {# Extra computed columns #}
         {% for ec in extra_columns %}
         <td class="px-4 py-3 text-sm">
-          {% if ec.render_html %}{{ ec.render_html(row) | safe }}{% else %}{{ row.get(ec.name, '—') }}{% endif %}
+          {% if ec.render_html %}{{ ec.render_html(row) | safe }}{% else %}{{ row.get(ec.name, '---') }}{% endif %}
         </td>
         {% endfor %}
 
@@ -506,7 +566,7 @@
   {% if pagination.total_pages > 1 %}
   <div class="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
     <p class="text-sm text-gray-500">
-      Showing {{ ((pagination.page - 1) * pagination.page_size) + 1 }}–{{ [pagination.page * pagination.page_size, pagination.total] | min }} of {{ pagination.total }}
+      Showing {{ ((pagination.page - 1) * pagination.page_size) + 1 }}--{{ [pagination.page * pagination.page_size, pagination.total] | min }} of {{ pagination.total }}
     </p>
     <div class="flex gap-1">
       {% if pagination.page > 1 %}
@@ -537,10 +597,10 @@
   {% endif %}
 </div>
 
-{# ── Save View Modal ─── #}
+{# ── Save Screener Modal ─── #}
 <div id="save-view-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
   <div class="bg-white rounded-lg shadow-xl w-96 p-6">
-    <h3 class="text-lg font-semibold mb-4">Save Current View</h3>
+    <h3 class="text-lg font-semibold mb-4">Save Screener</h3>
     <form method="POST" action="/views/save">
       <input type="hidden" name="entity_type" value="{{ entity_type }}">
       <input type="hidden" name="columns" value="{{ columns | map(attribute='field_name') | list | join(',') }}">
@@ -548,7 +608,7 @@
       <input type="hidden" name="sort_by" value="{{ sort_by }}">
       <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
       <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1">View Name</label>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Screener Name</label>
         <input type="text" name="view_name" required class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
       </div>
       <div class="flex items-center gap-4 mb-4">
@@ -562,5 +622,90 @@
     </form>
   </div>
 </div>
+
+{# ── JavaScript for column filters and screener actions ─── #}
+<script>
+/** Apply a per-column filter and reload the grid */
+function applyColumnFilter(fieldName, op, value) {
+  if (!value && value !== false) return;
+  var url = new URL(window.location);
+  url.searchParams.set('cf_' + fieldName, op + ':' + value);
+  url.searchParams.set('page', '1');
+  htmx.ajax('GET', url.pathname + url.search, {target: '#{{ grid_container_id }}', pushUrl: true});
+}
+
+/** Apply a checkbox-based multi-select column filter */
+function applyCheckboxFilter(fieldName) {
+  var checkboxes = document.querySelectorAll('.cf-checkbox-' + fieldName + ':checked');
+  var vals = [];
+  checkboxes.forEach(function(cb) { vals.push(cb.value); });
+  if (vals.length > 0) {
+    applyColumnFilter(fieldName, 'in', vals.join(','));
+  } else {
+    clearColumnFilter(fieldName);
+  }
+}
+
+/** Clear a single column filter */
+function clearColumnFilter(fieldName) {
+  var url = new URL(window.location);
+  url.searchParams.delete('cf_' + fieldName);
+  url.searchParams.set('page', '1');
+  htmx.ajax('GET', url.pathname + url.search, {target: '#{{ grid_container_id }}', pushUrl: true});
+}
+
+/** Clear all column filters */
+function clearAllColumnFilters() {
+  var url = new URL(window.location);
+  var keysToDelete = [];
+  url.searchParams.forEach(function(val, key) {
+    if (key.startsWith('cf_')) keysToDelete.push(key);
+  });
+  keysToDelete.forEach(function(k) { url.searchParams.delete(k); });
+  url.searchParams.set('page', '1');
+  htmx.ajax('GET', url.pathname + url.search, {target: '#{{ grid_container_id }}', pushUrl: true});
+}
+
+/** Apply sort from column filter dropdown */
+function applyColumnSort(fieldName, dir) {
+  var url = new URL(window.location);
+  url.searchParams.set('sort_by', fieldName);
+  url.searchParams.set('sort_dir', dir);
+  url.searchParams.set('page', '1');
+  htmx.ajax('GET', url.pathname + url.search, {target: '#{{ grid_container_id }}', pushUrl: true});
+}
+
+/** Duplicate a screener — prompt for name, then POST */
+function duplicateScreener(viewId, currentName) {
+  var newName = prompt('Name for the duplicated screener:', currentName + ' (copy)');
+  if (!newName) return;
+  var form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/views/' + viewId + '/duplicate';
+  var input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'new_name';
+  input.value = newName;
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+}
+
+/** Rename a screener — prompt for name, then POST */
+function renameScreener(viewId, currentName) {
+  var newName = prompt('New name for this screener:', currentName);
+  if (!newName || newName === currentName) return;
+  var form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/views/' + viewId + '/rename';
+  var input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'new_name';
+  input.value = newName;
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+}
+</script>
 
 </div>

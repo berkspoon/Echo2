@@ -28,10 +28,9 @@
         </a>
     </div>
 
-    <!-- Filters -->
+    <!-- Search -->
     <div class="bg-white rounded-lg shadow p-4">
         <form id="filter-form" hx-get="{{ base_url }}" hx-target="#{{ grid_container_id }}" hx-push-url="true" class="flex flex-wrap items-end gap-4">
-            <!-- Search -->
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs font-medium text-gray-600 mb-1">Search</label>
                 <input type="text" name="q" value="{{ search }}"
@@ -39,46 +38,6 @@
                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                        hx-get="{{ base_url }}" hx-trigger="keyup changed delay:400ms" hx-target="#{{ grid_container_id }}" hx-push-url="true" hx-include="#filter-form">
             </div>
-
-            <!-- Relationship Type -->
-            <div class="w-44">
-                <label class="block text-xs font-medium text-gray-600 mb-1">Relationship</label>
-                <select name="relationship"
-                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="{{ base_url }}" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
-                    <option value="">All</option>
-                    {% for rt in relationship_types %}
-                    <option value="{{ rt.value }}" {{ 'selected' if relationship_type == rt.value else '' }}>{{ rt.label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <!-- Organization Type -->
-            <div class="w-48">
-                <label class="block text-xs font-medium text-gray-600 mb-1">Type</label>
-                <select name="type"
-                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="{{ base_url }}" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
-                    <option value="">All</option>
-                    {% for ot in organization_types %}
-                    <option value="{{ ot.value }}" {{ 'selected' if organization_type == ot.value else '' }}>{{ ot.label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <!-- Country -->
-            <div class="w-40">
-                <label class="block text-xs font-medium text-gray-600 mb-1">Country</label>
-                <select name="country"
-                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        hx-get="{{ base_url }}" hx-trigger="change" hx-target="#{{ grid_container_id }}" hx-include="#filter-form" hx-push-url="true">
-                    <option value="">All</option>
-                    {% for c in countries %}
-                    <option value="{{ c.value }}" {{ 'selected' if country == c.value else '' }}>{{ c.label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
             <input type="hidden" name="sort_by" value="{{ sort_by }}">
             <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
         </form>

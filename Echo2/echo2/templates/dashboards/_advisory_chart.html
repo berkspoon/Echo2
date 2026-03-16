@@ -1,0 +1,22 @@
+<!-- Advisory Pipeline Chart Partial (HTMX target: #pipeline-chart) -->
+
+{% if pipeline_by_stage %}
+<div class="space-y-3">
+    {% for item in pipeline_by_stage %}
+    <div class="flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-md p-1 -m-1 transition-colors"
+         hx-get="/dashboards/advisory-pipeline/drilldown?dimension={{ group_by }}&value={{ item.key }}&service={{ filter_service }}&asset_class={{ filter_asset_class }}&owner={{ filter_owner }}&org_type={{ filter_org_type }}&from={{ filter_date_from }}&to={{ filter_date_to }}"
+         hx-target="#drilldown-panel"
+         hx-swap="innerHTML">
+        <div class="w-32 text-sm text-gray-600 truncate">{{ item.label }}</div>
+        <div class="flex-1 bg-gray-100 rounded-full h-6 relative overflow-hidden">
+            <div class="h-6 rounded-full {{ item.color }} transition-all duration-300" style="width: {{ item.bar_pct }}%; min-width: {% if item.count > 0 %}2rem{% else %}0{% endif %};"></div>
+            <span class="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-700">
+                {{ item.count }} lead{{ 's' if item.count != 1 else '' }} &middot; ${{ item.revenue_fmt }}
+            </span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-sm text-gray-400">No leads in pipeline.</p>
+{% endif %}

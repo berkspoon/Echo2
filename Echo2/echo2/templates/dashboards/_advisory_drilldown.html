@@ -1,0 +1,46 @@
+<!-- Advisory Pipeline Drill-down Partial (HTMX target: #drilldown-panel) -->
+
+<div class="bg-white rounded-lg shadow p-6 mt-4">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold text-gray-900">
+            {{ drilldown_dimension }}: {{ drilldown_value }}
+            <span class="text-gray-400 font-normal">({{ drilldown_count }} lead{{ 's' if drilldown_count != 1 else '' }})</span>
+        </h3>
+        <button class="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                hx-get="about:blank" hx-target="#drilldown-panel" hx-swap="innerHTML"
+                onclick="document.getElementById('drilldown-panel').innerHTML=''; return false;">
+            Close
+        </button>
+    </div>
+
+    {% if drilldown_rows %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Organization</th>
+                    <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Summary</th>
+                    <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Stage</th>
+                    <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                    <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Owner</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for row in drilldown_rows %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="py-2">
+                        <a href="/leads/{{ row.id }}" class="text-brand-500 hover:underline font-medium">{{ row.org_name }}</a>
+                    </td>
+                    <td class="py-2 text-gray-600 max-w-xs truncate">{{ row.summary }}</td>
+                    <td class="py-2 text-gray-600">{{ row.stage }}</td>
+                    <td class="py-2 text-right text-gray-600">${{ row.revenue_fmt }}</td>
+                    <td class="py-2 text-gray-600">{{ row.owner_name }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-gray-400">No leads match this filter.</p>
+    {% endif %}
+</div>

@@ -208,9 +208,18 @@ def build_grid_context(
     if extra_filters:
         filters.update(extra_filters)
 
+    # 6b. Per-column filters (cf_ prefixed params)
+    col_filters = _extract_column_filters(params)
+    # Also load col_filters from saved view if present
+    if saved_view and saved_view.get("filters") and isinstance(saved_view["filters"], dict):
+        for k, v in saved_view["filters"].items():
+            if k.startswith("cf_") and k not in col_filters:
+                col_filters[k] = v
+
     # 7. Execute query
     rows, total_count = _execute_query(
-        entity_type, filters, sort_by, sort_dir, page, page_size
+        entity_type, filters, sort_by, sort_dir, page, page_size,
+        col_filters=col_filters,
     )
 
     # 8. Enrich rows
@@ -243,6 +252,7 @@ def build_grid_context(
         "sort_by": sort_by,
         "sort_dir": sort_dir,
         "filters": filters,
+        "col_filters": col_filters,
         "saved_views": saved_views,
         "current_view_id": (saved_view or {}).get("id"),
         "entity_type": entity_type,
@@ -251,6 +261,7 @@ def build_grid_context(
         "extra_columns": extra_columns or [],
         "grid_container_id": container_id,
         "field_defs": field_defs,
+        "current_user_id": str(user.id),
     }
 
 
@@ -265,6 +276,8 @@ def _execute_query(
     sort_dir: str,
     page: int,
     page_size: int,
+    *,
+    col_filters: Optional[dict] = None,
 ) -> tuple[list[dict], int]:
     """Run the Supabase query with filters, sort, pagination. Returns (rows, total)."""
     sb = get_supabase()
@@ -281,6 +294,10 @@ def _execute_query(
 
     # Apply filters
     query = _apply_filters(entity_type, query, filters)
+
+    # Apply per-column filters
+    if col_filters:
+        query = _apply_column_filters(query, col_filters, entity_type)
 
     # Sort
     desc = sort_dir.lower() == "desc"
@@ -825,6 +842,88 @@ def _extract_filters(entity_type: str, params: dict, fd_map: dict) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Per-column filter extraction and application
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _extract_column_filters(params: dict) -> dict:
+    """Scan query params for cf_ prefix, parse operator:value pairs.
+
+    URL format: cf_<field_name>=<operator>:<value>
+    Examples:
+        cf_company_name=contains:Aksia
+        cf_aum_mn=gte:100
+        cf_relationship_type=in:client,prospect
+        cf_start_date=between:2025-01-01,2025-12-31
+        cf_rfp_hold=eq:true
+    """
+    col_filters: dict = {}
+    for key, val in params.items():
+        if key.startswith("cf_") and val:
+            col_filters[key] = val
+    return col_filters
+
+
+def _apply_column_filters(query, col_filters: dict, entity_type: str):
+    """Apply per-column filters to a Supabase query builder.
+
+    Each entry is cf_<field_name>=<operator>:<value>.
+    Supported operators: contains, not_contains, eq, neq, in, gte, lte, gt, lt, between, is_empty, is_not_empty
+    """
+    for key, raw_val in col_filters.items():
+        field_name = key[3:]  # strip cf_ prefix
+
+        # Ensure the column exists in the table's select list
+        base_cols = _BASE_SELECT.get(entity_type, "")
+        known_cols = {c.strip() for c in base_cols.split(",")}
+        if field_name not in known_cols:
+            continue  # skip EAV / unknown columns for now
+
+        # Parse operator:value
+        if ":" in raw_val:
+            op, value = raw_val.split(":", 1)
+        else:
+            op = "eq"
+            value = raw_val
+
+        op = op.lower().strip()
+
+        if op == "contains":
+            query = query.ilike(field_name, f"%{value}%")
+        elif op == "not_contains":
+            query = query.not_.ilike(field_name, f"%{value}%")
+        elif op == "eq":
+            # Handle booleans
+            if value.lower() in ("true", "false"):
+                query = query.eq(field_name, value.lower() == "true")
+            else:
+                query = query.eq(field_name, value)
+        elif op == "neq":
+            query = query.neq(field_name, value)
+        elif op == "in":
+            vals = [v.strip() for v in value.split(",") if v.strip()]
+            if vals:
+                query = query.in_(field_name, vals)
+        elif op == "gte":
+            query = query.gte(field_name, value)
+        elif op == "lte":
+            query = query.lte(field_name, value)
+        elif op == "gt":
+            query = query.gt(field_name, value)
+        elif op == "lt":
+            query = query.lt(field_name, value)
+        elif op == "between":
+            parts = [v.strip() for v in value.split(",")]
+            if len(parts) == 2:
+                query = query.gte(field_name, parts[0]).lte(field_name, parts[1])
+        elif op == "is_empty":
+            query = query.is_(field_name, "null")
+        elif op == "is_not_empty":
+            query = query.not_.is_(field_name, "null")
+
+    return query
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Visible columns resolution
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -934,4 +1033,62 @@ def set_default_view(view_id: str, user_id: str, entity_type: str) -> bool:
     ).eq("entity_type", entity_type).eq("is_default", True).execute()
     # Set this one
     sb.table("saved_views").update({"is_default": True}).eq("id", view_id).execute()
+    return True
+
+
+def update_view(
+    view_id: str,
+    user_id: str,
+    columns: list[str],
+    filters: dict,
+    sort_by: str,
+    sort_dir: str,
+) -> bool:
+    """Overwrite an existing saved view with new grid state. Only owner can overwrite."""
+    sb = get_supabase()
+    resp = sb.table("saved_views").select("user_id").eq("id", view_id).maybe_single().execute()
+    if not resp.data:
+        return False
+    if str(resp.data["user_id"]) != user_id:
+        return False
+    sb.table("saved_views").update({
+        "columns": columns,
+        "filters": filters,
+        "sort_by": sort_by,
+        "sort_dir": sort_dir,
+    }).eq("id", view_id).execute()
+    return True
+
+
+def duplicate_view(view_id: str, user_id: str, new_name: str) -> Optional[dict]:
+    """Clone a saved view with a new name. The clone belongs to the requesting user."""
+    sb = get_supabase()
+    resp = sb.table("saved_views").select("*").eq("id", view_id).maybe_single().execute()
+    if not resp.data:
+        return None
+    original = resp.data
+    row = {
+        "user_id": user_id,
+        "entity_type": original["entity_type"],
+        "view_name": new_name,
+        "columns": original.get("columns"),
+        "filters": original.get("filters"),
+        "sort_by": original.get("sort_by"),
+        "sort_dir": original.get("sort_dir"),
+        "is_shared": False,
+        "is_default": False,
+    }
+    insert_resp = sb.table("saved_views").insert(row).execute()
+    return insert_resp.data[0] if insert_resp.data else None
+
+
+def rename_view(view_id: str, user_id: str, new_name: str) -> bool:
+    """Rename a saved view. Only owner can rename."""
+    sb = get_supabase()
+    resp = sb.table("saved_views").select("user_id").eq("id", view_id).maybe_single().execute()
+    if not resp.data:
+        return False
+    if str(resp.data["user_id"]) != user_id:
+        return False
+    sb.table("saved_views").update({"view_name": new_name}).eq("id", view_id).execute()
     return True

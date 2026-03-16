@@ -146,6 +146,22 @@ TASK_FIELDS = [
     {"field_name": "source", "display_name": "Source", "field_type": "text", "section_name": "Details", "display_order": 11},
 ]
 
+DISTRIBUTION_LIST_FIELDS = [
+    # Basic Information
+    {"field_name": "list_name", "display_name": "List Name", "field_type": "text", "is_required": True, "section_name": "Basic Information", "display_order": 1},
+    {"field_name": "list_type", "display_name": "List Type", "field_type": "dropdown", "is_required": True, "dropdown_category": "list_type", "section_name": "Basic Information", "display_order": 2},
+    {"field_name": "brand", "display_name": "Brand", "field_type": "dropdown", "dropdown_category": "brand", "section_name": "Basic Information", "display_order": 3},
+    {"field_name": "asset_class", "display_name": "Asset Class", "field_type": "dropdown", "dropdown_category": "asset_class", "section_name": "Basic Information", "display_order": 4},
+    {"field_name": "frequency", "display_name": "Frequency", "field_type": "dropdown", "dropdown_category": "frequency", "section_name": "Basic Information", "display_order": 5},
+    {"field_name": "description", "display_name": "Description", "field_type": "textarea", "section_name": "Basic Information", "display_order": 6},
+    # Settings
+    {"field_name": "is_official", "display_name": "Official", "field_type": "boolean", "section_name": "Settings", "display_order": 10},
+    {"field_name": "is_private", "display_name": "Private", "field_type": "boolean", "section_name": "Settings", "display_order": 11},
+    {"field_name": "owner_id", "display_name": "Owner", "field_type": "lookup", "section_name": "Settings", "display_order": 12},
+    # System
+    {"field_name": "created_at", "display_name": "Created", "field_type": "date", "section_name": "System", "display_order": 20},
+]
+
 ALL_ENTITIES = {
     "organization": ORGANIZATION_FIELDS,
     "person": PERSON_FIELDS,
@@ -153,6 +169,7 @@ ALL_ENTITIES = {
     "activity": ACTIVITY_FIELDS,
     "contract": CONTRACT_FIELDS,
     "task": TASK_FIELDS,
+    "distribution_list": DISTRIBUTION_LIST_FIELDS,
 }
 
 

@@ -1,0 +1,49 @@
+<!-- Capital Raise Drill-down Partial (HTMX target: #cr-drilldown-panel) -->
+
+<div class="bg-white rounded-lg shadow p-6 mt-4">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold text-gray-900">
+            {{ drilldown_dimension }}: {{ drilldown_value }}
+            <span class="text-gray-400 font-normal">({{ drilldown_count }} prospect{{ 's' if drilldown_count != 1 else '' }})</span>
+        </h3>
+        <button class="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                onclick="document.getElementById('cr-drilldown-panel').innerHTML=''; return false;">
+            Close
+        </button>
+    </div>
+
+    {% if drilldown_rows %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Organization</th>
+                    <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Fund</th>
+                    <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Stage</th>
+                    <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Target ($M)</th>
+                    <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Soft ($M)</th>
+                    <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Hard ($M)</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for row in drilldown_rows %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="py-2">
+                        <a href="/leads/{{ row.id }}" class="text-brand-500 hover:underline font-medium">{{ row.org_name }}</a>
+                    </td>
+                    <td class="py-2 text-gray-600">
+                        <span class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{{ row.fund_ticker }}</span>
+                    </td>
+                    <td class="py-2 text-gray-600">{{ row.stage }}</td>
+                    <td class="py-2 text-right text-gray-600">${{ row.allocation_fmt }}</td>
+                    <td class="py-2 text-right text-gray-600">${{ row.soft_fmt }}</td>
+                    <td class="py-2 text-right text-gray-600">${{ row.hard_fmt }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-gray-400">No prospects match this filter.</p>
+    {% endif %}
+</div>

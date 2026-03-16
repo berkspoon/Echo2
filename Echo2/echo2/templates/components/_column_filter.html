@@ -1,0 +1,185 @@
+{# Per-column filter dropdown — included for each column header in _grid.html.
+
+   Expected variables (from the calling loop):
+     col             — field_def dict for this column
+     base_url        — list endpoint URL
+     grid_container_id — HTMX target ID
+     col_filters     — dict of active cf_<field> = op:value
+     users           — list of user dicts for lookup dropdowns
+     sort_by         — current sort column
+     sort_dir        — current sort direction
+     filter_qs       — existing filter query string
+     pagination      — pagination dict (for page_size)
+#}
+
+{% set cf_key = 'cf_' ~ col.field_name %}
+{% set cf_active = col_filters.get(cf_key, '') if col_filters else '' %}
+{% set cf_op = '' %}
+{% set cf_val = '' %}
+{% if cf_active and ':' in cf_active %}
+  {% set cf_parts = cf_active.split(':', 1) %}
+  {% set cf_op = cf_parts[0] %}
+  {% set cf_val = cf_parts[1] %}
+{% elif cf_active %}
+  {% set cf_op = 'eq' %}
+  {% set cf_val = cf_active %}
+{% endif %}
+
+<div x-data="{ filterOpen: false }" class="relative inline-flex items-center">
+  {# Filter funnel icon #}
+  <button @click.stop="filterOpen = !filterOpen"
+          class="p-0.5 rounded hover:bg-gray-200 ml-1 flex-shrink-0"
+          title="Filter this column">
+    <svg class="h-3 w-3 {{ 'text-brand-600' if cf_active else 'text-gray-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+    </svg>
+  </button>
+
+  {# Filter dropdown panel #}
+  <div x-show="filterOpen" @click.away="filterOpen = false" x-cloak
+       @click.stop
+       class="absolute top-full right-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-30 p-3"
+       style="min-width: 16rem;">
+
+    {# Sort buttons #}
+    {% set is_sortable = col.field_name in ['company_name','relationship_type','organization_type','country','aum_mn','first_name','last_name','email','job_title','phone','rating','service_type','expected_revenue','expected_yr1_flar','start_date','effective_date','title','activity_type','actual_revenue','due_date','status','list_name','list_type','brand','created_at'] %}
+    {% if is_sortable %}
+    <div class="space-y-1 mb-2">
+      <button class="w-full text-left px-2 py-1 text-xs rounded hover:bg-gray-100 flex items-center gap-2 {{ 'text-brand-600 font-medium' if sort_by == col.field_name and sort_dir == 'asc' else 'text-gray-600' }}"
+              onclick="applyColumnSort('{{ col.field_name }}', 'asc')">
+        <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/></svg>
+        Sort A &rarr; Z
+      </button>
+      <button class="w-full text-left px-2 py-1 text-xs rounded hover:bg-gray-100 flex items-center gap-2 {{ 'text-brand-600 font-medium' if sort_by == col.field_name and sort_dir == 'desc' else 'text-gray-600' }}"
+              onclick="applyColumnSort('{{ col.field_name }}', 'desc')">
+        <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"/></svg>
+        Sort Z &rarr; A
+      </button>
+    </div>
+    <hr class="my-2 border-gray-200">
+    {% endif %}
+
+    {# Filter controls by field type #}
+    <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Filter</div>
+
+    {% set ftype = col.field_type %}
+
+    {# ── Dropdown / Multi-select: checkbox list ── #}
+    {% if ftype in ('dropdown', 'multi_select') and col.options is defined and col.options %}
+    <div class="max-h-40 overflow-y-auto space-y-1" x-data="{ selected: '{{ cf_val }}'.split(',').filter(x => x) }">
+      {% for opt in col.options %}
+      {% set opt_val = opt.value if opt is mapping else opt %}
+      {% set opt_label = opt.label if opt is mapping else (opt | replace('_', ' ') | title) %}
+      <label class="flex items-center gap-2 text-xs py-0.5 px-1 rounded hover:bg-gray-50 cursor-pointer">
+        <input type="checkbox" value="{{ opt_val }}"
+               class="rounded border-gray-300 text-brand-600 focus:ring-brand-500 h-3 w-3 cf-checkbox-{{ col.field_name }}"
+               {{ 'checked' if opt_val in cf_val.split(',') else '' }}>
+        {{ opt_label }}
+      </label>
+      {% endfor %}
+      <div class="pt-2 flex gap-1">
+        <button type="button" class="flex-1 px-2 py-1 text-xs text-white bg-brand-500 rounded hover:bg-brand-600"
+                onclick="applyCheckboxFilter('{{ col.field_name }}')">Apply</button>
+        <button type="button" class="px-2 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+                onclick="clearColumnFilter('{{ col.field_name }}')">Clear</button>
+      </div>
+    </div>
+
+    {# ── Boolean: radio buttons ── #}
+    {% elif ftype == 'boolean' %}
+    <div class="space-y-1">
+      <label class="flex items-center gap-2 text-xs py-0.5 cursor-pointer">
+        <input type="radio" name="cf_bool_{{ col.field_name }}" value="" class="text-brand-600 focus:ring-brand-500 h-3 w-3" {{ 'checked' if not cf_active else '' }}
+               onchange="clearColumnFilter('{{ col.field_name }}')"> All
+      </label>
+      <label class="flex items-center gap-2 text-xs py-0.5 cursor-pointer">
+        <input type="radio" name="cf_bool_{{ col.field_name }}" value="true" class="text-brand-600 focus:ring-brand-500 h-3 w-3" {{ 'checked' if cf_op == 'eq' and cf_val == 'true' else '' }}
+               onchange="applyColumnFilter('{{ col.field_name }}', 'eq', 'true')"> Yes
+      </label>
+      <label class="flex items-center gap-2 text-xs py-0.5 cursor-pointer">
+        <input type="radio" name="cf_bool_{{ col.field_name }}" value="false" class="text-brand-600 focus:ring-brand-500 h-3 w-3" {{ 'checked' if cf_op == 'eq' and cf_val == 'false' else '' }}
+               onchange="applyColumnFilter('{{ col.field_name }}', 'eq', 'false')"> No
+      </label>
+    </div>
+
+    {# ── Number / Currency: operator + input ── #}
+    {% elif ftype in ('number', 'currency') %}
+    <div class="space-y-2" x-data="{ numOp: '{{ cf_op or 'gte' }}', numVal: '{{ cf_val.split(',')[0] if cf_val else '' }}', numVal2: '{{ cf_val.split(',')[1] if cf_val and ',' in cf_val else '' }}' }">
+      <select x-model="numOp" class="w-full rounded border border-gray-300 px-2 py-1 text-xs">
+        <option value="gte">&ge; Greater or equal</option>
+        <option value="lte">&le; Less or equal</option>
+        <option value="eq">= Equal</option>
+        <option value="between">Between</option>
+      </select>
+      <input type="number" step="any" x-model="numVal" placeholder="{{ 'Min' if numOp === 'between' else 'Value' }}"
+             class="w-full rounded border border-gray-300 px-2 py-1 text-xs">
+      <input x-show="numOp === 'between'" type="number" step="any" x-model="numVal2" placeholder="Max"
+             class="w-full rounded border border-gray-300 px-2 py-1 text-xs">
+      <div class="flex gap-1">
+        <button type="button" class="flex-1 px-2 py-1 text-xs text-white bg-brand-500 rounded hover:bg-brand-600"
+                @click="if(numOp === 'between') { applyColumnFilter('{{ col.field_name }}', numOp, numVal+','+numVal2); } else { applyColumnFilter('{{ col.field_name }}', numOp, numVal); }">Apply</button>
+        <button type="button" class="px-2 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+                onclick="clearColumnFilter('{{ col.field_name }}')">Clear</button>
+      </div>
+    </div>
+
+    {# ── Date: operator + date picker ── #}
+    {% elif ftype == 'date' %}
+    <div class="space-y-2" x-data="{ dateOp: '{{ cf_op or 'gte' }}', dateVal: '{{ cf_val.split(',')[0] if cf_val else '' }}', dateVal2: '{{ cf_val.split(',')[1] if cf_val and ',' in cf_val else '' }}' }">
+      <select x-model="dateOp" class="w-full rounded border border-gray-300 px-2 py-1 text-xs">
+        <option value="gte">On or after</option>
+        <option value="lte">On or before</option>
+        <option value="eq">Exact date</option>
+        <option value="between">Between</option>
+      </select>
+      <input type="date" x-model="dateVal"
+             class="w-full rounded border border-gray-300 px-2 py-1 text-xs">
+      <input x-show="dateOp === 'between'" type="date" x-model="dateVal2"
+             class="w-full rounded border border-gray-300 px-2 py-1 text-xs">
+      <div class="flex gap-1">
+        <button type="button" class="flex-1 px-2 py-1 text-xs text-white bg-brand-500 rounded hover:bg-brand-600"
+                @click="if(dateOp === 'between') { applyColumnFilter('{{ col.field_name }}', dateOp, dateVal+','+dateVal2); } else { applyColumnFilter('{{ col.field_name }}', dateOp, dateVal); }">Apply</button>
+        <button type="button" class="px-2 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+                onclick="clearColumnFilter('{{ col.field_name }}')">Clear</button>
+      </div>
+    </div>
+
+    {# ── Lookup (user): dropdown of users ── #}
+    {% elif ftype == 'lookup' %}
+    <div class="space-y-2">
+      <select class="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+              onchange="if(this.value) { applyColumnFilter('{{ col.field_name }}', 'eq', this.value); } else { clearColumnFilter('{{ col.field_name }}'); }">
+        <option value="">All</option>
+        {% for u in users %}
+        <option value="{{ u.id }}" {{ 'selected' if cf_val == u.id|string else '' }}>{{ u.display_name }}</option>
+        {% endfor %}
+      </select>
+      {% if cf_active %}
+      <button type="button" class="w-full px-2 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+              onclick="clearColumnFilter('{{ col.field_name }}')">Clear</button>
+      {% endif %}
+    </div>
+
+    {# ── Text / textarea / email / phone / url / default: contains input ── #}
+    {% else %}
+    <div class="space-y-2" x-data="{ textOp: '{{ cf_op or 'contains' }}', textVal: '{{ cf_val }}' }">
+      <select x-model="textOp" class="w-full rounded border border-gray-300 px-2 py-1 text-xs">
+        <option value="contains">Contains</option>
+        <option value="not_contains">Does not contain</option>
+        <option value="eq">Equals</option>
+        <option value="neq">Not equals</option>
+      </select>
+      <input type="text" x-model="textVal" placeholder="Filter value..."
+             class="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+             @keydown.enter="applyColumnFilter('{{ col.field_name }}', textOp, textVal)">
+      <div class="flex gap-1">
+        <button type="button" class="flex-1 px-2 py-1 text-xs text-white bg-brand-500 rounded hover:bg-brand-600"
+                @click="applyColumnFilter('{{ col.field_name }}', textOp, textVal)">Apply</button>
+        <button type="button" class="px-2 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+                onclick="clearColumnFilter('{{ col.field_name }}')">Clear</button>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>

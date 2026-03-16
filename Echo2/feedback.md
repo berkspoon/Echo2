@@ -71,4 +71,18 @@ Mark fixed items with `[x]`.
 - [ ] [Dashboard] Add "Missing Info Alerts" widget for covered people/leads missing key fields (severity: medium)
 - [ ] [Dashboard] Add "Stale Contacts" widget for covered people with no activity in 90+ days (severity: medium)
 
+## Final Feedback — Round 4 (March 15, 2026)
+
+### Bugs
+- [ ] [General] Columns button dropdown is always visible on all module list pages — Alpine.js not loaded in base.html (severity: high)
+- [ ] [People] Clicking on a person row navigates to `/persons/{id}` (404) instead of `/people/{id}` — generic onclick in _grid.html generates wrong URL (severity: high)
+- [ ] [Distribution Lists] Distribution list page shows "24 lists" but no rows render — no field_definitions seeded for distribution_list entity type (severity: high)
+- [ ] [General] Required fields (e.g. company_name) should not be togglable off in the column selector. Exceptions: org can toggle relationship_type and organization_type, lead can toggle stage and share_class, task can toggle assigned_to and status (severity: medium)
+
+### Enhancements
+- [ ] [Dashboards] Add customizable views with x-by-y variable selection (e.g. "pipeline by stage" vs "pipeline by fund") on Advisory Pipeline and Capital Raise dashboards. Clicking into a category should show a drilldown table of associated leads (severity: high)
+- [ ] [Dashboards] Replace pipeline horizontal bars with vertical funnel flow charts (stacked trapezoids narrowing top-to-bottom) (severity: medium)
+- [ ] [General] Redo filter functionality: add filter icon to each column header with sort (A-Z, Z-A) and data-type-appropriate filters (multi-select for dropdowns, contains/not-contains for text, inequality for numbers, before/after for dates). Remove existing filter dropdowns above grid, keep search box only (severity: high)
+- [ ] [General] Rename "Saved Views" to "Screeners". Add ability to name, save, overwrite, duplicate, and delete screeners. Clicking a screener loads its saved columns and filters (severity: high)
+
 ## Seed Data Issues

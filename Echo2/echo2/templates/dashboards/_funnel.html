@@ -1,0 +1,20 @@
+<!-- Reusable Vertical Funnel Chart -->
+<!-- Expects: funnel_stages = [{label, count, pct, bg_class}, ...] -->
+
+{% if funnel_stages %}
+<div class="funnel-container">
+    {% for stage in funnel_stages %}
+    {% set total_stages = funnel_stages|length %}
+    {% set indent = loop.index0 * 8 %}
+    <div class="funnel-stage {{ stage.bg_class }}"
+         style="clip-path: polygon({{ indent }}% 0%, {{ 100 - indent }}% 0%, {{ indent + 8 }}% 100%, {{ 100 - indent - 8 }}% 100%);">
+        <div class="flex justify-between items-center px-2">
+            <span class="font-medium">{{ stage.label }}</span>
+            <span>{{ stage.count }} ({{ stage.pct }}%)</span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-sm text-gray-400">No data to display.</p>
+{% endif %}
