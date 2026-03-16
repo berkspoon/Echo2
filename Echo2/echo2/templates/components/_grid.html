@@ -74,7 +74,7 @@
             <form method="POST" action="/views/{{ sv.id }}/overwrite" class="inline"
                   onsubmit="return confirm('Overwrite screener &quot;{{ sv.view_name }}&quot; with current grid state?');">
               <input type="hidden" name="columns" value="{{ columns | map(attribute='field_name') | list | join(',') }}">
-              <input type="hidden" name="filters" value="{{ merged_filters | tojson }}">
+              <input type="hidden" name="filters" value='{{ merged_filters | tojson }}'>
               <input type="hidden" name="sort_by" value="{{ sort_by }}">
               <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
               <button type="submit" title="Overwrite with current state" class="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600">
@@ -621,7 +621,7 @@
     <form method="POST" action="/views/save">
       <input type="hidden" name="entity_type" value="{{ entity_type }}">
       <input type="hidden" name="columns" value="{{ columns | map(attribute='field_name') | list | join(',') }}">
-      <input type="hidden" name="filters" value="{{ merged_filters | tojson }}">
+      <input type="hidden" name="filters" value='{{ merged_filters | tojson }}'>
       <input type="hidden" name="sort_by" value="{{ sort_by }}">
       <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
       <div class="mb-4">
