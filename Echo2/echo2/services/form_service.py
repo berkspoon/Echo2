@@ -4,6 +4,7 @@ Replaces the hardcoded _build_*_data_from_form(), manual validation, and per-ent
 building in each router with a single metadata-driven system.
 """
 
+import json
 from typing import Optional
 from uuid import UUID
 
@@ -20,6 +21,51 @@ from db.helpers import audit_changes, log_field_change
 # ---------------------------------------------------------------------------
 # Build form context (load field defs + dropdown options + current values)
 # ---------------------------------------------------------------------------
+
+def _group_fields_by_layout_or_fallback(entity_type: str, field_defs: list[dict]) -> dict[str, list[dict]]:
+    """Group fields by page_layout sections, falling back to section_name on field_definitions.
+
+    feedback: [padelsbach] sections should only exist at layout level, not on field definitions.
+    """
+    sb = get_supabase()
+    layout_resp = (
+        sb.table("page_layouts")
+        .select("sections")
+        .eq("entity_type", entity_type)
+        .eq("layout_type", "edit")
+        .eq("is_active", True)
+        .limit(1)
+        .execute()
+    )
+    layout = layout_resp.data[0] if layout_resp.data else None
+
+    if layout and layout.get("sections"):
+        # Build ordered sections from layout
+        fd_map = {fd["field_name"]: fd for fd in field_defs}
+        sections: dict[str, list[dict]] = {}
+        used_fields: set[str] = set()
+        for sec in layout["sections"]:
+            sec_name = sec.get("name", "Other")
+            sec_fields = []
+            for fname in sec.get("fields", []):
+                if fname in fd_map:
+                    sec_fields.append(fd_map[fname])
+                    used_fields.add(fname)
+            if sec_fields:
+                sections[sec_name] = sec_fields
+        # Add any fields not in the layout to "Other"
+        other_fields = [fd for fd in field_defs if fd["field_name"] not in used_fields]
+        if other_fields:
+            sections.setdefault("Other", []).extend(other_fields)
+        return sections
+
+    # Fallback: group by section_name on field_definitions
+    sections = {}
+    for fd in field_defs:
+        section = fd.get("section_name") or "Other"
+        sections.setdefault(section, []).append(fd)
+    return sections
+
 
 def build_form_context(
     entity_type: str,
@@ -39,17 +85,19 @@ def build_form_context(
     field_defs = get_field_definitions(entity_type, active_only=True)
     field_defs = enrich_field_definitions(field_defs)
 
-    # Group by section, preserving order
-    sections: dict[str, list[dict]] = {}
-    for fd in field_defs:
-        section = fd.get("section_name") or "Other"
-        sections.setdefault(section, []).append(fd)
+    # feedback: [padelsbach] use page_layouts for section grouping (sections no longer on field_definitions)
+    sections = _group_fields_by_layout_or_fallback(entity_type, field_defs)
 
     # Merge EAV values into the record dict
     merged_record = dict(record) if record else {}
     if record and record.get("id"):
         eav_values = load_custom_values(entity_type, str(record["id"]))
         merged_record.update(eav_values)
+
+    # Compute suggestion state for each field
+    form_state = merged_record
+    for fd in field_defs:
+        fd["_is_suggested"] = _is_field_suggested(fd, form_state)
 
     ctx = {
         "field_defs": field_defs,
@@ -92,6 +140,18 @@ def parse_form_data(entity_type: str, form_data, field_defs: list[dict]) -> dict
             values = form_data.getlist(fname) if hasattr(form_data, "getlist") else []
             parsed[fname] = list(values) if values else None
 
+        elif ftype == "text_list":
+            # Read JSON array from hidden input
+            raw_json = (form_data.get(fname + "_json") or "").strip()
+            if raw_json:
+                try:
+                    values = json.loads(raw_json)
+                    parsed[fname] = [v.strip() for v in values if v and v.strip()]
+                except (json.JSONDecodeError, TypeError):
+                    parsed[fname] = None
+            else:
+                parsed[fname] = None
+
         elif ftype in ("number", "currency"):
             raw = (form_data.get(fname) or "").strip()
             if raw:
@@ -116,6 +176,25 @@ def parse_form_data(entity_type: str, form_data, field_defs: list[dict]) -> dict
             parsed[fname] = raw if raw else None
 
     return parsed
+
+
+def split_core_eav(data: dict, field_defs: list[dict]) -> tuple[dict, dict]:
+    """Split parsed form data into core column values and EAV values.
+
+    Returns:
+        (core_data, eav_data) — core_data goes to the entity table,
+        eav_data goes to entity_custom_values via save_custom_values().
+    """
+    fd_map = {fd["field_name"]: fd for fd in field_defs}
+    core = {}
+    eav = {}
+    for fname, value in data.items():
+        fd = fd_map.get(fname)
+        if not fd or fd.get("storage_type") == "core_column":
+            core[fname] = value
+        else:
+            eav[fname] = value
+    return core, eav
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +308,46 @@ def _is_field_visible(fd: dict, form_state: dict) -> bool:
                 return False
 
     return True
+
+
+def _is_field_suggested(fd: dict, form_state: dict) -> bool:
+    """Evaluate suggestion_rules to determine if a field should be highlighted as suggested."""
+    rules = fd.get("suggestion_rules") or {}
+    if not rules:
+        return False
+
+    # Same evaluation logic as _is_field_visible but for suggestion_rules
+    if "lead_type" in rules:
+        current_lt = form_state.get("lead_type", "advisory")
+        required_lt = rules["lead_type"]
+        if isinstance(required_lt, list):
+            if current_lt not in required_lt:
+                return False
+        elif current_lt != required_lt:
+            return False
+
+    if "min_stage" in rules:
+        current_order = _get_stage_order(form_state)
+        if current_order < rules["min_stage"]:
+            return False
+
+    when_field = rules.get("when")
+    if when_field:
+        current_val = _normalize_for_compare(form_state.get(when_field))
+        if "equals" in rules:
+            target = _normalize_for_compare(rules["equals"])
+            return current_val == target
+        if "not_equals" in rules:
+            target = _normalize_for_compare(rules["not_equals"])
+            return current_val != target
+        if "in" in rules:
+            targets = [_normalize_for_compare(v) for v in rules["in"]]
+            return current_val in targets
+        if "not_in" in rules:
+            targets = [_normalize_for_compare(v) for v in rules["not_in"]]
+            return current_val not in targets
+
+    return True  # Rules exist but no when clause — always suggested
 
 
 def _normalize_for_compare(value):

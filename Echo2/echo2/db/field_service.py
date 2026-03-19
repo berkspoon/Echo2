@@ -125,7 +125,7 @@ def save_custom_values(
             row["value_date"] = str(value) if value else None
         elif ft == "boolean":
             row["value_boolean"] = bool(value)
-        elif ft in ("multi_select", "address", "calculated"):
+        elif ft in ("multi_select", "address", "calculated", "text_list"):
             row["value_json"] = value  # expects list or dict
         else:
             row["value_text"] = str(value)
@@ -229,6 +229,6 @@ def _extract_typed_value(row: dict, field_type: str):
         return row.get("value_date")
     elif field_type == "boolean":
         return row.get("value_boolean")
-    elif field_type in ("multi_select", "address", "calculated"):
+    elif field_type in ("multi_select", "address", "calculated", "text_list"):
         return row.get("value_json")
     return row.get("value_text")

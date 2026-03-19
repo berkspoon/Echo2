@@ -638,3 +638,26 @@ _Use this section to track decisions made during Claude Code sessions:_
   - **Multiple column filters** — Multiple `cf_*` params were already supported by the JS (`applyColumnFilter` preserves all URL params via `window.location`) and server (`_extract_column_filters` parses all `cf_*` params). The fix above (preserving `visible_columns` in `filter_qs`) also ensures all `cf_*` params survive sort/paginate interactions via server-rendered links.
   - **Screener save includes column filters** — The save/overwrite forms were storing `{{ filters | tojson }}` which excluded `col_filters` (the `cf_*` params are in a separate dict). Added `merged_filters` template variable that combines non-`_` filters + `col_filters` into one dict. Used in both the save modal and overwrite form. The load path (`build_grid_context` lines 214-217) already restored `cf_*` keys from saved filters — only the save side was broken.
   - **Column reorder arrows always visible** — Removed `opacity-0 group-hover:opacity-100` from the arrow button container in `_column_selector.html` so up/down arrows are always visible, not just on hover.
+
+### Session 20 — March 19, 2026 (Patrick Feedback Round 2 — 18 Items)
+- Verified AI summary of Patrick stakeholder call against raw transcript (Patrick 2.vtt). Found 1 inaccuracy: multi-tenant labeled "Phase 1" in summary but Patrick said "Not Phase 1".
+- Implemented 18 feedback items across 5 phases (A through E):
+- **A3:** Custom EAV fields now render in all 5 entity edit forms (organizations, people, leads, activities, contracts). Added `split_core_eav()` helper to separate core vs EAV fields before DB operations. All create/update endpoints now save EAV values via `save_custom_values()`.
+- **A1:** Removed sections from field definitions. Created `_group_fields_by_layout_or_fallback()` in form_service.py that uses `page_layouts` as authoritative source, falling back to `section_name`. Created `scripts/seed_default_layouts.py`. Removed section selector from admin field form.
+- **A2:** Merged Reference Data into Fields page. Added inline dropdown value management per field via HTMX endpoints. Created `_inline_reference_data.html`. Removed Reference Data sidebar link.
+- **A5:** Added visibility rules admin UI to `field_form.html` — configurable `when`/`equals`/`not_equals`/`in`/`not_in`/`min_stage`/`lead_type` conditions. Updated admin create/update endpoints to parse and save `visibility_rules`.
+- **A4:** Added suggested fields concept. New `suggestion_rules` JSONB column on `field_definitions`. `_is_field_suggested()` evaluator in form_service. Amber border + "Suggested" badge in `_field_renderer.html`. Admin UI for suggestion conditions.
+- **A6:** New `text_list` field type for multiple text strings (aliases/nicknames). Alpine.js multi-input in forms. Stored as JSON array in EAV `value_json`. Grid shows comma-separated values. Seeded `nicknames` field on organizations.
+- **B1:** Cross-entity linked columns — org_city, org_country, org_type, org_aum_mn virtual columns on People/Leads grids. contact_count aggregate on Org grid. Expanded `batch_resolve_orgs()` select.
+- **B2:** `has_active_leads` boolean virtual column on Org/People grids with pre-filter logic in `_execute_query()`. Moved `_INACTIVE_STAGES` to module-level constant.
+- **B3:** Column resizing via draggable borders. CSS resize handles on `<th>` elements. JS `startColResize()`. Widths persisted to localStorage.
+- **B4:** Pop-up row editor. New `_grid_edit_modal.html` template. `GET/POST /views/grid-edit/{entity_type}/{record_id}` endpoints in views.py. HTMX modal trigger on edit button. `gridRefresh` custom event for row update.
+- **C1:** Advisory pipeline defaults to active leads only. Added `active_filter` (active/all/inactive) and `stage` filter params. Renamed "Active Leads" KPI to "Leads".
+- **C2:** Dynamic pipeline grouping. `_get_groupable_fields()` queries `field_definitions` for dropdown/multi_select fields. Custom fields auto-appear in group-by dropdown.
+- **C3:** Dashboard drill-down now uses full grid component via `build_grid_context()`. Added `grid_container_id_override` and `_lead_ids` filter support. Both advisory and capital raise drilldowns rewritten.
+- **D1:** Dynamic distribution lists. Added `list_mode` (static/dynamic), `filter_criteria` JSONB, `is_manual` flag. `_resolve_dynamic_members()` applies people filters. `_build_send_preview()` handles dynamic membership.
+- **D2:** Distribution list creation via people grid. Filter editor endpoint embeds people grid. Save filters as list criteria.
+- **D3:** Real-time member list refresh. Added `HX-Trigger: membersUpdated` on add_member endpoint. `hx-trigger="membersUpdated from:body"` listener on members-content div.
+- **E1:** Screener dropdown split into "My Screeners" / "Team Screeners" sections. Team screeners show owner name and only Duplicate action.
+- **E2:** Navigation sidebar consolidated — Pipeline section merged into Records, Reference Data link removed.
+- Deferred: multi-tenant architecture, generic calculated fields admin UI, duplicate detection merge, editable Excel-style grid

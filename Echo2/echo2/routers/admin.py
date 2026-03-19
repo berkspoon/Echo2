@@ -53,6 +53,7 @@ FIELD_TYPES = [
     {"value": "url", "label": "URL"},
     {"value": "phone", "label": "Phone"},
     {"value": "lookup", "label": "Lookup"},
+    {"value": "text_list", "label": "Text List (Multiple Strings)"},
 ]
 
 
@@ -83,6 +84,15 @@ async def list_fields(
     cat_resp = sb.table("reference_data").select("category").execute()
     categories = sorted(set(r["category"] for r in (cat_resp.data or [])))
 
+    # Find categories not linked to any field (orphaned reference data)
+    # feedback: [padelsbach] orphaned reference data categories not linked to any field
+    all_category_keys = set(_CATEGORY_META.keys())
+    linked_categories = set()
+    for fd in fields:
+        if fd.get("dropdown_category"):
+            linked_categories.add(fd["dropdown_category"])
+    orphaned_categories = {k: _CATEGORY_META[k] for k in sorted(all_category_keys - linked_categories)}
+
     ctx = {
         "request": request,
         "user": current_user,
@@ -91,6 +101,7 @@ async def list_fields(
         "grouped_fields": grouped,
         "all_fields": fields,
         "categories": categories,
+        "orphaned_categories": orphaned_categories,
     }
 
     if request.headers.get("HX-Request"):
@@ -231,6 +242,55 @@ async def create_field(
             "errors": errors,
         })
 
+    # Parse visibility rules from form
+    visibility_rules = {}
+    vis_when = (form.get("vis_when") or "").strip()
+    if vis_when:
+        visibility_rules["when"] = vis_when
+        vis_equals = (form.get("vis_equals") or "").strip()
+        if vis_equals:
+            # Try to parse as boolean
+            if vis_equals.lower() == "true":
+                visibility_rules["equals"] = True
+            elif vis_equals.lower() == "false":
+                visibility_rules["equals"] = False
+            else:
+                visibility_rules["equals"] = vis_equals
+        vis_not_equals = (form.get("vis_not_equals") or "").strip()
+        if vis_not_equals:
+            visibility_rules["not_equals"] = vis_not_equals
+        vis_in = (form.get("vis_in") or "").strip()
+        if vis_in:
+            visibility_rules["in"] = [v.strip() for v in vis_in.split(",") if v.strip()]
+        vis_not_in = (form.get("vis_not_in") or "").strip()
+        if vis_not_in:
+            visibility_rules["not_in"] = [v.strip() for v in vis_not_in.split(",") if v.strip()]
+    vis_min_stage = (form.get("vis_min_stage") or "").strip()
+    if vis_min_stage:
+        try:
+            visibility_rules["min_stage"] = int(vis_min_stage)
+        except ValueError:
+            pass
+    vis_lead_type = (form.get("vis_lead_type") or "").strip()
+    if vis_lead_type:
+        parts = [v.strip() for v in vis_lead_type.split(",") if v.strip()]
+        visibility_rules["lead_type"] = parts[0] if len(parts) == 1 else parts
+
+    # Parse suggestion rules
+    suggestion_rules = {}
+    sug_when = (form.get("sug_when") or "").strip()
+    if sug_when:
+        suggestion_rules["when"] = sug_when
+        sug_in = (form.get("sug_in") or "").strip()
+        if sug_in:
+            suggestion_rules["in"] = [v.strip() for v in sug_in.split(",") if v.strip()]
+    sug_min_stage = (form.get("sug_min_stage") or "").strip()
+    if sug_min_stage:
+        try:
+            suggestion_rules["min_stage"] = int(sug_min_stage)
+        except ValueError:
+            pass
+
     # Calculate display_order — append to end of section
     sb = get_supabase()
     max_order_resp = (
@@ -258,7 +318,8 @@ async def create_field(
         "default_value": default_value,
         "is_active": True,
         "validation_rules": {},
-        "visibility_rules": {},
+        "visibility_rules": visibility_rules,
+        "suggestion_rules": suggestion_rules,
         "grid_default_visible": True,
         "grid_sortable": True,
         "grid_filterable": True,
@@ -269,6 +330,119 @@ async def create_field(
     return RedirectResponse(
         f"/admin/fields?entity_type={entity_type}", status_code=303
     )
+
+
+# ---------------------------------------------------------------------------
+# INLINE REFERENCE DATA (for Fields page consolidation)
+# feedback: [padelsbach] merge reference data into fields page
+# ---------------------------------------------------------------------------
+
+@router.get("/fields/{field_id}/values", response_class=HTMLResponse)
+async def get_field_values(
+    request: Request,
+    field_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Return inline reference data values for a dropdown/multi_select field."""
+    require_role(current_user, ["admin"])
+    sb = get_supabase()
+
+    # Get the field to find its dropdown_category
+    field_resp = sb.table("field_definitions").select("*").eq("id", str(field_id)).maybe_single().execute()
+    field = field_resp.data if field_resp else None
+    if not field or not field.get("dropdown_category"):
+        return HTMLResponse('<p class="text-sm text-gray-500">No dropdown category linked.</p>')
+
+    category = field["dropdown_category"]
+    meta = _CATEGORY_META.get(category, {"label": category, "parent_category": None})
+
+    # Get values
+    query = sb.table("reference_data").select("*").eq("category", category).order("display_order")
+    resp = query.execute()
+    values = resp.data or []
+
+    # Get parent values if hierarchical
+    parent_values = []
+    if meta.get("parent_category"):
+        parent_resp = sb.table("reference_data").select("value, label").eq("category", meta["parent_category"]).eq("is_active", True).order("display_order").execute()
+        parent_values = parent_resp.data or []
+
+    context = {
+        "request": request,
+        "field_id": str(field_id),
+        "category": category,
+        "category_label": meta["label"],
+        "values": values,
+        "parent_category": meta.get("parent_category"),
+        "parent_values": parent_values,
+        "user": current_user,
+    }
+    return templates.TemplateResponse("admin/_inline_reference_data.html", context)
+
+
+@router.post("/fields/{field_id}/values", response_class=HTMLResponse)
+async def create_field_value(
+    request: Request,
+    field_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Create a new reference data value for a field's dropdown category."""
+    require_role(current_user, ["admin"])
+    sb = get_supabase()
+
+    field_resp = sb.table("field_definitions").select("dropdown_category").eq("id", str(field_id)).maybe_single().execute()
+    field = field_resp.data if field_resp else None
+    if not field or not field.get("dropdown_category"):
+        return HTMLResponse('<p class="text-sm text-red-600">No category.</p>')
+
+    category = field["dropdown_category"]
+    form = await request.form()
+    value = (form.get("value") or "").strip()
+    label = (form.get("label") or "").strip() or value
+    parent_value = (form.get("parent_value") or "").strip() or None
+
+    if not value:
+        return HTMLResponse('<p class="text-sm text-red-600">Value is required.</p>')
+
+    # Check duplicate
+    dup = sb.table("reference_data").select("id").eq("category", category).eq("value", value).maybe_single().execute()
+    if dup and dup.data:
+        return HTMLResponse('<p class="text-sm text-red-600">Value already exists.</p>')
+
+    # Get max display_order
+    max_resp = sb.table("reference_data").select("display_order").eq("category", category).order("display_order", desc=True).limit(1).execute()
+    max_order = (max_resp.data[0]["display_order"] + 1) if max_resp.data else 1
+
+    sb.table("reference_data").insert({
+        "category": category,
+        "value": value,
+        "label": label,
+        "parent_value": parent_value,
+        "display_order": max_order,
+        "is_active": True,
+    }).execute()
+
+    # Reload the inline values panel
+    return RedirectResponse(url=f"/admin/fields/{field_id}/values", status_code=303)
+
+
+@router.post("/fields/{field_id}/values/{value_id}/toggle", response_class=HTMLResponse)
+async def toggle_field_value(
+    request: Request,
+    field_id: UUID,
+    value_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Toggle active status of a reference data value."""
+    require_role(current_user, ["admin"])
+    sb = get_supabase()
+
+    resp = sb.table("reference_data").select("is_active").eq("id", str(value_id)).maybe_single().execute()
+    if resp and resp.data:
+        new_active = not resp.data["is_active"]
+        sb.table("reference_data").update({"is_active": new_active}).eq("id", str(value_id)).execute()
+
+    return RedirectResponse(url=f"/admin/fields/{field_id}/values", status_code=303)
 
 
 @router.post("/fields/{field_id}")
@@ -322,12 +496,62 @@ async def update_field(
             "errors": errors,
         })
 
+    # Parse visibility rules from form
+    visibility_rules = {}
+    vis_when = (form.get("vis_when") or "").strip()
+    if vis_when:
+        visibility_rules["when"] = vis_when
+        vis_equals = (form.get("vis_equals") or "").strip()
+        if vis_equals:
+            if vis_equals.lower() == "true":
+                visibility_rules["equals"] = True
+            elif vis_equals.lower() == "false":
+                visibility_rules["equals"] = False
+            else:
+                visibility_rules["equals"] = vis_equals
+        vis_not_equals = (form.get("vis_not_equals") or "").strip()
+        if vis_not_equals:
+            visibility_rules["not_equals"] = vis_not_equals
+        vis_in = (form.get("vis_in") or "").strip()
+        if vis_in:
+            visibility_rules["in"] = [v.strip() for v in vis_in.split(",") if v.strip()]
+        vis_not_in = (form.get("vis_not_in") or "").strip()
+        if vis_not_in:
+            visibility_rules["not_in"] = [v.strip() for v in vis_not_in.split(",") if v.strip()]
+    vis_min_stage = (form.get("vis_min_stage") or "").strip()
+    if vis_min_stage:
+        try:
+            visibility_rules["min_stage"] = int(vis_min_stage)
+        except ValueError:
+            pass
+    vis_lead_type = (form.get("vis_lead_type") or "").strip()
+    if vis_lead_type:
+        parts = [v.strip() for v in vis_lead_type.split(",") if v.strip()]
+        visibility_rules["lead_type"] = parts[0] if len(parts) == 1 else parts
+
+    # Parse suggestion rules
+    suggestion_rules = {}
+    sug_when = (form.get("sug_when") or "").strip()
+    if sug_when:
+        suggestion_rules["when"] = sug_when
+        sug_in = (form.get("sug_in") or "").strip()
+        if sug_in:
+            suggestion_rules["in"] = [v.strip() for v in sug_in.split(",") if v.strip()]
+    sug_min_stage = (form.get("sug_min_stage") or "").strip()
+    if sug_min_stage:
+        try:
+            suggestion_rules["min_stage"] = int(sug_min_stage)
+        except ValueError:
+            pass
+
     update_data = {
         "display_name": display_name,
         "section_name": section_name,
         "is_required": is_required,
         "dropdown_category": dropdown_category,
         "default_value": default_value,
+        "visibility_rules": visibility_rules,
+        "suggestion_rules": suggestion_rules,
     }
 
     # System fields: cannot change field_name, storage_type, or field_type

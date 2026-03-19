@@ -465,6 +465,24 @@
         </div>
     </div>
 
+    {# feedback: [padelsbach] custom EAV fields must appear in edit forms #}
+    {% from "components/_field_renderer.html" import render_field %}
+    {% if sections is defined %}
+      {% for sec_name, fields in sections.items() %}
+        {% set eav_fields = fields | selectattr("storage_type", "equalto", "eav") | list %}
+        {% if eav_fields %}
+        <div class="bg-white shadow rounded-lg p-6 mt-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">{{ sec_name }}</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+            {% for fd in eav_fields %}
+              {{ render_field(fd, record, users) }}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
     <!-- Submit -->
     <div class="flex items-center justify-end gap-3">
         <a href="{{ '/leads/' + lead.id|string if is_editing else '/leads' }}"

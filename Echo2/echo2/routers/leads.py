@@ -11,8 +11,8 @@ from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
 from db.helpers import get_reference_data, log_field_change, audit_changes, get_org_name, get_user_name
-from db.field_service import get_field_definitions, enrich_field_definitions
-from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup
+from db.field_service import get_field_definitions, enrich_field_definitions, save_custom_values
+from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup, split_core_eav
 from services.grid_service import build_grid_context
 from dependencies import CurrentUser, get_current_user, require_role
 
@@ -619,6 +619,7 @@ async def new_lead_form(
 
     context = _load_form_context(sb, current_user, lead=lead_stub, pre_org=pre_org)
     context["request"] = request
+    context["record"] = form_ctx["record"]
     context["sections"] = form_ctx["sections"]
     context["field_defs"] = form_ctx["field_defs"]
     return templates.TemplateResponse("leads/form.html", context)
@@ -817,6 +818,7 @@ async def create_lead(
             sb, current_user, lead=lead_data, pre_org=pre_org, errors=errors
         )
         context["request"] = request
+        context["record"] = form_ctx["record"]
         context["sections"] = form_ctx["sections"]
         context["field_defs"] = form_ctx["field_defs"]
         return templates.TemplateResponse("leads/form.html", context)
@@ -841,11 +843,16 @@ async def create_lead(
     lead_data.pop("_linked_lead_id", None)
 
     sb = get_supabase()
-    resp = sb.table("leads").insert(lead_data).execute()
+    core_data, eav_data = split_core_eav(lead_data, field_defs)
+    resp = sb.table("leads").insert(core_data).execute()
 
     if resp.data:
         new_lead = resp.data[0]
         lead_id = new_lead["id"]
+
+        # Save EAV custom field values
+        if eav_data:
+            save_custom_values("lead", str(lead_id), eav_data, field_defs)
 
         # Sync lead owners
         if owner_ids:
@@ -909,6 +916,7 @@ async def edit_lead_form(
 
     context = _load_form_context(sb, current_user, lead=lead, pre_org=pre_org)
     context["request"] = request
+    context["record"] = form_ctx["record"]
     context["sections"] = form_ctx["sections"]
     context["field_defs"] = form_ctx["field_defs"]
     return templates.TemplateResponse("leads/form.html", context)
@@ -1008,6 +1016,7 @@ async def update_lead(
             sb, current_user, lead=merged_lead, pre_org=pre_org, errors=errors
         )
         context["request"] = request
+        context["record"] = form_ctx["record"]
         context["sections"] = form_ctx["sections"]
         context["field_defs"] = form_ctx["field_defs"]
         return templates.TemplateResponse("leads/form.html", context)
@@ -1032,7 +1041,10 @@ async def update_lead(
     audit_changes("lead", str(lead_id), old_lead, lead_data, current_user.id)
 
     # Update
-    sb.table("leads").update(lead_data).eq("id", str(lead_id)).execute()
+    core_data, eav_data = split_core_eav(lead_data, field_defs)
+    sb.table("leads").update(core_data).eq("id", str(lead_id)).execute()
+    if eav_data:
+        save_custom_values("lead", str(lead_id), eav_data, field_defs)
 
     # Sync lead owners
     if owner_ids:

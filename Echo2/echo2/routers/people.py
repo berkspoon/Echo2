@@ -9,8 +9,8 @@ from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
 from db.helpers import get_reference_data, log_field_change, audit_changes
-from db.field_service import get_field_definitions, enrich_field_definitions
-from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup
+from db.field_service import get_field_definitions, enrich_field_definitions, save_custom_values
+from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup, split_core_eav
 from dependencies import CurrentUser, get_current_user, require_role
 from services.grid_service import build_grid_context
 
@@ -364,6 +364,7 @@ async def new_person_form(
         "pre_org": pre_org,
         "asset_classes": get_reference_data("asset_class"),
         "users": users_list,
+        "record": form_ctx["record"],
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
     }
@@ -588,6 +589,7 @@ async def create_person(
             "errors": errors,
             "asset_classes": get_reference_data("asset_class"),
             "users": users_list,
+            "record": form_ctx["record"],
             "sections": form_ctx["sections"],
             "field_defs": form_ctx["field_defs"],
         }
@@ -617,6 +619,7 @@ async def create_person(
                 "duplicates": dupes,
                 "asset_classes": get_reference_data("asset_class"),
                 "users": users_list,
+                "record": form_ctx["record"],
                 "sections": form_ctx["sections"],
                 "field_defs": form_ctx["field_defs"],
             }
@@ -629,11 +632,16 @@ async def create_person(
     # Insert
     person_data["created_by"] = str(current_user.id)
     sb = get_supabase()
-    resp = sb.table("people").insert(person_data).execute()
+    core_data, eav_data = split_core_eav(person_data, field_defs)
+    resp = sb.table("people").insert(core_data).execute()
 
     if resp.data:
         new_person = resp.data[0]
         person_id = new_person["id"]
+
+        # Save EAV custom field values
+        if eav_data:
+            save_custom_values("person", str(person_id), eav_data, field_defs)
 
         # Create primary org link
         _sync_org_links(str(person_id), form_data, current_user.id)
@@ -705,6 +713,7 @@ async def edit_person_form(
         "pre_org": pre_org,
         "asset_classes": get_reference_data("asset_class"),
         "users": users_list,
+        "record": form_ctx["record"],
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
     }
@@ -781,6 +790,7 @@ async def update_person(
             "errors": errors,
             "asset_classes": get_reference_data("asset_class"),
             "users": users_list,
+            "record": form_ctx["record"],
             "sections": form_ctx["sections"],
             "field_defs": form_ctx["field_defs"],
         }
@@ -790,7 +800,10 @@ async def update_person(
     audit_changes("person", str(person_id), old_person, person_data, current_user.id)
 
     # Update
-    sb.table("people").update(person_data).eq("id", str(person_id)).execute()
+    core_data, eav_data = split_core_eav(person_data, field_defs)
+    sb.table("people").update(core_data).eq("id", str(person_id)).execute()
+    if eav_data:
+        save_custom_values("person", str(person_id), eav_data, field_defs)
 
     # Sync org links
     _sync_org_links(str(person_id), form_data, current_user.id)

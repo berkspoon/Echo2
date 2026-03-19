@@ -92,21 +92,11 @@
                 <p class="mt-1 text-xs text-gray-500">Custom fields use EAV storage. Core columns map to database table columns.</p>
             </div>
 
-            <!-- Section -->
+            {# feedback: [padelsbach] section removed from field definitions — managed via Layouts page #}
             <div>
-                <label for="section_name" class="block text-sm font-medium text-gray-700">Section <span class="text-red-500">*</span></label>
-                <select name="section_name" id="section_name"
-                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
-                    {% for s in sections %}
-                    <option value="{{ s }}" {{ 'selected' if field and field.section_name == s else '' }}>{{ s }}</option>
-                    {% endfor %}
-                </select>
-                <div class="mt-2">
-                    <label for="new_section" class="block text-xs text-gray-500">Or create new section:</label>
-                    <input type="text" name="new_section" id="new_section"
-                           placeholder="New Section Name"
-                           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
-                </div>
+                <label class="block text-sm font-medium text-gray-700">Section</label>
+                <p class="mt-1 text-sm text-gray-500">Sections are managed via the <a href="/admin/layouts/{{ entity_type or 'organization' }}" class="text-brand-600 hover:underline">Layout Designer</a>. New fields appear in the "Other" section until added to a layout.</p>
+                <input type="hidden" name="section_name" value="{{ field.section_name if field else 'Other' }}">
             </div>
 
             <!-- Dropdown Category (shown for dropdown/multi_select types) -->
@@ -139,6 +129,98 @@
                 <label for="is_required" class="text-sm font-medium text-gray-700">Required Field</label>
             </div>
         </div>
+
+            <!-- Visibility Conditions -->
+            {# feedback: [padelsbach] admin UI for configuring when fields show/hide #}
+            <div class="border-t border-gray-200 pt-4 mt-4">
+                <h4 class="text-sm font-semibold text-gray-700 mb-3">Visibility Conditions</h4>
+                <p class="text-xs text-gray-500 mb-3">Configure when this field should be visible. Leave empty for always visible.</p>
+
+                {% set vis = (field.visibility_rules if field else {}) or {} %}
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Show when field:</label>
+                        <input type="text" name="vis_when" value="{{ vis.get('when', '') }}"
+                               placeholder="e.g. relationship_type, rating"
+                               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Equals:</label>
+                            <input type="text" name="vis_equals" value="{{ vis.get('equals', '') }}"
+                                   placeholder="e.g. client"
+                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Not equals:</label>
+                            <input type="text" name="vis_not_equals" value="{{ vis.get('not_equals', '') }}"
+                                   placeholder="e.g. no_proposal"
+                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">In (comma-separated):</label>
+                            <input type="text" name="vis_in" value="{{ vis.get('in', []) | join(', ') if vis.get('in') else '' }}"
+                                   placeholder="e.g. focus, verbal_mandate"
+                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Not in (comma-separated):</label>
+                            <input type="text" name="vis_not_in" value="{{ vis.get('not_in', []) | join(', ') if vis.get('not_in') else '' }}"
+                                   placeholder="e.g. won, lost"
+                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Min stage (leads only):</label>
+                            <input type="number" name="vis_min_stage" value="{{ vis.get('min_stage', '') }}"
+                                   min="1" max="9" placeholder="e.g. 3 for Focus+"
+                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Lead type scope:</label>
+                            <input type="text" name="vis_lead_type" value="{{ vis.get('lead_type', '') if vis.get('lead_type') is string else (vis.get('lead_type', []) | join(', ') if vis.get('lead_type') else '') }}"
+                                   placeholder="e.g. advisory, fundraise"
+                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Suggestion Conditions -->
+            {# feedback: [padelsbach] suggested fields — amber highlighted when conditions met, non-blocking #}
+            <div class="border-t border-gray-200 pt-4 mt-4">
+                <h4 class="text-sm font-semibold text-gray-700 mb-3">Suggestion Conditions</h4>
+                <p class="text-xs text-gray-500 mb-3">Fields become "suggested" (amber highlight) when conditions are met. This does not block form submission.</p>
+
+                {% set sug = (field.suggestion_rules if field else {}) or {} %}
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Suggest when field:</label>
+                        <input type="text" name="sug_when" value="{{ sug.get('when', '') }}"
+                               placeholder="e.g. rating"
+                               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">In (comma-separated):</label>
+                            <input type="text" name="sug_in" value="{{ sug.get('in', []) | join(', ') if sug.get('in') else '' }}"
+                                   placeholder="e.g. focus, verbal_mandate"
+                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Min stage:</label>
+                            <input type="number" name="sug_min_stage" value="{{ sug.get('min_stage', '') }}"
+                                   min="1" max="9"
+                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                        </div>
+                    </div>
+                </div>
+            </div>
     </div>
 
     <!-- Submit -->

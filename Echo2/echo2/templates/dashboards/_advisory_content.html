@@ -3,7 +3,7 @@
 <!-- 1. KPI Summary Row -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
     <div class="bg-white rounded-lg shadow p-4">
-        <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">Active Leads</dt>
+        <dt class="text-xs font-medium text-gray-500 uppercase tracking-wide">Leads</dt>
         <dd class="mt-1 text-2xl font-bold text-gray-900">{{ total_active }}</dd>
     </div>
     <div class="bg-white rounded-lg shadow p-4">
@@ -31,13 +31,11 @@
                     hx-get="/dashboards/advisory-pipeline/chart"
                     hx-trigger="change"
                     hx-target="#pipeline-chart"
-                    hx-include="[name='service'],[name='asset_class'],[name='owner'],[name='org_type'],[name='from'],[name='to']"
+                    hx-include="[name='service'],[name='asset_class'],[name='owner'],[name='org_type'],[name='from'],[name='to'],[name='active_filter'],[name='stage']"
                     name="group_by">
-                <option value="stage" {{ 'selected' if group_by == 'stage' else '' }}>Stage</option>
-                <option value="service_type" {{ 'selected' if group_by == 'service_type' else '' }}>Service Type</option>
-                <option value="asset_class" {{ 'selected' if group_by == 'asset_class' else '' }}>Asset Class</option>
-                <option value="owner" {{ 'selected' if group_by == 'owner' else '' }}>Owner</option>
-                <option value="fund" {{ 'selected' if group_by == 'fund' else '' }}>Fund</option>
+                {% for gf in groupable_fields %}
+                <option value="{{ gf.value }}" {{ 'selected' if group_by == gf.value else '' }}>{{ gf.label }}</option>
+                {% endfor %}
             </select>
         </div>
     </div>

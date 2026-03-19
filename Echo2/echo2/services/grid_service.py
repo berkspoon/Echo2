@@ -58,7 +58,7 @@ _DEFAULT_COLUMNS: dict[str, list[str]] = {
         "status", "title", "due_date", "assigned_to", "source", "linked_record_type",
     ],
     "distribution_list": [
-        "list_name", "list_type", "brand", "asset_class", "frequency",
+        "list_name", "list_type", "list_mode", "brand", "asset_class", "frequency",
         "created_at",
     ],
 }
@@ -71,7 +71,7 @@ _BASE_SELECT: dict[str, str] = {
     "activity": "id, title, effective_date, activity_type, subtype, author_id, details, follow_up_required, created_at",
     "contract": "id, organization_id, originating_lead_id, start_date, service_type, asset_classes, client_coverage, actual_revenue, created_at",
     "task": "id, title, status, due_date, assigned_to, source, notes, linked_record_type, linked_record_id, created_by, created_at",
-    "distribution_list": "id, list_name, list_type, brand, asset_class, frequency, is_official, is_private, owner_id, l2_superset_of, created_at",
+    "distribution_list": "id, list_name, list_type, brand, asset_class, frequency, is_official, is_private, owner_id, l2_superset_of, list_mode, filter_criteria, created_at",
 }
 
 # Valid sort columns per entity (superset — field_defs checked at runtime too)
@@ -95,6 +95,12 @@ _DEFAULT_SORT: dict[str, tuple[str, str]] = {
     "distribution_list": ("list_name", "asc"),
 }
 
+# Lead stages considered inactive (won/lost/closed/declined)
+_INACTIVE_STAGES = (
+    "won", "lost_dropped_out", "lost_selected_other",
+    "lost_nobody_hired", "closed", "declined",
+)
+
 # ── Virtual / computed columns (not stored in DB or field_definitions) ────
 _VIRTUAL_COLUMNS: dict[str, list[dict]] = {
     "organization": [
@@ -111,6 +117,180 @@ _VIRTUAL_COLUMNS: dict[str, list[dict]] = {
             "visibility_rules": None,
             "dropdown_category": None,
             "storage_type": "virtual",
+        },
+        # feedback: [padelsbach] cross-entity aggregate column
+        {
+            "field_name": "contact_count",
+            "display_name": "Contacts",
+            "field_type": "number",
+            "sortable": False,
+            "filterable": False,
+            "section_name": "Computed",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
+        },
+        # feedback: [padelsbach] active lead boolean filter
+        {
+            "field_name": "has_active_leads",
+            "display_name": "Has Active Leads",
+            "field_type": "boolean",
+            "sortable": False,
+            "filterable": True,
+            "section_name": "Computed",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
+        },
+    ],
+    # feedback: [padelsbach] cross-entity linked org columns on people grid
+    "person": [
+        {
+            "field_name": "org_city",
+            "display_name": "Org City",
+            "field_type": "text",
+            "sortable": False,
+            "filterable": False,
+            "section_name": "Organization",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
+        },
+        {
+            "field_name": "org_country",
+            "display_name": "Org Country",
+            "field_type": "text",
+            "sortable": False,
+            "filterable": False,
+            "section_name": "Organization",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
+        },
+        {
+            "field_name": "org_type",
+            "display_name": "Org Type",
+            "field_type": "text",
+            "sortable": False,
+            "filterable": False,
+            "section_name": "Organization",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
+        },
+        {
+            "field_name": "org_aum_mn",
+            "display_name": "Org AUM ($M)",
+            "field_type": "currency",
+            "sortable": False,
+            "filterable": False,
+            "section_name": "Organization",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
+        },
+        # feedback: [padelsbach] active lead boolean filter on people grid
+        {
+            "field_name": "has_active_leads",
+            "display_name": "Has Active Leads",
+            "field_type": "boolean",
+            "sortable": False,
+            "filterable": True,
+            "section_name": "Computed",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
+        },
+    ],
+    # feedback: [padelsbach] cross-entity linked org columns on leads grid
+    "lead": [
+        {
+            "field_name": "org_country",
+            "display_name": "Org Country",
+            "field_type": "text",
+            "sortable": False,
+            "filterable": False,
+            "section_name": "Organization",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
+        },
+        {
+            "field_name": "org_city",
+            "display_name": "Org City",
+            "field_type": "text",
+            "sortable": False,
+            "filterable": False,
+            "section_name": "Organization",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
+        },
+        {
+            "field_name": "org_type",
+            "display_name": "Org Type",
+            "field_type": "text",
+            "sortable": False,
+            "filterable": False,
+            "section_name": "Organization",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
+        },
+        {
+            "field_name": "org_aum_mn",
+            "display_name": "Org AUM ($M)",
+            "field_type": "currency",
+            "sortable": False,
+            "filterable": False,
+            "section_name": "Organization",
+            "is_system": True,
+            "is_active": True,
+            "is_required": False,
+            "visibility_rules": None,
+            "dropdown_category": None,
+            "storage_type": "virtual",
+            "grid_default_visible": False,
         },
     ],
 }
@@ -129,6 +309,7 @@ def build_grid_context(
     extra_filters: Optional[dict] = None,
     extra_columns: Optional[list[dict]] = None,
     saved_view_id: Optional[str] = None,
+    grid_container_id_override: Optional[str] = None,
 ) -> dict:
     """Build everything the _grid.html template needs.
 
@@ -140,6 +321,7 @@ def build_grid_context(
         extra_filters: pre-applied filters (e.g. lead_type, assigned_to)
         extra_columns: non-field-def computed columns
         saved_view_id: UUID of a saved view to load
+        grid_container_id_override: custom container ID (useful for drilldowns)
 
     Returns:
         dict with keys: columns, rows, pagination, sort_by, sort_dir,
@@ -243,7 +425,7 @@ def build_grid_context(
     users_list = users_resp.data or []
 
     # Grid container ID — entity-specific to avoid conflicts
-    container_id = f"{entity_type.replace('_', '-')}-grid-container"
+    container_id = grid_container_id_override or f"{entity_type.replace('_', '-')}-grid-container"
 
     return {
         "columns": columns,
@@ -295,6 +477,33 @@ def _execute_query(
     # Apply filters
     query = _apply_filters(entity_type, query, filters)
 
+    # feedback: [padelsbach] pre-filter for has_active_leads virtual column
+    if col_filters and "has_active_leads" in col_filters:
+        want_active = "true" in col_filters.pop("has_active_leads").lower()
+        # Find org IDs with active leads
+        all_leads_resp = sb.table("leads").select("organization_id, rating").eq("is_deleted", False).execute()
+        active_org_ids: set[str] = set()
+        for l in (all_leads_resp.data or []):
+            if l.get("rating") not in _INACTIVE_STAGES:
+                active_org_ids.add(str(l["organization_id"]))
+        if entity_type == "organization":
+            target_ids = list(active_org_ids) if want_active else None
+            if want_active and target_ids:
+                query = query.in_("id", target_ids)
+            elif want_active:
+                query = query.in_("id", ["00000000-0000-0000-0000-000000000000"])
+        elif entity_type == "person":
+            # Find person IDs at orgs with active leads
+            if active_org_ids:
+                pol_resp = sb.table("person_organization_links").select("person_id").eq("link_type", "primary").in_("organization_id", list(active_org_ids)).execute()
+                person_ids_with_leads = [str(p["person_id"]) for p in (pol_resp.data or [])]
+            else:
+                person_ids_with_leads = []
+            if want_active and person_ids_with_leads:
+                query = query.in_("id", person_ids_with_leads)
+            elif want_active:
+                query = query.in_("id", ["00000000-0000-0000-0000-000000000000"])
+
     # Apply per-column filters
     if col_filters:
         query = _apply_column_filters(query, col_filters, entity_type)
@@ -316,6 +525,10 @@ def _execute_query(
 
 def _apply_filters(entity_type: str, query, filters: dict):
     """Apply entity-aware filters to a Supabase query builder."""
+
+    # ── Pre-filter by explicit ID list (used by dashboard drilldowns) ──
+    if filters.get("_lead_ids"):
+        query = query.in_("id", filters["_lead_ids"])
 
     # ── Text search (q) ────────────────────────────────────────────────
     q = filters.get("q", "")
@@ -517,12 +730,6 @@ def _enrich_organizations(rows: list[dict]) -> None:
     if not org_ids:
         return
 
-    # Inactive lead stages — leads in these stages are NOT counted
-    _INACTIVE_STAGES = (
-        "won", "lost_dropped_out", "lost_selected_other",
-        "lost_nobody_hired", "closed", "declined",
-    )
-
     # Batch query: count active leads per org in a single RPC-free call.
     # supabase-py doesn't support GROUP BY natively, so we fetch minimal
     # rows and aggregate in Python (still a single round trip).
@@ -558,6 +765,22 @@ def _enrich_organizations(rows: list[dict]) -> None:
         total = count_map.get(oid, 0)
         inactive = inactive_map.get(oid, 0)
         row["active_leads_count"] = total - inactive
+        # feedback: [padelsbach] has_active_leads boolean
+        row["has_active_leads"] = (total - inactive) > 0
+
+    # feedback: [padelsbach] contact_count virtual column
+    pol_resp = (
+        sb.table("person_organization_links")
+        .select("organization_id")
+        .in_("organization_id", org_ids)
+        .execute()
+    )
+    contact_count_map: dict[str, int] = {}
+    for link in (pol_resp.data or []):
+        oid = str(link["organization_id"])
+        contact_count_map[oid] = contact_count_map.get(oid, 0) + 1
+    for row in rows:
+        row["contact_count"] = contact_count_map.get(str(row["id"]), 0)
 
 
 def _enrich_people(rows: list[dict]) -> None:
@@ -581,12 +804,34 @@ def _enrich_people(rows: list[dict]) -> None:
     org_ids = list(set(person_org_map.values()))
     org_map = batch_resolve_orgs(org_ids) if org_ids else {}
 
+    # feedback: [padelsbach] has_active_leads for people via their primary org
+    active_org_set: set[str] = set()
+    if org_ids:
+        leads_resp = (
+            sb.table("leads")
+            .select("organization_id, rating")
+            .eq("is_deleted", False)
+            .in_("organization_id", org_ids)
+            .execute()
+        )
+        for lead in (leads_resp.data or []):
+            if lead.get("rating") not in _INACTIVE_STAGES:
+                active_org_set.add(str(lead["organization_id"]))
+
     for row in rows:
         org_id = person_org_map.get(str(row["id"]))
         if org_id and org_id in org_map:
-            row["primary_org"] = org_map[org_id]
+            org_info = org_map[org_id]
+            row["primary_org"] = org_info
         else:
+            org_info = None
             row["primary_org"] = None
+        # feedback: [padelsbach] cross-entity org columns on people grid
+        row["org_city"] = org_info.get("city") if org_info else None
+        row["org_country"] = org_info.get("country") if org_info else None
+        row["org_type"] = org_info.get("organization_type") if org_info else None
+        row["org_aum_mn"] = org_info.get("aum_mn") if org_info else None
+        row["has_active_leads"] = org_id in active_org_set if org_id else False
 
 
 def _enrich_leads(rows: list[dict]) -> None:
@@ -611,6 +856,12 @@ def _enrich_leads(rows: list[dict]) -> None:
         row["org_name"] = org["company_name"] if org else "Unknown"
         row["owner_name"] = user_map.get(str(row.get("aksia_owner_id", "")), "")
         row["fund_ticker"] = fund_map.get(str(row.get("fund_id", "")), "")
+        # feedback: [padelsbach] cross-entity org columns on leads grid
+        org_info = org_map.get(oid, {}) if oid else {}
+        row["org_country"] = org_info.get("country") if isinstance(org_info, dict) else None
+        row["org_city"] = org_info.get("city") if isinstance(org_info, dict) else None
+        row["org_type"] = org_info.get("organization_type") if isinstance(org_info, dict) else None
+        row["org_aum_mn"] = org_info.get("aum_mn") if isinstance(org_info, dict) else None
 
 
 def _enrich_activities(rows: list[dict]) -> None:
@@ -998,7 +1249,17 @@ def _load_saved_views_for_user(user_id: str, entity_type: str) -> list[dict]:
         .order("view_name")
         .execute()
     )
-    return resp.data or []
+    views = resp.data or []
+    # feedback: [padelsbach] enrich team screeners with owner display names
+    team_owner_ids = list({str(v["user_id"]) for v in views if str(v["user_id"]) != user_id})
+    if team_owner_ids:
+        owner_map = batch_resolve_users(team_owner_ids)
+        for v in views:
+            uid = str(v["user_id"])
+            if uid != user_id and uid in owner_map:
+                info = owner_map[uid]
+                v["owner_name"] = info.get("display_name", "team") if isinstance(info, dict) else str(info)
+    return views
 
 
 def save_view(

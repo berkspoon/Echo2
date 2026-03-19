@@ -336,6 +336,34 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- =====================================================================
+-- A6: Add text_list field type
+-- =====================================================================
+
+ALTER TABLE field_definitions DROP CONSTRAINT IF EXISTS field_definitions_field_type_check;
+ALTER TABLE field_definitions ADD CONSTRAINT field_definitions_field_type_check
+    CHECK (field_type IN (
+        'text', 'number', 'date', 'boolean', 'dropdown', 'multi_select',
+        'lookup', 'address', 'phone', 'currency', 'calculated', 'url',
+        'email', 'textarea', 'text_list'
+    ));
+
+-- =====================================================================
+-- A4: Add suggestion_rules column for "suggested" field concept
+-- =====================================================================
+
+ALTER TABLE field_definitions ADD COLUMN IF NOT EXISTS suggestion_rules JSONB DEFAULT '{}';
+
+-- =====================================================================
+-- D1: Dynamic distribution lists
+-- =====================================================================
+
+ALTER TABLE distribution_lists ADD COLUMN IF NOT EXISTS list_mode TEXT NOT NULL DEFAULT 'static';
+ALTER TABLE distribution_lists ADD COLUMN IF NOT EXISTS filter_criteria JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE distribution_list_members ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT FALSE;
+-- Note: list_mode check constraint: CHECK (list_mode IN ('static', 'dynamic'))
+-- Apply via: ALTER TABLE distribution_lists ADD CONSTRAINT IF NOT EXISTS dl_list_mode_check CHECK (list_mode IN ('static', 'dynamic'));
+
+-- =====================================================================
 -- Done! Verify with:
 --   SELECT column_name FROM information_schema.columns WHERE table_name = 'people' AND column_name = 'is_deleted';
 --   SELECT count(*) FROM field_definitions;

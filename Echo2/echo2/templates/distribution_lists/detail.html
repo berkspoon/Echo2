@@ -27,6 +27,12 @@
                         {% else %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Custom</span>
                         {% endif %}
+                        <!-- List mode badge -->
+                        {% if dist_list.list_mode == 'dynamic' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Dynamic</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Static</span>
+                        {% endif %}
                         <!-- Brand badge -->
                         {% if dist_list.brand %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
@@ -119,6 +125,24 @@
     <!-- Send Preview Container (populated via HTMX) -->
     <div id="send-preview-container"></div>
 
+    {% if dist_list.list_mode == 'dynamic' %}
+    <!-- Dynamic List: Filter Editor (loaded via HTMX) -->
+    <!-- feedback: [padelsbach] DL creation via people grid filtering -->
+    <div id="dl-filter-editor-section"
+         hx-get="/distribution-lists/{{ dist_list.id }}/filter-editor"
+         hx-trigger="load"
+         hx-target="this"
+         hx-swap="innerHTML">
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="animate-pulse space-y-3">
+                <div class="h-4 bg-gray-200 rounded w-1/4"></div>
+                <div class="h-3 bg-gray-100 rounded w-1/2"></div>
+                <div class="h-48 bg-gray-100 rounded-lg"></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Tabs -->
     <div class="bg-white rounded-lg shadow">
         <nav class="flex border-b border-gray-200">
@@ -126,7 +150,11 @@
                     hx-get="/distribution-lists/{{ dist_list.id }}?tab=members"
                     hx-target="#dl-tab-content"
                     hx-push-url="false">
+                {% if dist_list.list_mode == 'dynamic' %}
+                Manual Additions ({{ members_total }})
+                {% else %}
                 Members ({{ members_total }})
+                {% endif %}
             </button>
             <button class="px-6 py-3 text-sm font-medium {{ 'text-brand-600 border-b-2 border-brand-500' if active_tab == 'send_history' else 'text-gray-500 hover:text-gray-700' }}"
                     hx-get="/distribution-lists/{{ dist_list.id }}?tab=send_history"

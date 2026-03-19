@@ -1,0 +1,37 @@
+{# Filter editor — embedded people grid for defining dynamic distribution list criteria #}
+{# feedback: [padelsbach] DL creation via people grid filtering #}
+
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h4 class="text-sm font-semibold text-gray-900">Filter Criteria</h4>
+      <p class="text-xs text-gray-500 mt-0.5">
+        Use the grid filters below to define who should be on this list. People matching these filters are automatically included.
+      </p>
+    </div>
+    <div id="dl-filter-save-status" class="inline"></div>
+  </div>
+
+  <div class="text-xs text-gray-400 mb-3">
+    Showing {{ pagination.total }} matching people (DNC excluded)
+  </div>
+
+  {# Render the full people grid — its merged_filters will be available after include #}
+  {% include "components/_grid.html" %}
+
+  {# Save button — uses merged_filters computed inside _grid.html #}
+  <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
+    <p class="text-xs text-gray-400">
+      Saving will set this list to <strong>dynamic</strong> mode. Members are resolved from filters at send time.
+    </p>
+    <form hx-post="/distribution-lists/{{ list_id }}/save-filters"
+          hx-target="#dl-filter-save-status"
+          hx-swap="innerHTML">
+      <input type="hidden" name="filters" value='{{ merged_filters | tojson }}'>
+      <button type="submit"
+              class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+        Save Filters
+      </button>
+    </form>
+  </div>
+</div>

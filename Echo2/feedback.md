@@ -85,4 +85,44 @@ Mark fixed items with `[x]`.
 - [ ] [General] Redo filter functionality: add filter icon to each column header with sort (A-Z, Z-A) and data-type-appropriate filters (multi-select for dropdowns, contains/not-contains for text, inequality for numbers, before/after for dates). Remove existing filter dropdowns above grid, keep search box only (severity: high)
 - [ ] [General] Rename "Saved Views" to "Screeners". Add ability to name, save, overwrite, duplicate, and delete screeners. Clicking a screener loads its saved columns and filters (severity: high)
 
+## Patrick Feedback — Round 5 (March 16, 2026)
+
+**Stakeholder:** padelsbach@aksia.com
+**Source files:** `Patrick feedback 2.md` (AI summary), `Patrick 2.vtt` (transcript)
+**Verified:** AI summary verified against raw transcript. One inaccuracy found (multi-tenant mislabeled as "Phase 1" — Patrick explicitly said "Not Phase 1").
+
+### Field Architecture
+- [x] [Admin] Custom EAV fields don't appear in entity edit forms — only in grids. Must render in forms too (severity: high) — **Fixed: Added dynamic EAV section to all 5 entity form templates + split_core_eav() for proper DB save**
+- [x] [Admin] Remove section assignment from field definitions. Sections should only exist at the layout level, not hardcoded into fields. Create default layouts from current sections (severity: medium) — **Fixed: page_layouts now authoritative via _group_fields_by_layout_or_fallback(). seed_default_layouts.py created.**
+- [x] [Admin] Merge Reference Data management into the Fields page. Dropdown/multi-select fields should show inline value editor. Remove separate Reference Data admin page (severity: high) — **Fixed: Inline dropdown value management via HTMX endpoints. _inline_reference_data.html. Sidebar link removed.**
+- [x] [Admin] Add visibility rules admin UI to field editor — currently only configurable via seed scripts (severity: medium) — **Fixed: Visibility conditions editor in field_form.html with when/equals/in/not_in/min_stage/lead_type**
+- [x] [Admin] Add "suggested" field concept — fields highlighted with amber when conditions are met, non-blocking. Keep required fields static to avoid screener complications (severity: medium) — **Fixed: suggestion_rules JSONB, _is_field_suggested(), amber border+badge in _field_renderer.html**
+- [x] [Admin] Add "text_list" field type for storing multiple text strings (nicknames/aliases). All values searchable. Use case: org abbreviations like OCERS, OC ERS, Orange County (severity: medium) — **Fixed: Alpine.js multi-input, JSON storage in EAV, grid comma display, seeded nicknames field**
+
+### Grid Enhancements
+- [x] [Grid] Add cross-entity linked columns: org fields (city, country, type, AUM) on People and Leads grids; aggregate columns (contact count) on Org grid (severity: high) — **Fixed: 9 new virtual columns across org/person/lead entities**
+- [x] [Grid] Add "Has Active Leads" boolean filter on Org and People grids. Active = rating NOT IN won/lost stages (severity: medium) — **Fixed: has_active_leads virtual boolean with pre-filter in _execute_query**
+- [x] [Grid] Add column resizing via draggable borders. Persist widths in screeners and localStorage (severity: medium) — **Fixed: CSS resize handles, JS drag handler, localStorage persistence**
+- [x] [Grid] Add pop-up row editor — edit button opens modal with fields for visible columns only. Save inline without page navigation (severity: high) — **Fixed: _grid_edit_modal.html, grid-edit endpoints in views.py, gridRefresh event**
+
+### Dashboards
+- [x] [Dashboards] Pipeline should default to showing all leads (not just "Active Leads"). Add explicit active/inactive toggle filter. Add stage to top filter bar (severity: medium) — **Fixed: active_filter + stage params, "Active Leads" renamed to "Leads"**
+- [x] [Dashboards] Dynamic pipeline grouping — auto-populate group-by dropdown from all dropdown/multi-select fields in field_definitions, including custom fields (severity: medium) — **Fixed: _get_groupable_fields() from field_definitions**
+- [x] [Dashboards] Replace static drill-down tables with full grid component. Pre-apply dashboard filters. Support column selection, sorting, filtering within drilldown (severity: high) — **Fixed: Both advisory+capital raise drilldowns use build_grid_context() with grid_container_id_override**
+
+### Distribution Lists
+- [x] [Distribution Lists] Add dynamic distribution lists — store filter criteria, auto-resolve membership from filters. Static snapshots with manual additions. Snapshot on send (severity: high) — **Fixed: list_mode/filter_criteria columns, _resolve_dynamic_members(), updated _build_send_preview()**
+- [x] [Distribution Lists] Create/edit dynamic list via embedded people grid with full filter capabilities. Save filters as list criteria (severity: medium) — **Fixed: filter-editor/filter-grid/save-filters endpoints, _filter_editor.html**
+- [x] [Distribution Lists] Show current members in real-time when adding new people (auto-refresh via HTMX trigger) (severity: low) — **Fixed: HX-Trigger: membersUpdated + hx-trigger listener on members-content**
+
+### Screeners & Navigation
+- [x] [Grid] Split screener dropdown into "My Screeners" and "Team Screeners" sections. Team screeners show shared views from other users with Duplicate action only (severity: low) — **Fixed: Split in _grid.html with owner name enrichment in grid_service.py**
+- [x] [Navigation] Remove Reference Data from admin sidebar. Merge Pipeline section into Records. Simplify sidebar groupings (severity: low) — **Fixed: base.html sidebar restructured**
+
+### Deferred Items (not implementing now)
+- Multi-tenant architecture — Patrick: "Not Phase 1." Defer entirely.
+- Generic admin-configurable calculated fields — Implement specific virtual columns instead.
+- Duplicate detection merge functionality — Patrick: "We'll take a look once worked out."
+- Editable Excel-style grid — Pop-up editor covers the use case per Patrick.
+
 ## Seed Data Issues

@@ -40,7 +40,10 @@
 {% for k, v in filters.items() if v and not k.startswith('_') and not k.startswith('cf_') %}{% set _ = merged_filters.update({k: v}) %}{% endfor %}
 {% if col_filters is defined and col_filters %}{% for k, v in col_filters.items() %}{% set _ = merged_filters.update({k: v}) %}{% endfor %}{% endif %}
 
-<div id="{{ grid_container_id }}">
+<div id="{{ grid_container_id }}"
+     hx-trigger="gridRefresh from:body"
+     hx-get="{{ base_url }}?{{ filter_qs }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}{% if current_view_id %}&view_id={{ current_view_id }}{% endif %}"
+     hx-target="#{{ grid_container_id }}">
 
 {# ── Screener Selector + Column Toggle Bar ─── #}
 <div class="flex items-center justify-between mb-3">
@@ -60,15 +63,19 @@
       <div x-show="open" @click.away="open = false" x-cloak
            class="absolute left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
         <a href="{{ base_url }}?{{ filter_qs }}" class="block px-4 py-2 text-sm hover:bg-gray-50 {{ 'font-medium text-brand-600' if not current_view_id else '' }}">Default View</a>
-        {% for sv in saved_views %}
+        {# feedback: [padelsbach] split screeners into My / Team sections #}
+        {% set my_views = saved_views | selectattr("user_id", "equalto", current_user_id) | list %}
+        {% set team_views = saved_views | rejectattr("user_id", "equalto", current_user_id) | list %}
+        {% if my_views %}
+        <div class="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">My Screeners</div>
+        {% endif %}
+        {% for sv in my_views %}
         <div class="group flex items-center hover:bg-gray-50 {{ 'font-medium text-brand-600' if current_view_id == sv.id else '' }}">
           <a href="{{ base_url }}?view_id={{ sv.id }}" class="flex-1 px-4 py-2 text-sm">
             {{ sv.view_name }}
             {% if sv.is_shared %}<span class="ml-1 text-xs text-gray-400">(shared)</span>{% endif %}
             {% if sv.is_default %}<span class="ml-1 text-xs text-green-600">(default)</span>{% endif %}
           </a>
-          {# Action buttons — only for owner #}
-          {% if sv.user_id == current_user_id %}
           <div class="hidden group-hover:flex items-center gap-0.5 pr-2">
             {# Overwrite #}
             <form method="POST" action="/views/{{ sv.id }}/overwrite" class="inline"
@@ -97,9 +104,28 @@
               </button>
             </form>
           </div>
-          {% endif %}
         </div>
         {% endfor %}
+        {% if team_views %}
+        <div class="border-t border-gray-100 mt-1 pt-1">
+          <div class="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Team Screeners</div>
+        </div>
+        {% for sv in team_views %}
+        <div class="group flex items-center hover:bg-gray-50 {{ 'font-medium text-brand-600' if current_view_id == sv.id else '' }}">
+          <a href="{{ base_url }}?view_id={{ sv.id }}" class="flex-1 px-4 py-2 text-sm">
+            {{ sv.view_name }}
+            <span class="ml-1 text-xs text-gray-400">({{ sv.owner_name|default('team', true) }})</span>
+            {% if sv.is_default %}<span class="ml-1 text-xs text-green-600">(default)</span>{% endif %}
+          </a>
+          {# Team screeners: only Duplicate action #}
+          <div class="hidden group-hover:flex items-center gap-0.5 pr-2">
+            <button onclick="duplicateScreener('{{ sv.id }}', '{{ sv.view_name }}')" title="Duplicate to My Screeners" class="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600">
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+          </div>
+        </div>
+        {% endfor %}
+        {% endif %}
         <div class="border-t border-gray-100 mt-1 pt-1">
           <button onclick="document.getElementById('save-view-modal').classList.remove('hidden')"
                   class="block w-full text-left px-4 py-2 text-sm text-brand-600 hover:bg-gray-50">
@@ -162,7 +188,8 @@
 
         {% for col in columns %}
         {% set is_sortable = col.field_name in ['company_name','relationship_type','organization_type','country','aum_mn','first_name','last_name','email','job_title','phone','rating','service_type','expected_revenue','expected_yr1_flar','start_date','effective_date','title','activity_type','actual_revenue','due_date','status','list_name','list_type','brand','created_at'] %}
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+        {# feedback: [padelsbach] added column resize handles #}
+        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative" style="min-width:80px;">
           <div class="flex items-center gap-1">
             {# Column name — sortable click #}
             {% if is_sortable %}
@@ -185,6 +212,7 @@
             {% include "components/_column_filter.html" %}
             {% endif %}
           </div>
+          <div class="col-resize-handle" onmousedown="startColResize(event, '{{ col.field_name }}')"></div>
         </th>
         {% endfor %}
 
@@ -439,6 +467,14 @@
             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Custom</span>
             {% endif %}
 
+          {# Dist list: list_mode badge #}
+          {% elif entity_type == 'distribution_list' and fname == 'list_mode' %}
+            {% if val == 'dynamic' %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">Dynamic</span>
+            {% else %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Static</span>
+            {% endif %}
+
           {# Org: active_leads_count — clickable badge expanding inline leads panel #}
           {% elif entity_type == 'organization' and fname == 'active_leads_count' %}
             {% set lc = row.active_leads_count|default(0) %}
@@ -499,6 +535,12 @@
               {{ val | join(', ') | replace('_', ' ') | title }}
             {% else %}---{% endif %}
 
+          {# Text list (aliases/nicknames) #}
+          {% elif ftype == 'text_list' %}
+            {% if val and val is iterable and val is not string %}
+              {{ val | join(', ') }}
+            {% else %}---{% endif %}
+
           {# URL #}
           {% elif ftype == 'url' %}
             {% if val %}
@@ -531,21 +573,12 @@
 
         {# Actions column #}
         <td class="px-4 py-3 text-sm text-right" onclick="event.stopPropagation()">
-          {% if entity_type == 'organization' %}
-          <a href="/organizations/{{ row.id }}/edit" class="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 hover:text-brand-600">
+          <button hx-get="/views/grid-edit/{{ entity_type }}/{{ row.id }}?visible_columns={{ columns | map(attribute='field_name') | join(',') }}"
+                  hx-target="body" hx-swap="beforeend"
+                  class="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 hover:text-brand-600">
             <svg class="mr-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             Edit
-          </a>
-          {% elif entity_type == 'person' %}
-          <a href="/people/{{ row.id }}/edit" class="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 hover:text-brand-600">
-            <svg class="mr-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-            Edit
-          </a>
-          {% elif entity_type == 'lead' %}
-          <a href="/leads/{{ row.id }}/edit" class="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 hover:text-brand-600">Edit</a>
-          {% elif entity_type == 'task' %}
-          <a href="/tasks/{{ row.id }}/edit" class="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 hover:text-brand-600">Edit</a>
-          {% endif %}
+          </button>
         </td>
       </tr>
 
@@ -640,8 +673,65 @@
   </div>
 </div>
 
-{# ── JavaScript for column filters and screener actions ─── #}
+{# ── Column Resize CSS ─── #}
+<style>
+.col-resize-handle {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: 5px; cursor: col-resize;
+  background: transparent;
+  z-index: 5;
+}
+.col-resize-handle:hover { background: rgba(99,102,241,0.3); }
+</style>
+
+{# ── JavaScript for column filters, screener actions, and column resizing ─── #}
 <script>
+/** feedback: [padelsbach] column resizing via drag */
+function startColResize(e, fieldName) {
+  e.preventDefault();
+  e.stopPropagation();
+  var th = e.target.parentElement;
+  var startX = e.clientX;
+  var startWidth = th.offsetWidth;
+  function onMove(e2) {
+    var newWidth = Math.max(60, startWidth + (e2.clientX - startX));
+    th.style.width = newWidth + 'px';
+    th.style.minWidth = newWidth + 'px';
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.body.style.cursor = '';
+    // Persist to localStorage
+    try {
+      var key = 'col_widths_{{ entity_type }}';
+      var stored = JSON.parse(localStorage.getItem(key) || '{}');
+      stored[fieldName] = th.style.width;
+      localStorage.setItem(key, JSON.stringify(stored));
+    } catch(e) {}
+  }
+  document.body.style.cursor = 'col-resize';
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+// Apply stored column widths on load
+(function() {
+  try {
+    var key = 'col_widths_{{ entity_type }}';
+    var stored = JSON.parse(localStorage.getItem(key) || '{}');
+    var ths = document.querySelectorAll('#{{ grid_container_id }} thead th[class*="relative"]');
+    ths.forEach(function(th) {
+      var handle = th.querySelector('.col-resize-handle');
+      if (handle) {
+        var fname = handle.getAttribute('onmousedown').match(/'([^']+)'/);
+        if (fname && fname[1] && stored[fname[1]]) {
+          th.style.width = stored[fname[1]];
+          th.style.minWidth = stored[fname[1]];
+        }
+      }
+    });
+  } catch(e) {}
+})();
 /** Apply a per-column filter and reload the grid */
 function applyColumnFilter(fieldName, op, value) {
   if (!value && value !== false) return;

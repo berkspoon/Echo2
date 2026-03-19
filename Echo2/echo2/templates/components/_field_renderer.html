@@ -23,6 +23,7 @@
 {% set is_req = fd.is_required %}
 {% set field_id = 'field-' + fname %}
 {% set vis_rules = fd.visibility_rules or {} %}
+{% set is_suggested = fd.get('_is_suggested', false) if fd.get is defined else false %}
 
 {# Build data attributes for visibility rules (consumed by JS) #}
 {% set vis_attrs = '' %}
@@ -36,6 +37,10 @@
 {% if vis_rules.get('min_stage') %}{% set vis_attrs = vis_attrs + ' data-vis-min-stage="' + vis_rules.min_stage|string + '"' %}{% endif %}
 {% if vis_rules.get('lead_type') %}{% set vis_attrs = vis_attrs + ' data-vis-lead-type="' + vis_rules.lead_type|string + '"' %}{% endif %}
 
+{% if is_suggested %}
+<div class="border-2 border-amber-400 rounded-lg p-2 relative">
+  <span class="absolute -top-2 right-2 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Suggested</span>
+{% endif %}
 <div class="field-wrapper" data-field-name="{{ fname }}" {{ vis_attrs }}>
     <label for="{{ field_id }}" class="block text-sm font-medium text-gray-700">
         {{ fd.display_name }}
@@ -133,6 +138,23 @@
         {% endfor %}
     </div>
 
+    {% elif ftype == 'text_list' %}
+    {# feedback: [padelsbach] multiple text strings field type for aliases/nicknames #}
+    {% set items = value if value is iterable and value is not string else [] %}
+    <div x-data="{ items: {{ items | tojson }} }" class="mt-1 space-y-2">
+      <template x-for="(item, idx) in items" :key="idx">
+        <div class="flex items-center gap-2">
+          <input type="text" x-model="items[idx]"
+                 class="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+          <button type="button" @click="items.splice(idx, 1)"
+                  class="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
+        </div>
+      </template>
+      <button type="button" @click="items.push('')"
+              class="text-sm text-indigo-600 hover:text-indigo-800">+ Add more</button>
+      <input type="hidden" name="{{ fname }}_json" :value="JSON.stringify(items.filter(i => i && i.trim()))">
+    </div>
+
     {% elif ftype == 'lookup' %}
     {# Lookup fields: render as user dropdown if the field is a user reference, else text input #}
     {% if fname in ('assigned_to', 'coverage_owner', 'author_id', 'aksia_owner_id', 'questionnaire_filled_by') and users %}
@@ -162,4 +184,5 @@
            class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ 'bg-gray-100' if readonly else '' }}">
     {% endif %}
 </div>
+{% if is_suggested %}</div>{% endif %}
 {% endmacro %}

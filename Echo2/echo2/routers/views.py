@@ -1,17 +1,26 @@
-"""Screeners router — CRUD endpoints for grid screeners (saved views)."""
+"""Screeners router — CRUD endpoints for grid screeners (saved views).
+Also provides grid inline-edit (pop-up row editor) endpoints.
+"""
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 
+from db.client import get_supabase
+from db.field_service import get_field_definitions, enrich_field_definitions, load_custom_values
+from db.field_service import save_custom_values
+from db.helpers import audit_changes
 from dependencies import CurrentUser, get_current_user, require_role
+from services.form_service import parse_form_data, validate_form_data, split_core_eav
 from services.grid_service import (
     save_view, delete_view, set_default_view,
     update_view, duplicate_view, rename_view,
 )
 
 router = APIRouter(prefix="/views", tags=["views"])
+templates = Jinja2Templates(directory="templates")
 
 
 @router.post("/save", response_class=HTMLResponse)
@@ -193,3 +202,128 @@ async def rename_screener(
 
     referer = request.headers.get("referer", "/")
     return RedirectResponse(url=referer, status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# GRID INLINE EDIT — GET/POST /views/grid-edit/{entity_type}/{record_id}
+# ---------------------------------------------------------------------------
+
+_GRID_EDIT_TABLES = {
+    "organization": "organizations",
+    "person": "people",
+    "lead": "leads",
+    "activity": "activities",
+    "contract": "contracts",
+    "task": "tasks",
+}
+
+
+@router.get("/grid-edit/{entity_type}/{record_id}", response_class=HTMLResponse)
+async def grid_edit_form(
+    request: Request,
+    entity_type: str,
+    record_id: str,
+    visible_columns: str = Query(""),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """HTMX partial: compact edit form for a grid row (visible columns only)."""
+    if entity_type not in _GRID_EDIT_TABLES:
+        raise HTTPException(status_code=400, detail=f"Invalid entity type: {entity_type}")
+
+    table = _GRID_EDIT_TABLES[entity_type]
+    sb = get_supabase()
+    resp = sb.table(table).select("*").eq("id", record_id).maybe_single().execute()
+    record = resp.data if resp else None
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    # Load field defs, filter to visible columns
+    field_defs = get_field_definitions(entity_type, active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    vis_cols = set(visible_columns.split(",")) if visible_columns else None
+    if vis_cols:
+        field_defs = [fd for fd in field_defs if fd["field_name"] in vis_cols]
+
+    # Merge EAV values
+    eav = load_custom_values(entity_type, record_id)
+    merged = {**record, **eav}
+
+    # Users for lookup fields
+    users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+    users = users_resp.data or []
+
+    context = {
+        "request": request,
+        "entity_type": entity_type,
+        "record_id": record_id,
+        "record": merged,
+        "field_defs": field_defs,
+        "users": users,
+        "user": current_user,
+        "errors": [],
+    }
+    return templates.TemplateResponse("components/_grid_edit_modal.html", context)
+
+
+@router.post("/grid-edit/{entity_type}/{record_id}", response_class=HTMLResponse)
+async def grid_edit_save(
+    request: Request,
+    entity_type: str,
+    record_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Save grid inline edit. Returns HX-Trigger to refresh grid."""
+    if entity_type not in _GRID_EDIT_TABLES:
+        raise HTTPException(status_code=400, detail=f"Invalid entity type: {entity_type}")
+
+    table = _GRID_EDIT_TABLES[entity_type]
+    sb = get_supabase()
+
+    # Fetch old record
+    old_resp = sb.table(table).select("*").eq("id", record_id).maybe_single().execute()
+    old_record = old_resp.data if old_resp else None
+    if not old_record:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    # Parse form
+    field_defs = get_field_definitions(entity_type, active_only=True)
+    field_defs = enrich_field_definitions(field_defs)
+    form = await request.form()
+
+    # Only parse fields that were submitted (visible columns)
+    submitted_fields = set(form.keys())
+    visible_defs = [fd for fd in field_defs if fd["field_name"] in submitted_fields or fd["field_type"] == "boolean"]
+
+    data = parse_form_data(entity_type, form, visible_defs)
+    errors = validate_form_data(entity_type, data, visible_defs, record=old_record)
+
+    if errors:
+        eav = load_custom_values(entity_type, record_id)
+        merged = {**old_record, **data}
+        users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+        context = {
+            "request": request,
+            "entity_type": entity_type,
+            "record_id": record_id,
+            "record": merged,
+            "field_defs": visible_defs,
+            "users": users_resp.data or [],
+            "user": current_user,
+            "errors": errors,
+        }
+        return templates.TemplateResponse("components/_grid_edit_modal.html", context)
+
+    # Split core vs EAV
+    core_data, eav_data = split_core_eav(data, visible_defs)
+
+    # Audit + update
+    audit_changes(entity_type, record_id, old_record, core_data, current_user.id)
+    if core_data:
+        sb.table(table).update(core_data).eq("id", record_id).execute()
+    if eav_data:
+        save_custom_values(entity_type, record_id, eav_data, visible_defs)
+
+    # Return empty response with trigger to refresh grid
+    response = HTMLResponse("")
+    response.headers["HX-Trigger"] = "gridRefresh"
+    return response

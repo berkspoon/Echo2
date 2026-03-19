@@ -32,5 +32,21 @@
         {% include "admin/_field_list_partial.html" %}
     </div>
 
+    {# feedback: [padelsbach] orphaned reference data categories not linked to any field #}
+    {% if orphaned_categories %}
+    <div class="mt-8 bg-white shadow rounded-lg p-6">
+      <h3 class="text-base font-semibold text-gray-900 mb-4">Global Reference Data</h3>
+      <p class="text-sm text-gray-500 mb-4">These categories are not linked to any field's dropdown options.</p>
+      <div class="space-y-2">
+        {% for cat_key, cat_meta in orphaned_categories.items() %}
+        <a href="/admin/reference-data?category={{ cat_key }}"
+           class="block px-3 py-2 text-sm rounded-md hover:bg-gray-50 border border-gray-200">
+          {{ cat_meta.label }}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
 </div>
 {% endblock %}

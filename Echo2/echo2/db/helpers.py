@@ -138,7 +138,7 @@ def batch_resolve_orgs(org_ids: list[str]) -> dict:
         return {}
     resp = (
         sb.table("organizations")
-        .select("id, company_name, organization_type, country, relationship_type")
+        .select("id, company_name, organization_type, country, relationship_type, city, aum_mn")
         .in_("id", unique_ids)
         .execute()
     )

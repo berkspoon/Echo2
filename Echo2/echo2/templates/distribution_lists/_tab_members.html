@@ -1,11 +1,27 @@
 <!-- Distribution list members tab partial -->
 
+{% if dist_list.list_mode is defined and dist_list.list_mode == 'dynamic' %}
+<!-- Dynamic list note -->
+<div class="mb-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-3">
+    <p class="text-sm text-amber-700">
+        This is a <strong>dynamic</strong> list. The primary membership is determined by the filter criteria above.
+        You can manually add additional people below; they will be included on top of the filtered results.
+    </p>
+</div>
+{% endif %}
+
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 <!-- SECTION 1: Find & Add People                                          -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 {% if can_manage is not defined or can_manage %}
 <div class="mb-8">
-    <h3 class="text-base font-semibold text-gray-900 mb-3">Find &amp; Add People</h3>
+    <h3 class="text-base font-semibold text-gray-900 mb-3">
+        {% if dist_list.list_mode is defined and dist_list.list_mode == 'dynamic' %}
+        Manual Additions — Find &amp; Add People
+        {% else %}
+        Find &amp; Add People
+        {% endif %}
+    </h3>
 
     <!-- Filter Row -->
     <div class="bg-gray-50 rounded-lg border border-gray-200 p-4 mb-4">
@@ -89,7 +105,12 @@
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 <!-- SECTION 2: Current Members                                            -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
-<div id="members-content">
+{# feedback: [padelsbach] auto-refresh member list when a person is added #}
+<div id="members-content"
+     hx-trigger="membersUpdated from:body"
+     hx-get="/distribution-lists/{{ dist_list.id }}?tab=members"
+     hx-target="#members-content"
+     hx-swap="innerHTML">
     <h3 class="text-base font-semibold text-gray-900 mb-3">
         Current Members
         <span class="text-sm font-normal text-gray-500">({{ members_total }})</span>

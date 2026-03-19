@@ -23,6 +23,8 @@ ORGANIZATION_FIELDS = [
     {"field_name": "aum_mn", "display_name": "AUM ($M)", "field_type": "currency", "section_name": "Basic Information", "display_order": 5},
     {"field_name": "website", "display_name": "Website", "field_type": "url", "section_name": "Basic Information", "display_order": 6},
     {"field_name": "team_distribution_email", "display_name": "Team Distribution Email", "field_type": "email", "section_name": "Basic Information", "display_order": 7, "visibility_rules": {"when": "relationship_type", "equals": "client"}},
+    # feedback: [padelsbach] text_list field type for aliases/nicknames
+    {"field_name": "nicknames", "display_name": "Nicknames / Aliases", "field_type": "text_list", "section_name": "Basic Information", "display_order": 8, "storage_type": "eav", "is_system": False, "grid_default_visible": False},
     # Address
     {"field_name": "country", "display_name": "Country", "field_type": "dropdown", "dropdown_category": "country", "section_name": "Address", "display_order": 10},
     {"field_name": "city", "display_name": "City", "field_type": "text", "section_name": "Address", "display_order": 11},
@@ -194,9 +196,9 @@ def seed(force: bool = False) -> None:
                 "field_name": f["field_name"],
                 "display_name": f["display_name"],
                 "field_type": f["field_type"],
-                "storage_type": "core_column",
+                "storage_type": f.get("storage_type", "core_column"),
                 "is_required": f.get("is_required", False),
-                "is_system": True,
+                "is_system": f.get("is_system", True),
                 "display_order": f.get("display_order", 0),
                 "section_name": f.get("section_name"),
                 "validation_rules": f.get("validation_rules", {}),

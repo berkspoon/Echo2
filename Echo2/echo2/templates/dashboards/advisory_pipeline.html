@@ -87,6 +87,31 @@
                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                        hx-get="/dashboards/advisory-pipeline" hx-trigger="change" hx-target="#pipeline-content" hx-include="#ap-filter-form" hx-push-url="true">
             </div>
+
+            <!-- Status (Active/Inactive/All) -->
+            <div class="w-36">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                <select name="active_filter"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/dashboards/advisory-pipeline" hx-trigger="change" hx-target="#pipeline-content" hx-include="#ap-filter-form" hx-push-url="true">
+                    <option value="active" {{ 'selected' if filter_active == 'active' else '' }}>Active Only</option>
+                    <option value="all" {{ 'selected' if filter_active == 'all' else '' }}>All Leads</option>
+                    <option value="inactive" {{ 'selected' if filter_active == 'inactive' else '' }}>Inactive Only</option>
+                </select>
+            </div>
+
+            <!-- Stage -->
+            <div class="w-40">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Stage</label>
+                <select name="stage"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        hx-get="/dashboards/advisory-pipeline" hx-trigger="change" hx-target="#pipeline-content" hx-include="#ap-filter-form" hx-push-url="true">
+                    <option value="">All Stages</option>
+                    {% for s in all_stages %}
+                    <option value="{{ s.value }}" {{ 'selected' if filter_stage == s.value else '' }}>{{ s.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
         </form>
     </div>
 

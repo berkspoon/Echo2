@@ -15,6 +15,8 @@ class DistributionListCreate(BaseModel):
     is_private: bool = True
     owner_id: Optional[UUID] = None
     l2_superset_of: Optional[UUID] = None
+    list_mode: str = "static"
+    filter_criteria: Optional[dict] = None
     is_active: bool = True
     created_by: Optional[UUID] = None
 
@@ -29,6 +31,8 @@ class DistributionListUpdate(BaseModel):
     is_private: Optional[bool] = None
     owner_id: Optional[UUID] = None
     l2_superset_of: Optional[UUID] = None
+    list_mode: Optional[str] = None
+    filter_criteria: Optional[dict] = None
     is_active: Optional[bool] = None
 
 
@@ -45,6 +49,8 @@ class DistributionListResponse(BaseModel):
     is_private: bool
     owner_id: Optional[UUID] = None
     l2_superset_of: Optional[UUID] = None
+    list_mode: str = "static"
+    filter_criteria: Optional[dict] = None
     is_active: bool
     created_by: Optional[UUID] = None
     created_at: datetime

@@ -118,6 +118,9 @@ def _build_list_data_from_form(form) -> dict:
     l2_of = (form.get("l2_superset_of") or "").strip()
     data["l2_superset_of"] = l2_of if l2_of else None
 
+    # D1: Dynamic distribution lists
+    data["list_mode"] = (form.get("list_mode") or "static").strip()
+
     return data
 
 
@@ -144,6 +147,52 @@ def _get_member_count(list_id: str) -> int:
     return resp.count or 0
 
 
+def _resolve_dynamic_members(filter_criteria: dict) -> list[str]:
+    """Resolve person IDs matching filter criteria for a dynamic distribution list.
+
+    Reuses the grid service's filter application logic for the person entity.
+    feedback: [padelsbach] dynamic distribution lists auto-resolve membership
+    """
+    sb = get_supabase()
+    query = (
+        sb.table("people")
+        .select("id")
+        .eq("is_deleted", False)
+        .eq("do_not_contact", False)  # Always exclude DNC
+    )
+
+    # Apply text search
+    q = filter_criteria.get("q", "")
+    if q:
+        query = query.or_(f"first_name.ilike.%{q}%,last_name.ilike.%{q}%,email.ilike.%{q}%")
+
+    # Apply entity-specific filters
+    if filter_criteria.get("ac"):
+        query = query.contains("asset_classes_of_interest", [filter_criteria["ac"]])
+
+    # Apply column filters (cf_* keys)
+    for key, val in filter_criteria.items():
+        if not key.startswith("cf_"):
+            continue
+        field_name = key[3:]  # strip cf_ prefix
+        if ":" not in val:
+            continue
+        op, operand = val.split(":", 1)
+        if op == "contains":
+            query = query.ilike(field_name, f"%{operand}%")
+        elif op == "eq":
+            query = query.eq(field_name, operand)
+        elif op == "neq":
+            query = query.neq(field_name, operand)
+        elif op == "in":
+            values = [v.strip() for v in operand.split(",") if v.strip()]
+            if values:
+                query = query.in_(field_name, values)
+
+    resp = query.limit(5000).execute()
+    return [str(r["id"]) for r in (resp.data or [])]
+
+
 def _build_send_preview(list_id: str) -> dict:
     """Build a send preview with L2 superset inclusion and DNC/RFP Hold suppression.
 
@@ -164,15 +213,31 @@ def _build_send_preview(list_id: str) -> dict:
         return {"included": [], "excluded_dnc": [], "excluded_rfp_hold": [],
                 "total_members": 0, "sendable_count": 0, "l2_lists": [], "l2_member_count": 0}
 
-    # 2. Get direct active members
-    direct_resp = (
-        sb.table("distribution_list_members")
-        .select("person_id")
-        .eq("distribution_list_id", list_id)
-        .eq("is_active", True)
-        .execute()
-    )
-    person_ids = {m["person_id"] for m in (direct_resp.data or [])}
+    # 2. Get members — dynamic vs static
+    if target_list.get("list_mode") == "dynamic":
+        # Resolve dynamic members from filter criteria
+        dynamic_ids = set(_resolve_dynamic_members(target_list.get("filter_criteria", {})))
+        # Add manual members (explicitly added to dynamic list)
+        manual_resp = (
+            sb.table("distribution_list_members")
+            .select("person_id")
+            .eq("distribution_list_id", list_id)
+            .eq("is_active", True)
+            .eq("is_manual", True)
+            .execute()
+        )
+        manual_ids = {str(m["person_id"]) for m in (manual_resp.data or [])}
+        person_ids = dynamic_ids | manual_ids
+    else:
+        # Static list: get direct active members
+        direct_resp = (
+            sb.table("distribution_list_members")
+            .select("person_id")
+            .eq("distribution_list_id", list_id)
+            .eq("is_active", True)
+            .execute()
+        )
+        person_ids = {m["person_id"] for m in (direct_resp.data or [])}
 
     # 3. L2 superset inclusion: find L2 lists that reference this list (this list is L1)
     l2_lists_resp = (
@@ -551,6 +616,128 @@ async def list_distribution_lists(
         "lists": ctx["rows"],
     })
     return templates.TemplateResponse("distribution_lists/list.html", {"request": request, **ctx})
+
+
+# ---------------------------------------------------------------------------
+# FILTER EDITOR — GET /distribution-lists/{list_id}/filter-editor
+# feedback: [padelsbach] DL creation via people grid filtering
+# ---------------------------------------------------------------------------
+
+@router.get("/{list_id}/filter-editor", response_class=HTMLResponse)
+async def filter_editor(
+    request: Request,
+    list_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """HTMX partial: embedded people grid for defining dynamic list filter criteria."""
+    sb = get_supabase()
+    dist_list = (
+        sb.table("distribution_lists")
+        .select("*")
+        .eq("id", str(list_id))
+        .eq("is_active", True)
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if not dist_list:
+        raise HTTPException(status_code=404, detail="List not found")
+
+    if not _can_edit_list(dist_list, current_user):
+        return HTMLResponse('<p class="text-sm text-red-600">Permission denied.</p>')
+
+    # Pre-apply existing filter criteria as query params
+    extra_filters = {"dnc": "no"}  # Always exclude DNC
+    for k, v in (dist_list.get("filter_criteria") or {}).items():
+        extra_filters[k] = v
+
+    grid_ctx = build_grid_context(
+        entity_type="person",
+        request=request,
+        user=current_user,
+        base_url=f"/distribution-lists/{list_id}/filter-grid",
+        extra_filters=extra_filters,
+        grid_container_id_override="dl-filter-grid-container",
+    )
+
+    grid_ctx["request"] = request
+    grid_ctx["user"] = current_user
+    grid_ctx["list_id"] = str(list_id)
+    grid_ctx["dist_list"] = dist_list
+    grid_ctx["is_filter_editor"] = True
+
+    return templates.TemplateResponse("distribution_lists/_filter_editor.html", grid_ctx)
+
+
+@router.get("/{list_id}/filter-grid", response_class=HTMLResponse)
+async def filter_grid(
+    request: Request,
+    list_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """HTMX partial: handles pagination/sort/filter for the embedded people grid."""
+    grid_ctx = build_grid_context(
+        entity_type="person",
+        request=request,
+        user=current_user,
+        base_url=f"/distribution-lists/{list_id}/filter-grid",
+        extra_filters={"dnc": "no"},
+        grid_container_id_override="dl-filter-grid-container",
+    )
+
+    grid_ctx["request"] = request
+    grid_ctx["user"] = current_user
+    grid_ctx["list_id"] = str(list_id)
+    grid_ctx["is_filter_editor"] = True
+
+    return templates.TemplateResponse("components/_grid.html", grid_ctx)
+
+
+@router.post("/{list_id}/save-filters", response_class=HTMLResponse)
+async def save_list_filters(
+    request: Request,
+    list_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Save the current grid filter state as the distribution list's filter_criteria."""
+    sb = get_supabase()
+    dist_list = (
+        sb.table("distribution_lists")
+        .select("*")
+        .eq("id", str(list_id))
+        .eq("is_active", True)
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if not dist_list:
+        raise HTTPException(status_code=404, detail="List not found")
+    if not _can_edit_list(dist_list, current_user):
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    form = await request.form()
+    filters_str = form.get("filters", "{}")
+    try:
+        filter_criteria = json.loads(filters_str)
+    except json.JSONDecodeError:
+        filter_criteria = {}
+
+    # Strip internal keys
+    filter_criteria = {k: v for k, v in filter_criteria.items() if not k.startswith("_")}
+
+    sb.table("distribution_lists").update({
+        "filter_criteria": filter_criteria,
+        "list_mode": "dynamic",  # Saving filters makes it dynamic
+    }).eq("id", str(list_id)).execute()
+
+    # Resolve and show count
+    member_count = len(_resolve_dynamic_members(filter_criteria))
+
+    return HTMLResponse(
+        f'<div class="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">'
+        f'Filters saved. {member_count} people match the current criteria.'
+        f'</div>'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1118,10 +1305,11 @@ async def add_member(
     )
 
     # If targeted at a specific person row (table mode), return an "Added" row
+    # feedback: [padelsbach] trigger members list refresh when adding a member
     hx_target = request.headers.get("HX-Target", "")
     if hx_target.startswith("person-row-"):
         full_name = person["full_name"]
-        return HTMLResponse(
+        resp = HTMLResponse(
             f'<tr class="bg-green-50">'
             f'<td class="px-4 py-2.5 text-sm font-medium text-green-700">{full_name}</td>'
             f'<td colspan="3" class="px-4 py-2.5 text-sm text-green-600">'
@@ -1129,6 +1317,8 @@ async def add_member(
             f'Added to list</td>'
             f'</tr>'
         )
+        resp.headers["HX-Trigger"] = "membersUpdated"
+        return resp
 
     # Return updated members tab content
     return await _render_members_tab(request, str(list_id), current_user, dist_list)

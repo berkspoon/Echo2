@@ -10,8 +10,8 @@ from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
 from db.helpers import get_reference_data, log_field_change, audit_changes
-from db.field_service import get_field_definitions, enrich_field_definitions
-from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup
+from db.field_service import get_field_definitions, enrich_field_definitions, save_custom_values
+from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup, split_core_eav
 from services.grid_service import build_grid_context
 from dependencies import CurrentUser, get_current_user, require_role
 
@@ -491,6 +491,7 @@ async def new_activity_form(
         "activity_subtypes": [],
         "users": users_list,
         "funds": funds_resp.data or [],
+        "record": form_ctx["record"],
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
     }
@@ -660,6 +661,7 @@ async def create_activity(
             "activity_subtypes": subtypes,
             "users": users_list,
             "funds": funds_resp.data or [],
+            "record": form_ctx["record"],
             "sections": form_ctx["sections"],
             "field_defs": form_ctx["field_defs"],
         }
@@ -672,11 +674,16 @@ async def create_activity(
     activity_data["created_by"] = str(current_user.id)
 
     sb = get_supabase()
-    resp = sb.table("activities").insert(activity_data).execute()
+    core_data, eav_data = split_core_eav(activity_data, field_defs)
+    resp = sb.table("activities").insert(core_data).execute()
 
     if resp.data:
         new_activity = resp.data[0]
         activity_id = new_activity["id"]
+
+        # Save EAV custom field values
+        if eav_data:
+            save_custom_values("activity", str(activity_id), eav_data, field_defs)
 
         # Create org and person links
         _sync_activity_org_links(str(activity_id), org_ids)
@@ -765,6 +772,7 @@ async def edit_activity_form(
         "activity_subtypes": subtypes,
         "users": users_list,
         "funds": funds_resp.data or [],
+        "record": form_ctx["record"],
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
     }
@@ -854,6 +862,7 @@ async def update_activity(
             "activity_subtypes": subtypes,
             "users": users_list,
             "funds": funds_resp.data or [],
+            "record": form_ctx["record"],
             "sections": form_ctx["sections"],
             "field_defs": form_ctx["field_defs"],
         }
@@ -863,7 +872,10 @@ async def update_activity(
     audit_changes("activity", str(activity_id), old_activity, activity_data, current_user.id)
 
     # Update
-    sb.table("activities").update(activity_data).eq("id", str(activity_id)).execute()
+    core_data, eav_data = split_core_eav(activity_data, field_defs)
+    sb.table("activities").update(core_data).eq("id", str(activity_id)).execute()
+    if eav_data:
+        save_custom_values("activity", str(activity_id), eav_data, field_defs)
 
     # Sync links
     _sync_activity_org_links(str(activity_id), org_ids)

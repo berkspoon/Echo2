@@ -11,8 +11,8 @@ from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
 from db.helpers import get_reference_data, log_field_change, audit_changes, get_org_name, get_user_name
-from db.field_service import get_field_definitions, enrich_field_definitions
-from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup
+from db.field_service import get_field_definitions, enrich_field_definitions, save_custom_values
+from services.form_service import build_form_context, parse_form_data, validate_form_data, get_users_for_lookup, split_core_eav
 from dependencies import CurrentUser, get_current_user, require_role
 from services.grid_service import build_grid_context
 
@@ -634,6 +634,7 @@ async def edit_contract_form(
         "lead_summary": lead_summary,
         "service_types": get_reference_data("service_type"),
         "asset_classes": get_reference_data("asset_class"),
+        "record": form_ctx["record"],
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
         "errors": [],
@@ -699,6 +700,7 @@ async def update_contract(
             "lead_summary": lead_summary,
             "service_types": get_reference_data("service_type"),
             "asset_classes": get_reference_data("asset_class"),
+            "record": form_ctx["record"],
             "sections": form_ctx["sections"],
             "field_defs": form_ctx["field_defs"],
             "errors": errors,
@@ -709,7 +711,10 @@ async def update_contract(
     audit_changes("contract", str(contract_id), old_contract, update_data, current_user.id)
 
     # Update
-    sb.table("contracts").update(update_data).eq("id", str(contract_id)).execute()
+    core_data, eav_data = split_core_eav(update_data, field_defs)
+    sb.table("contracts").update(core_data).eq("id", str(contract_id)).execute()
+    if eav_data:
+        save_custom_values("contract", str(contract_id), eav_data, field_defs)
 
     return RedirectResponse(url=f"/contracts/{contract_id}", status_code=303)
 

@@ -4,7 +4,7 @@
 <div class="space-y-3">
     {% for item in pipeline_by_stage %}
     <div class="flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-md p-1 -m-1 transition-colors"
-         hx-get="/dashboards/advisory-pipeline/drilldown?dimension={{ group_by }}&value={{ item.key }}&service={{ filter_service }}&asset_class={{ filter_asset_class }}&owner={{ filter_owner }}&org_type={{ filter_org_type }}&from={{ filter_date_from }}&to={{ filter_date_to }}"
+         hx-get="/dashboards/advisory-pipeline/drilldown?dimension={{ group_by }}&value={{ item.key }}&service={{ filter_service }}&asset_class={{ filter_asset_class }}&owner={{ filter_owner }}&org_type={{ filter_org_type }}&from={{ filter_date_from }}&to={{ filter_date_to }}&active_filter={{ filter_active }}&stage={{ filter_stage }}"
          hx-target="#drilldown-panel"
          hx-swap="innerHTML">
         <div class="w-32 text-sm text-gray-600 truncate">{{ item.label }}</div>

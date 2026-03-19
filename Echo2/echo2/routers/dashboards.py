@@ -544,6 +544,24 @@ async def widget_stale_contacts(
 # ADVISORY PIPELINE — shared data loader
 # ---------------------------------------------------------------------------
 
+def _get_groupable_fields(entity_type: str = "lead") -> list[dict]:
+    """Return fields suitable for group-by in pipeline dashboards."""
+    from db.field_service import get_field_definitions
+    field_defs = get_field_definitions(entity_type, active_only=True)
+    groupable = []
+    for fd in field_defs:
+        if fd["field_type"] in ("dropdown", "multi_select"):
+            groupable.append({
+                "value": fd["field_name"],
+                "label": fd["display_name"],
+                "field_type": fd["field_type"],
+            })
+    # Always include non-dropdown groupings
+    groupable.append({"value": "owner", "label": "Owner", "field_type": "lookup"})
+    groupable.append({"value": "fund", "label": "Fund", "field_type": "lookup"})
+    return groupable
+
+
 def _load_advisory_leads(
     service: str = "",
     asset_class: str = "",
@@ -551,6 +569,8 @@ def _load_advisory_leads(
     org_type: str = "",
     date_from: str = "",
     date_to: str = "",
+    active_filter: str = "active",
+    stage: str = "",
 ) -> list[dict]:
     """Load advisory leads with filters. Returns list of lead dicts."""
     sb = get_supabase()
@@ -586,6 +606,18 @@ def _load_advisory_leads(
     all_leads = resp.data or []
     if asset_class:
         all_leads = [l for l in all_leads if asset_class in (l.get("asset_classes") or [])]
+
+    # Apply active/inactive filter
+    if active_filter == "active":
+        all_leads = [l for l in all_leads if l.get("rating") not in LEAD_INACTIVE_STAGES]
+    elif active_filter == "inactive":
+        all_leads = [l for l in all_leads if l.get("rating") in LEAD_INACTIVE_STAGES]
+    # "all" => no filtering
+
+    # Apply stage filter
+    if stage:
+        all_leads = [l for l in all_leads if l.get("rating") == stage]
+
     return all_leads
 
 
@@ -617,6 +649,11 @@ def _group_advisory_leads(all_leads: list[dict], group_by: str) -> list[dict]:
                    "bg-teal-400", "bg-yellow-400", "bg-orange-400", "bg-pink-400",
                    "bg-green-400", "bg-red-400", "bg-gray-400"]
 
+    # Detect if group_by is a multi_select field (for array expansion)
+    _groupable_cache = _get_groupable_fields("lead")
+    _groupable_map = {gf["value"]: gf for gf in _groupable_cache}
+    _is_multi_select = _groupable_map.get(group_by, {}).get("field_type") == "multi_select"
+
     for lead in all_leads:
         if group_by == "stage":
             key = lead.get("rating", "exploratory")
@@ -633,7 +670,15 @@ def _group_advisory_leads(all_leads: list[dict], group_by: str) -> list[dict]:
         elif group_by == "fund":
             key = str(lead.get("fund_id") or "none")
         else:
-            key = lead.get("rating", "exploratory")
+            # Generic field — handle multi_select arrays
+            raw_val = lead.get(group_by)
+            if _is_multi_select and isinstance(raw_val, list):
+                for mv in (raw_val or ["Unspecified"]):
+                    groups[str(mv)]["count"] += 1
+                    groups[str(mv)]["total_revenue"] += _safe_float(lead.get("expected_revenue"))
+                continue
+            else:
+                key = str(raw_val or "Unspecified")
         groups[key]["count"] += 1
         groups[key]["total_revenue"] += _safe_float(lead.get("expected_revenue"))
 
@@ -669,9 +714,14 @@ def _group_advisory_leads(all_leads: list[dict], group_by: str) -> list[dict]:
         ordered_keys = sorted(groups.keys(), key=lambda k: groups[k]["total_revenue"], reverse=True)
         color_map = {}
     else:
-        label_map = stage_labels
-        ordered_keys = sorted(groups.keys())
-        color_map = LEAD_STAGE_COLORS
+        # Generic field — try to resolve labels from reference_data
+        ref_data = get_reference_data(group_by)
+        if ref_data:
+            label_map = {r["value"]: r["label"] for r in ref_data}
+        else:
+            label_map = {}
+        ordered_keys = sorted(groups.keys(), key=lambda k: groups[k]["total_revenue"], reverse=True)
+        color_map = {}
 
     max_revenue = max((g["total_revenue"] for g in groups.values()), default=1) or 1
 
@@ -706,11 +756,13 @@ async def advisory_pipeline(
     org_type: str = Query("", alias="org_type"),
     date_from: str = Query("", alias="from"),
     date_to: str = Query("", alias="to"),
+    active_filter: str = Query("active", alias="active_filter"),
+    stage: str = Query("", alias="stage"),
 ):
     """Advisory Pipeline Dashboard with filters."""
     sb = get_supabase()
 
-    all_leads = _load_advisory_leads(service, asset_class, owner, org_type, date_from, date_to)
+    all_leads = _load_advisory_leads(service, asset_class, owner, org_type, date_from, date_to, active_filter, stage)
 
     # --- Aggregate ---
     stage_labels = {s["value"]: s["label"] for s in get_reference_data("lead_stage")}
@@ -806,9 +858,13 @@ async def advisory_pipeline(
     service_types = get_reference_data("service_type")
     asset_classes = get_reference_data("asset_class")
     org_types = get_reference_data("organization_type")
+    all_stages = get_reference_data("lead_stage")
     users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
 
     last_refreshed = datetime.now().strftime("%b %d, %Y %I:%M %p")
+
+    # C2: Dynamic groupable fields
+    groupable_fields = _get_groupable_fields("lead")
 
     context = {
         "request": request,
@@ -841,6 +897,7 @@ async def advisory_pipeline(
         "service_types": service_types,
         "asset_classes": asset_classes,
         "org_types": org_types,
+        "all_stages": all_stages,
         "users": users_resp.data or [],
         "filter_service": service,
         "filter_asset_class": asset_class,
@@ -848,6 +905,10 @@ async def advisory_pipeline(
         "filter_org_type": org_type,
         "filter_date_from": date_from,
         "filter_date_to": date_to,
+        "filter_active": active_filter,
+        "filter_stage": stage,
+        # C2: Dynamic group-by fields
+        "groupable_fields": groupable_fields,
     }
 
     if request.headers.get("HX-Request"):
@@ -870,9 +931,11 @@ async def advisory_pipeline_chart(
     org_type: str = Query("", alias="org_type"),
     date_from: str = Query("", alias="from"),
     date_to: str = Query("", alias="to"),
+    active_filter: str = Query("active", alias="active_filter"),
+    stage: str = Query("", alias="stage"),
 ):
     """HTMX partial: advisory pipeline chart grouped by selected dimension."""
-    all_leads = _load_advisory_leads(service, asset_class, owner, org_type, date_from, date_to)
+    all_leads = _load_advisory_leads(service, asset_class, owner, org_type, date_from, date_to, active_filter, stage)
     bars = _group_advisory_leads(all_leads, group_by)
 
     context = {
@@ -886,6 +949,8 @@ async def advisory_pipeline_chart(
         "filter_org_type": org_type,
         "filter_date_from": date_from,
         "filter_date_to": date_to,
+        "filter_active": active_filter,
+        "filter_stage": stage,
     }
     return templates.TemplateResponse("dashboards/_advisory_chart.html", context)
 
@@ -902,58 +967,75 @@ async def advisory_pipeline_drilldown(
     org_type: str = Query("", alias="org_type"),
     date_from: str = Query("", alias="from"),
     date_to: str = Query("", alias="to"),
+    active_filter: str = Query("active", alias="active_filter"),
+    stage: str = Query("", alias="stage"),
 ):
     """HTMX partial: drill-down table for a specific bar in advisory chart."""
-    all_leads = _load_advisory_leads(service, asset_class, owner, org_type, date_from, date_to)
+    # Build extra_filters from dashboard context
+    extra_filters = {"lead_type": "advisory"}
 
-    # Filter to matching leads based on dimension + value
-    if dimension == "stage":
-        filtered = [l for l in all_leads if l.get("rating", "exploratory") == value]
-    elif dimension == "service_type":
-        filtered = [l for l in all_leads if (l.get("service_type") or "unspecified") == value]
-    elif dimension == "asset_class":
-        filtered = [l for l in all_leads if value in (l.get("asset_classes") or [])]
-    elif dimension == "owner":
-        filtered = [l for l in all_leads if str(l.get("aksia_owner_id") or "unassigned") == value]
-    elif dimension == "fund":
-        filtered = [l for l in all_leads if str(l.get("fund_id") or "none") == value]
-    else:
-        filtered = all_leads
+    # Pre-load leads matching dashboard filters to get IDs
+    all_leads = _load_advisory_leads(service, asset_class, owner, org_type, date_from, date_to, active_filter, stage)
 
-    # Resolve org names and owner names
-    org_ids = list({str(l["organization_id"]) for l in filtered if l.get("organization_id")})
-    org_map = batch_resolve_orgs(org_ids)
-    owner_ids = list({str(l["aksia_owner_id"]) for l in filtered if l.get("aksia_owner_id")})
-    owner_names = batch_resolve_users(owner_ids)
-    stage_labels = {s["value"]: s["label"] for s in get_reference_data("lead_stage")}
+    # Filter to matching dimension+value
+    matching_leads = []
+    for lead in all_leads:
+        if dimension == "stage" and str(lead.get("rating", "")) == value:
+            matching_leads.append(lead)
+        elif dimension == "service_type" and str(lead.get("service_type", "")) == value:
+            matching_leads.append(lead)
+        elif dimension == "owner" and str(lead.get("aksia_owner_id", "")) == value:
+            matching_leads.append(lead)
+        elif dimension == "fund" and str(lead.get("fund_id", "")) == value:
+            matching_leads.append(lead)
+        elif dimension == "asset_class":
+            ac_list = lead.get("asset_classes") or []
+            if value in ac_list:
+                matching_leads.append(lead)
+        elif dimension not in ("stage", "service_type", "owner", "fund", "asset_class"):
+            # Generic field grouping
+            fval = lead.get(dimension)
+            if isinstance(fval, list):
+                if value in fval:
+                    matching_leads.append(lead)
+            elif str(fval or "") == value:
+                matching_leads.append(lead)
 
-    rows = []
-    for lead in filtered:
-        org_data = org_map.get(str(lead.get("organization_id", "")), {})
-        org_name = org_data.get("company_name", "Unknown") if isinstance(org_data, dict) else "Unknown"
-        rows.append({
-            "id": lead["id"],
-            "org_name": org_name,
-            "summary": lead.get("summary") or "—",
-            "stage": stage_labels.get(lead.get("rating", ""), lead.get("rating", "").replace("_", " ").title()),
-            "revenue_fmt": _fmt_currency(_safe_float(lead.get("expected_revenue"))),
-            "owner_name": owner_names.get(str(lead.get("aksia_owner_id", "")), "—"),
-        })
+    lead_ids = [str(l["id"]) for l in matching_leads]
+    extra_filters["_lead_ids"] = lead_ids if lead_ids else ["00000000-0000-0000-0000-000000000000"]
+
+    # Build drilldown base URL for HTMX reloads (preserves all dashboard context)
+    drilldown_params = f"dimension={dimension}&value={value}&service={service}&asset_class={asset_class}&owner={owner}&org_type={org_type}&from={date_from}&to={date_to}&active_filter={active_filter}&stage={stage}"
+    drilldown_base_url = f"/dashboards/advisory-pipeline/drilldown?{drilldown_params}"
+
+    from services.grid_service import build_grid_context
+    grid_ctx = build_grid_context(
+        entity_type="lead",
+        request=request,
+        user=current_user,
+        base_url=drilldown_base_url,
+        extra_filters=extra_filters,
+        grid_container_id_override="drilldown-lead-grid-container",
+    )
 
     # Build dimension label for display
     dim_labels = {
         "stage": "Stage", "service_type": "Service Type", "asset_class": "Asset Class",
         "owner": "Owner", "fund": "Fund",
     }
+    # Add dynamic field labels from groupable fields
+    for gf in _get_groupable_fields("lead"):
+        if gf["value"] not in dim_labels:
+            dim_labels[gf["value"]] = gf["label"]
 
-    context = {
-        "request": request,
-        "drilldown_rows": rows,
-        "drilldown_dimension": dim_labels.get(dimension, dimension),
-        "drilldown_value": value.replace("_", " ").title(),
-        "drilldown_count": len(rows),
-    }
-    return templates.TemplateResponse("dashboards/_advisory_drilldown.html", context)
+    # Add drilldown metadata
+    grid_ctx["drilldown_dimension"] = dim_labels.get(dimension, dimension.replace("_", " ").title())
+    grid_ctx["drilldown_value"] = value.replace("_", " ").title()
+    grid_ctx["is_drilldown"] = True
+    grid_ctx["request"] = request
+    grid_ctx["user"] = current_user
+
+    return templates.TemplateResponse("dashboards/_advisory_drilldown.html", grid_ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -1133,60 +1215,57 @@ async def capital_raise_drilldown(
     fund_ticker: str = Query("", alias="fund_ticker"),
 ):
     """HTMX partial: drill-down table for a specific bar in capital raise chart."""
+    # Build extra_filters from dashboard context
+    extra_filters = {"lead_type": "fundraise"}
+
+    # Pre-load prospects matching dashboard filters to get IDs
     prospects, funds, funds_by_id, current_fund = _load_capital_raise_prospects(
         fund_ticker if fund_ticker else None
     )
 
-    # Filter to matching prospects
+    # Filter to matching prospects based on dimension+value
+    matching_prospects = []
     if dimension == "stage":
-        filtered = [fp for fp in prospects if fp.get("stage", "target_identified") == value]
+        matching_prospects = [fp for fp in prospects if fp.get("stage", "target_identified") == value]
     elif dimension == "lp_type":
         org_ids = list({str(fp["organization_id"]) for fp in prospects if fp.get("organization_id")})
         org_map = batch_resolve_orgs(org_ids)
-        filtered = []
         for fp in prospects:
             org_data = org_map.get(str(fp.get("organization_id", "")), {})
             ot = org_data.get("organization_type", "unknown") if isinstance(org_data, dict) else "unknown"
             if ot == value:
-                filtered.append(fp)
+                matching_prospects.append(fp)
     elif dimension == "fund":
-        filtered = [fp for fp in prospects if str(fp.get("fund_id") or "none") == value]
+        matching_prospects = [fp for fp in prospects if str(fp.get("fund_id") or "none") == value]
     else:
-        filtered = prospects
+        matching_prospects = prospects
 
-    # Resolve names
-    org_ids = list({str(fp["organization_id"]) for fp in filtered if fp.get("organization_id")})
-    org_map = batch_resolve_orgs(org_ids)
-    all_stages = get_reference_data("lead_stage")
-    fundraise_stages = [s for s in all_stages if s.get("parent_value") == "fundraise"]
-    stage_labels = {s["value"]: s["label"] for s in fundraise_stages}
+    lead_ids = [str(fp["id"]) for fp in matching_prospects]
+    extra_filters["_lead_ids"] = lead_ids if lead_ids else ["00000000-0000-0000-0000-000000000000"]
 
-    rows = []
-    for fp in filtered:
-        org_data = org_map.get(str(fp.get("organization_id", "")), {})
-        org_name = org_data.get("company_name", "Unknown") if isinstance(org_data, dict) else "Unknown"
-        fund_data = funds_by_id.get(str(fp.get("fund_id", "")), {})
-        rows.append({
-            "id": fp["id"],
-            "org_name": org_name,
-            "summary": fp.get("summary") or "—",
-            "stage": stage_labels.get(fp.get("stage", ""), fp.get("stage", "").replace("_", " ").title()),
-            "fund_ticker": fund_data.get("ticker", "?"),
-            "allocation_fmt": _fmt_mn(_safe_float(fp.get("target_allocation_mn"))),
-            "soft_fmt": _fmt_mn(_safe_float(fp.get("soft_circle_mn"))),
-            "hard_fmt": _fmt_mn(_safe_float(fp.get("hard_circle_mn"))),
-        })
+    # Build drilldown base URL for HTMX reloads (preserves all dashboard context)
+    drilldown_params = f"dimension={dimension}&value={value}&fund_ticker={fund_ticker}"
+    drilldown_base_url = f"/dashboards/capital-raise/drilldown?{drilldown_params}"
 
+    from services.grid_service import build_grid_context
+    grid_ctx = build_grid_context(
+        entity_type="lead",
+        request=request,
+        user=current_user,
+        base_url=drilldown_base_url,
+        extra_filters=extra_filters,
+        grid_container_id_override="drilldown-fundraise-grid-container",
+    )
+
+    # Add drilldown metadata
     dim_labels = {"stage": "Stage", "lp_type": "LP Type", "fund": "Fund"}
+    grid_ctx["drilldown_dimension"] = dim_labels.get(dimension, dimension.replace("_", " ").title())
+    grid_ctx["drilldown_value"] = value.replace("_", " ").title()
+    grid_ctx["is_drilldown"] = True
+    grid_ctx["request"] = request
+    grid_ctx["user"] = current_user
 
-    context = {
-        "request": request,
-        "drilldown_rows": rows,
-        "drilldown_dimension": dim_labels.get(dimension, dimension),
-        "drilldown_value": value.replace("_", " ").title(),
-        "drilldown_count": len(rows),
-    }
-    return templates.TemplateResponse("dashboards/_capital_raise_drilldown.html", context)
+    return templates.TemplateResponse("dashboards/_capital_raise_drilldown.html", grid_ctx)
 
 
 @router.get("/capital-raise/{fund_ticker}", response_class=HTMLResponse)

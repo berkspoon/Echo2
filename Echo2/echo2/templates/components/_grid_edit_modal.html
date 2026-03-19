@@ -1,0 +1,48 @@
+{# Pop-up row editor for grid inline editing #}
+{# feedback: [padelsbach] quick edit without navigating away from grid #}
+{% from "components/_field_renderer.html" import render_field %}
+
+<div id="grid-edit-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+     onclick="if(event.target===this) this.remove()">
+  <div class="bg-white rounded-lg shadow-xl w-[40rem] max-h-[80vh] overflow-y-auto" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+      <h3 class="text-lg font-semibold text-gray-900">
+        Edit {{ entity_type | replace('_', ' ') | title }}
+      </h3>
+      <button onclick="document.getElementById('grid-edit-modal').remove()"
+              class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    </div>
+
+    {% if errors %}
+    <div class="mx-6 mt-4 bg-red-50 border border-red-200 rounded-lg p-3">
+      {% for e in errors %}
+      <p class="text-sm text-red-700">{{ e }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <form hx-post="/views/grid-edit/{{ entity_type }}/{{ record_id }}"
+          hx-target="#grid-edit-modal"
+          hx-swap="outerHTML"
+          class="p-6">
+      <div class="space-y-4">
+        {% for fd in field_defs %}
+          {{ render_field(fd, record, users) }}
+        {% endfor %}
+      </div>
+
+      <p class="mt-4 text-xs text-gray-400">For linked records and advanced editing, use the full edit page.</p>
+
+      <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
+        <button type="button" onclick="document.getElementById('grid-edit-modal').remove()"
+                class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+          Cancel
+        </button>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+          Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

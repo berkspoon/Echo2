@@ -1,0 +1,1986 @@
+WEBVTT
+
+1
+00:00:00.120 --> 00:00:01.180
+Miles Greenspoon: Hey, Ed.
+
+2
+00:00:02.750 --> 00:00:04.010
+Patrick Adelsbach: Hey, Miles.
+
+3
+00:00:04.019 --> 00:00:04.879
+Miles Greenspoon: How you doing?
+
+4
+00:00:05.140 --> 00:00:06.559
+Patrick Adelsbach: I'm good, how was the weekend?
+
+5
+00:00:06.820 --> 00:00:08.420
+Miles Greenspoon: Amazing.
+
+6
+00:00:09.080 --> 00:00:23.640
+Miles Greenspoon: My, I think my wife might kill me, but it's also… I… we're, separate from all of this. We have a… we have a friend that came into town yesterday who's moving to the area, in a couple months, so he's here closing on a house.
+
+7
+00:00:23.790 --> 00:00:30.470
+Miles Greenspoon: And he just happens to be a product manager who's, like, also very into Cloud Code, so…
+
+8
+00:00:30.840 --> 00:00:41.669
+Miles Greenspoon: My… my wife went to bed around, like, 9.30, and we're like, okay, we're gonna stay up vibe coding, and then spent another hour and a half
+
+9
+00:00:41.850 --> 00:00:55.149
+Miles Greenspoon: And he's here for a couple of days. My wife has to work tonight, so we're like, alright, she's, she's like, you can continue vibecoding without bothering me, so it's perfect. Let me show you a couple of the cool, cool things that we did here. So…
+
+10
+00:00:55.480 --> 00:01:01.589
+Miles Greenspoon: For something like organizations, not fully redid, but now everything is filterable.
+
+11
+00:01:01.830 --> 00:01:09.600
+Miles Greenspoon: We can, like, redefine it. If you go into columns, you can, like, let's say we want to add city, great.
+
+12
+00:01:09.600 --> 00:01:10.140
+Patrick Adelsbach: Yep.
+
+13
+00:01:10.140 --> 00:01:26.200
+Miles Greenspoon: But, you know, it doesn't make sense to have Citi over here. You can move city up to a below country and reapply it. Now, let's say that you want to only see prospects, and let's say you want to only see prospects above $25 billion.
+
+14
+00:01:27.010 --> 00:01:35.780
+Miles Greenspoon: You can apply this filter. Great. You can save it as a screener and say, prospects above $25 billion.
+
+15
+00:01:36.720 --> 00:01:54.259
+Miles Greenspoon: Boom, it's saved there, and it automatically, for whatever reason, like, goes back to your default view and gets rid of the other things, but you can see, if you press prospects above $25 billion, it takes you to these with the saved columns back. You can see Citi right here, too. So, that's always here.
+
+16
+00:01:54.260 --> 00:01:57.740
+Miles Greenspoon: Similar to something like Leeds, right? I actually.
+
+17
+00:01:57.740 --> 00:01:58.140
+Patrick Adelsbach: Interesting.
+
+18
+00:01:58.140 --> 00:02:16.249
+Miles Greenspoon: this, you know, it shows you your kind of default view, but let's say you want to see every lead in which David Chan is the owner before January 1st, 2026, immediately pops up, and I also added the summary thing here, too. So,
+
+19
+00:02:16.530 --> 00:02:27.670
+Miles Greenspoon: Like, all… basically, those seem to be the biggest things. And then if you go into the admin portal, you can see here, you can define every single user and assign different roles.
+
+20
+00:02:27.760 --> 00:02:43.460
+Miles Greenspoon: What are the roles? You can create new roles here, and if you, like, go to create the roles, it can tell you exactly what it is that they're able to do and show you the admin permissions. And, like, we can assign, like, new entities and also here.
+
+21
+00:02:43.800 --> 00:02:59.270
+Miles Greenspoon: For fields, you can add custom fields to any of the different entity types and group it into any of the different pieces of information. Note that I have not, like, tested every single part of these to make sure that it works.
+
+22
+00:02:59.270 --> 00:03:07.790
+Miles Greenspoon: But, like, at the very least, the functionality is here, and we can, like, go through and, like, test and find edge cases.
+
+23
+00:03:07.790 --> 00:03:12.700
+Patrick Adelsbach: So what we've got there, we've got… okay, so we've got the… grant categories.
+
+24
+00:03:12.700 --> 00:03:13.120
+Miles Greenspoon: Yes.
+
+25
+00:03:13.120 --> 00:03:19.679
+Patrick Adelsbach: And then you've got, also, within each of those, you have people. I mean, you have fields, and then the fields have attributes.
+
+26
+00:03:19.680 --> 00:03:20.520
+Miles Greenspoon: Exactly.
+
+27
+00:03:20.750 --> 00:03:21.269
+Miles Greenspoon: So click.
+
+28
+00:03:21.270 --> 00:03:24.889
+Patrick Adelsbach: Click into a… click it, click in, like, do a new, do a new field.
+
+29
+00:03:24.930 --> 00:03:36.910
+Miles Greenspoon: Okay, so let's go with organization, right? So, when we add a custom field to organization, or actually, you know what, like, this is a fun one that I tried to do. Let's just… let's just say we wanted to categorize everyone's height, right?
+
+30
+00:03:36.910 --> 00:03:37.240
+Patrick Adelsbach: Okay.
+
+31
+00:03:37.290 --> 00:03:52.750
+Miles Greenspoon: And so, we wanted to put it in basic information, and create field. So, now we have height as someone's field, and within person, within people. So then we go to people.
+
+32
+00:03:52.880 --> 00:03:55.870
+Miles Greenspoon: Good ol' Sarah Anderson.
+
+33
+00:03:55.910 --> 00:04:14.470
+Miles Greenspoon: It doesn't show up here, but then if we go to here, interesting, it actually should show up here. So, I'm going to say that an action item is making sure that the fields that we put into the new fields show up as editable and basic information.
+
+34
+00:04:14.670 --> 00:04:26.249
+Miles Greenspoon: Or on the screener, and also… oh, but it does show up on the, on the table, so we know that it's recorded in the system.
+
+35
+00:04:26.300 --> 00:04:35.300
+Miles Greenspoon: It's just, for whatever reason, not showing up as an editable field in the basic info… on the edit piece.
+
+36
+00:04:35.470 --> 00:04:36.680
+Patrick Adelsbach: Can you go back to the field again?
+
+37
+00:04:36.680 --> 00:04:37.250
+Miles Greenspoon: Yeah.
+
+38
+00:04:38.860 --> 00:04:39.420
+Patrick Adelsbach: in…
+
+39
+00:04:39.500 --> 00:04:42.079
+Miles Greenspoon: There, too, so if you go to the person, you can see.
+
+40
+00:04:42.080 --> 00:04:50.060
+Patrick Adelsbach: Okay, so click edit, I want to see the options you have when you're creating a field. So, field type, text, what are the different types you have so far?
+
+41
+00:04:50.370 --> 00:04:59.939
+Miles Greenspoon: I don't know what the difference between text and text area is, but number, currency, date, yes, no, dropdown, multi-select, email, URL, phone, and lookup.
+
+42
+00:04:59.940 --> 00:05:02.630
+Patrick Adelsbach: Put in phone, I'm curious to see how old I…
+
+43
+00:05:03.050 --> 00:05:07.760
+Patrick Adelsbach: how well it does that for… I wonder if it masks it correctly for, like, international codes and stuff.
+
+44
+00:05:07.910 --> 00:05:09.000
+Miles Greenspoon: So, then.
+
+45
+00:05:09.000 --> 00:05:12.080
+Patrick Adelsbach: Oh, yeah, it's not showing up, so you don't know, because it's not showing up in the…
+
+46
+00:05:12.080 --> 00:05:24.719
+Miles Greenspoon: But what that does do, actually, is if you, look at the height field here, it does make a difference as to what the,
+
+47
+00:05:24.980 --> 00:05:34.290
+Miles Greenspoon: what the filter is. So I guess a bit… a better example for that, is, like, I guess, like, because phone here.
+
+48
+00:05:34.740 --> 00:05:41.109
+Miles Greenspoon: Interesting. I mean, well, I did not, like, define every individual filter, but…
+
+49
+00:05:41.620 --> 00:05:58.849
+Miles Greenspoon: Like, you know, the Boolean ones are, like, very simple, yes or no, the multi-select ones, like, the type of filter does tell you what the, like, the type of value does tell you what the, what, like, provides logic for the filters itself.
+
+50
+00:05:59.230 --> 00:06:01.289
+Miles Greenspoon: So we have that.
+
+51
+00:06:01.610 --> 00:06:06.909
+Patrick Adelsbach: Yeah. Cool. Go back to the field again, just a couple of things in there, go back to height.
+
+52
+00:06:09.430 --> 00:06:16.680
+Patrick Adelsbach: Okay… Storage type, good, it's hard-coded.
+
+53
+00:06:17.030 --> 00:06:29.970
+Miles Greenspoon: Yep. And there is… there is a hard code… sorry, so once a field is in there, you can't change it, but, if you go to, like, add a custom field, you can make it a core call.
+
+54
+00:06:29.970 --> 00:06:33.439
+Patrick Adelsbach: That's perfect, that's how it should be. You shouldn't be able to manually change it if you'll fuck things up.
+
+55
+00:06:33.440 --> 00:06:34.310
+Miles Greenspoon: Exactly.
+
+56
+00:06:34.500 --> 00:06:42.920
+Patrick Adelsbach: Required fee… if it's a required field, selection… what is selection? Oh, section, section, basic information. And we can…
+
+57
+00:06:42.920 --> 00:06:44.950
+Miles Greenspoon: create new sections, too.
+
+58
+00:06:44.950 --> 00:06:47.060
+Patrick Adelsbach: question, you can create new sections, okay?
+
+59
+00:06:47.230 --> 00:06:47.580
+Miles Greenspoon: Yep.
+
+60
+00:06:47.580 --> 00:06:49.650
+Patrick Adelsbach: And then go to the fields again.
+
+61
+00:06:52.400 --> 00:06:53.880
+Patrick Adelsbach: How do you create new sections?
+
+62
+00:06:54.610 --> 00:07:00.489
+Miles Greenspoon: You… that's a great question. I believe it might be on layouts.
+
+63
+00:07:00.810 --> 00:07:03.259
+Patrick Adelsbach: Oh, that would make sense, actually.
+
+64
+00:07:03.410 --> 00:07:06.030
+Miles Greenspoon: Or no layouts defined per person.
+
+65
+00:07:06.690 --> 00:07:10.280
+Miles Greenspoon: Edit… right, you can add a section, too.
+
+66
+00:07:10.550 --> 00:07:11.250
+Miles Greenspoon: Okay.
+
+67
+00:07:11.250 --> 00:07:17.009
+Patrick Adelsbach: There's a disconnect there right now, right? Like, there should be… if there's sections there, then there should be the lay… there should be a layout?
+
+68
+00:07:17.560 --> 00:07:22.000
+Miles Greenspoon: Yes, I, right, there should be a default layout, and then…
+
+69
+00:07:22.380 --> 00:07:24.529
+Patrick Adelsbach: And that should correspond with the sections that are there, right?
+
+70
+00:07:24.530 --> 00:07:29.000
+Miles Greenspoon: Yes. Okay, so action to develop default layouts based on the sections.
+
+71
+00:07:30.020 --> 00:07:33.990
+Patrick Adelsbach: I like this, but the question is, down the line, do you think you'll want to have multiple
+
+72
+00:07:34.110 --> 00:07:36.680
+Patrick Adelsbach: Layouts for the same entity type.
+
+73
+00:07:37.860 --> 00:07:39.370
+Miles Greenspoon: You can. I don't, like…
+
+74
+00:07:39.370 --> 00:07:48.629
+Patrick Adelsbach: If you're doing that, then I wouldn't put them in feed… I wouldn't put them in sections on the field page, I'd only put them in section… the field page, I'd be agnostic to section.
+
+75
+00:07:48.880 --> 00:07:49.630
+Miles Greenspoon: Sure.
+
+76
+00:07:49.810 --> 00:07:52.340
+Patrick Adelsbach: Just to… I… just so then…
+
+77
+00:07:52.950 --> 00:07:58.100
+Patrick Adelsbach: Yeah, because otherwise you're then… you're kind of hard-coding them into a section now where you might want to have multiple layouts.
+
+78
+00:07:58.100 --> 00:08:11.259
+Miles Greenspoon: Right, that makes sense. So, something that we can do right now, just so you know, is you said, oh, the entirety of, like, the types of leads are changing, right? Yeah. So, we could… well, I guess, interesting, these are…
+
+79
+00:08:11.790 --> 00:08:20.370
+Miles Greenspoon: you know, this… oh, oh, right, because this is only for focus, but if you go to…
+
+80
+00:08:23.440 --> 00:08:26.910
+Miles Greenspoon: Right, there's… there's one… there is some…
+
+81
+00:08:27.450 --> 00:08:33.490
+Miles Greenspoon: Disconnect here, because these are, you know, we want to be able to change
+
+82
+00:08:34.360 --> 00:08:46.350
+Miles Greenspoon: the field… the, like, radar. Like, these are… basically what's happening here is that, like, if something is focused, then you could, you know, all these other ones pop up. But we want to be able to change
+
+83
+00:08:46.520 --> 00:08:47.370
+Miles Greenspoon: the…
+
+84
+00:08:47.370 --> 00:08:48.660
+Patrick Adelsbach: No, I would do that.
+
+85
+00:08:48.660 --> 00:08:49.390
+Miles Greenspoon: lead time?
+
+86
+00:08:49.390 --> 00:08:58.870
+Patrick Adelsbach: I think on there, all I would do is, again, you get rid of the sections, and simply, if something is at the field level, when you're editing the field, you simply say, is this
+
+87
+00:08:59.120 --> 00:09:05.310
+Patrick Adelsbach: contingent on something else, and you just store that information at the field level, you don't have to view it in that aggregate part, right?
+
+88
+00:09:05.310 --> 00:09:05.690
+Miles Greenspoon: Right.
+
+89
+00:09:05.690 --> 00:09:14.590
+Patrick Adelsbach: So what… So right here is where you'd say, you know, like, something along the lines of, Do you…
+
+90
+00:09:14.790 --> 00:09:24.469
+Patrick Adelsbach: is it always view… is it always available, or is it only… is it… do you only see it if something else is… if there's some other action, right? If some… if a previous field
+
+91
+00:09:24.640 --> 00:09:28.139
+Patrick Adelsbach: has a certain value Right? Rating equals focus.
+
+92
+00:09:28.140 --> 00:09:31.029
+Miles Greenspoon: So, like, depended on something. Yeah. Okay.
+
+93
+00:09:31.030 --> 00:09:36.649
+Patrick Adelsbach: And it's gonna be a little bit of… and that's gonna be a little bit complicated, because it's gonna be… it's dependent on one field having a certain value, right?
+
+94
+00:09:36.650 --> 00:09:37.220
+Miles Greenspoon: Right.
+
+95
+00:09:37.540 --> 00:09:39.270
+Patrick Adelsbach: Or multiple fields having different values, yeah.
+
+96
+00:09:39.270 --> 00:09:39.840
+Miles Greenspoon: Right.
+
+97
+00:09:40.050 --> 00:09:46.290
+Miles Greenspoon: That makes sense. Okay, so there's… there's a little bit of work that we need to do on,
+
+98
+00:09:47.350 --> 00:09:51.910
+Miles Greenspoon: on, kind of, defining the EAB pieces.
+
+99
+00:09:52.270 --> 00:09:55.649
+Miles Greenspoon: If I'm understanding correctly.
+
+100
+00:09:55.650 --> 00:09:58.779
+Patrick Adelsbach: That's not even EAV piece, actually. That's just in general.
+
+101
+00:09:58.780 --> 00:09:59.390
+Miles Greenspoon: Okay.
+
+102
+00:09:59.770 --> 00:10:10.639
+Patrick Adelsbach: I think, right? I would just make it a general, like, you could have, theoretically, you could have a field that somebody put in as a column that you want to hide, right? Like, probably wouldn't, but, like, there's no reason to hardcode that again… hardcode that away.
+
+103
+00:10:10.810 --> 00:10:13.040
+Miles Greenspoon: Right. Okay. That makes sense.
+
+104
+00:10:13.370 --> 00:10:17.460
+Patrick Adelsbach: And the question also, do we want to put in something that's required
+
+105
+00:10:17.860 --> 00:10:24.279
+Patrick Adelsbach: based on criteria as well, right? Because you say, this is viewable based on these criteria, it's required based on these criteria.
+
+106
+00:10:24.480 --> 00:10:24.840
+Miles Greenspoon: Right.
+
+107
+00:10:24.840 --> 00:10:36.119
+Patrick Adelsbach: Right? If… if… if something goes to focus, then a new field is required. You may not want to do that, you might… what we've found in the echo is when we…
+
+108
+00:10:36.470 --> 00:10:41.679
+Patrick Adelsbach: We want to have as few required fields as possible, because it messes up the screener.
+
+109
+00:10:42.100 --> 00:10:52.599
+Patrick Adelsbach: Because if you change… in the editable screen, if you change a value, then all of a sudden you have additional required fields, which makes the editable screener messy. So, you should do this, at the very least, do a,
+
+110
+00:10:52.850 --> 00:10:56.149
+Patrick Adelsbach: Do the same thing we just talked about with just suggested fields, right?
+
+111
+00:10:56.460 --> 00:10:56.990
+Miles Greenspoon: Great.
+
+112
+00:10:57.190 --> 00:11:15.309
+Patrick Adelsbach: So, if a field equals a certain value, then it becomes visible or invisible, and if a field has a certain value, then it becomes suggested or not suggested, right? And then maybe required is, you know, we could just hardcode that in so it doesn't mess up the screeners, right? It has to be… a field's either required or not required.
+
+113
+00:11:15.760 --> 00:11:18.280
+Miles Greenspoon: That makes sense. Okay. Yeah.
+
+114
+00:11:18.620 --> 00:11:19.080
+Patrick Adelsbach: Yeah.
+
+115
+00:11:19.080 --> 00:11:23.509
+Miles Greenspoon: reread the transcript to make sure I'm fully, fully understanding you, and figure it out, but…
+
+116
+00:11:23.510 --> 00:11:32.910
+Patrick Adelsbach: I can always, you know, get on the phone with you when the time is right. Yeah, at some point, it'll be so easy, you could just reorganize the screen to see more information and columns. Exactly.
+
+117
+00:11:33.170 --> 00:11:40.259
+Miles Greenspoon: Plus, the other piece is that, like, the, you know, info alerts, right? Like, if there's a… we can, you know.
+
+118
+00:11:40.280 --> 00:11:46.359
+Miles Greenspoon: We can categorize… we can add this as a… as a,
+
+119
+00:11:46.360 --> 00:12:05.260
+Miles Greenspoon: I don't know if it was a screener or, you know, a full section of, like, a cleanup section, and it can be, you know, anything missing any piece, and it can be, like, lead… focus leads missing, you know, the suggested sections or something like that. So, that's easy enough.
+
+120
+00:12:05.270 --> 00:12:11.850
+Miles Greenspoon: A couple other pieces that we did… well, so, again, we combined.
+
+121
+00:12:11.850 --> 00:12:13.499
+Patrick Adelsbach: Are activities working?
+
+122
+00:12:13.700 --> 00:12:14.320
+Miles Greenspoon: Yep.
+
+123
+00:12:14.920 --> 00:12:17.450
+Miles Greenspoon: Activity's working great.
+
+124
+00:12:17.940 --> 00:12:25.770
+Miles Greenspoon: And so, you can… like, the screener doesn't really matter for this, but the, oh, you know what, actually, you might be able to…
+
+125
+00:12:26.060 --> 00:12:41.339
+Miles Greenspoon: Yeah, so you can see all activities that require a follow-up, would like… and this is just my activities, so, if you were to, like… I mean, this is already kind of on the page, but you can do this, and then…
+
+126
+00:12:43.340 --> 00:12:49.300
+Miles Greenspoon: You know, show the follow-up notes for each of them, so if you just wanted to, you know, pull a… pull a bunch of…
+
+127
+00:12:50.470 --> 00:12:57.539
+Miles Greenspoon: ideas here, error-punch things here. If you wanted to add a new activity, let's say you met with Sarah.
+
+128
+00:12:57.640 --> 00:13:09.530
+Miles Greenspoon: Right? And, you know, again, it automatically does this. Title activity is blah. It happened yesterday.
+
+129
+00:13:10.560 --> 00:13:18.699
+Miles Greenspoon: I, like, you're, like, I have access to this, you can say that I had a call, because who has a meeting on a Sunday?
+
+130
+00:13:20.710 --> 00:13:29.850
+Miles Greenspoon: Hello, test, put follow-up required. This is the cool thing, that you can auto-assign it to, other people now, too. I think that we talked about.
+
+131
+00:13:29.850 --> 00:13:30.410
+Patrick Adelsbach: Wow.
+
+132
+00:13:30.410 --> 00:13:35.719
+Miles Greenspoon: But, like, Maria, like, thumbs up, you know,
+
+133
+00:13:36.250 --> 00:13:47.750
+Miles Greenspoon: get coffee this week. So now, if you're in, you know, they're an APC person, right? So now, if you go to tasks.
+
+134
+00:13:48.150 --> 00:13:56.179
+Miles Greenspoon: And you fill… assign it, to Maria, you show all of Maria's… Interesting that it did not…
+
+135
+00:13:56.180 --> 00:13:57.219
+Patrick Adelsbach: Because you're in my tasks.
+
+136
+00:13:57.890 --> 00:13:59.679
+Patrick Adelsbach: Maria's not… you're not Maria.
+
+137
+00:13:59.680 --> 00:14:02.709
+Miles Greenspoon: You're absolutely right. I'm not Maria.
+
+138
+00:14:04.360 --> 00:14:07.030
+Patrick Adelsbach: So it worked. Nice.
+
+139
+00:14:07.800 --> 00:14:13.180
+Miles Greenspoon: And you… pool, the due date… well…
+
+140
+00:14:15.550 --> 00:14:20.150
+Miles Greenspoon: Yeah, you'll see that they get coffee next week.
+
+141
+00:14:20.460 --> 00:14:23.820
+Miles Greenspoon: Should appear for, yeah, the follow-up here.
+
+142
+00:14:24.250 --> 00:14:28.080
+Miles Greenspoon: So… Yeah, it's.
+
+143
+00:14:28.540 --> 00:14:32.140
+Patrick Adelsbach: This screen, do you have the ability… can you drag… can you, resize columns here?
+
+144
+00:14:32.710 --> 00:14:33.540
+Miles Greenspoon: No.
+
+145
+00:14:33.720 --> 00:14:34.620
+Patrick Adelsbach: Can you add that?
+
+146
+00:14:34.620 --> 00:14:39.359
+Miles Greenspoon: Okay, yeah. Action to be able to resize columns as needed.
+
+147
+00:14:39.530 --> 00:14:42.510
+Miles Greenspoon: I guess, right, because it just shows the full…
+
+148
+00:14:42.630 --> 00:14:46.779
+Miles Greenspoon: Well, not even, it shows even more than necessary on here, unless…
+
+149
+00:14:46.780 --> 00:14:47.930
+Patrick Adelsbach: you,
+
+150
+00:14:48.170 --> 00:14:54.620
+Patrick Adelsbach: Have you tried to do the editable grid yet? Are you kind of on a page like this and you edit it today?
+
+151
+00:14:54.620 --> 00:15:02.780
+Miles Greenspoon: Yeah, it is not… I don't know if I tried it, tried it, like, the…
+
+152
+00:15:03.870 --> 00:15:08.729
+Miles Greenspoon: I think that… I wonder how…
+
+153
+00:15:09.380 --> 00:15:26.959
+Miles Greenspoon: much better that would be than having, like, an independent edit button. Like, it is just one extra click for each thing that needs to be edited, and if we're saying that we have this, you know, area that, like, shows you every individual thing that needs… that is missing.
+
+154
+00:15:27.270 --> 00:15:39.580
+Patrick Adelsbach: If it's super fast to pop up instead of an edit, like, you can do it, especially if you're creating the ability to have different input screens, right? Right. It could basically access a small input screen
+
+155
+00:15:39.730 --> 00:15:42.899
+Patrick Adelsbach: That could pop up, as opposed to completely refreshing the page.
+
+156
+00:15:43.050 --> 00:15:45.110
+Patrick Adelsbach: That would be…
+
+157
+00:15:45.110 --> 00:15:54.310
+Miles Greenspoon: So, let's say, right, that you, like, you know everything that needs to be edited. So, let's say people, for example, right, and let's add…
+
+158
+00:15:54.610 --> 00:16:09.170
+Miles Greenspoon: Oh, so one thing that I want to do also, an action to… in the people column, or in the people screener, have, the ability to, add, like, linked organization, to the columns.
+
+159
+00:16:09.300 --> 00:16:17.589
+Miles Greenspoon: So let's say, right, like, in the linked organizational pieces, but let's say, for example, that you know that you want to…
+
+160
+00:16:17.950 --> 00:16:24.400
+Miles Greenspoon: That you want to filter all, like, I don't know…
+
+161
+00:16:24.540 --> 00:16:35.840
+Miles Greenspoon: I'm trying to think of something that would need basically, like, an edit all function, right, for everything that pops up, so you can, like, filter down that way. Is that what you're talking about?
+
+162
+00:16:36.170 --> 00:16:37.809
+Patrick Adelsbach: Right, can't re-say that again?
+
+163
+00:16:37.870 --> 00:16:51.669
+Miles Greenspoon: Sorry, so, like, what I'm understanding, rather than an editable where you, like, click in to this thing and it pops up, are you saying, like, click into edit here and it pops up, like, a mini edit… mini-edit thing? Or are you saying…
+
+164
+00:16:51.670 --> 00:17:03.119
+Patrick Adelsbach: Yeah, with only… first of all, actually, before you did that, what do you see as the challenge? I mean, I'm totally fine giving up on the editable grid, but what is… have you specifically run into issues with that?
+
+165
+00:17:03.120 --> 00:17:11.110
+Miles Greenspoon: I think that then the issue becomes what you click on where is so, like, different on the…
+
+166
+00:17:11.119 --> 00:17:29.960
+Miles Greenspoon: Like, because I would imagine that the best part about this, right, is that then you see, and you can, like, click into this, and it pulls up that, their, you know, their page. Unless there is, you know, an edit functionality, which can be, like, I'm not, I'm not against it, right? Where,
+
+167
+00:17:30.360 --> 00:17:38.990
+Miles Greenspoon: you open this page as it is, you press edit, and then all these things become editable? Is that what you're meant… is that.
+
+168
+00:17:38.990 --> 00:17:45.189
+Patrick Adelsbach: That's what I'm talking about. Yeah, I would definitely… I wouldn't get rid of the view page. I think that is the best place to land.
+
+169
+00:17:45.190 --> 00:17:45.810
+Miles Greenspoon: misunderstood.
+
+170
+00:17:45.810 --> 00:17:57.099
+Patrick Adelsbach: If you want to… if you want to edit, you could do two versions. Either you could click an edit button and it just becomes an Excel grid, right? Or you, on each individual line, you click an edit button.
+
+171
+00:17:57.490 --> 00:18:01.120
+Patrick Adelsbach: And essentially, you could get a pop-up, to edit…
+
+172
+00:18:01.680 --> 00:18:11.770
+Patrick Adelsbach: any of the fields you're viewing, right? Like, basically any of the columns, but not… not edit anything in the whole world, right? You probably edit the things that you're… the columns… either of those would work. I think.
+
+173
+00:18:11.770 --> 00:18:12.180
+Miles Greenspoon: Okay.
+
+174
+00:18:12.180 --> 00:18:18.839
+Patrick Adelsbach: There's something neat about the editable grid, but it feels like people have trouble implementing that, so it might just be really hard to do.
+
+175
+00:18:19.140 --> 00:18:20.770
+Patrick Adelsbach: Right. Technically.
+
+176
+00:18:20.770 --> 00:18:21.490
+Miles Greenspoon: But…
+
+177
+00:18:21.490 --> 00:18:26.800
+Patrick Adelsbach: Something that… something where somebody could… could make changes if they… the most important one.
+
+178
+00:18:27.130 --> 00:18:27.730
+Miles Greenspoon: Right.
+
+179
+00:18:27.730 --> 00:18:35.810
+Patrick Adelsbach: I'm looking at the… at 50 organizations, and I want to quickly go through and… Change their rating.
+
+180
+00:18:35.890 --> 00:18:55.889
+Patrick Adelsbach: Right? I want to quickly go through and change, you know, some progress on them, right? I want to… and so, you know, if you're like… if you're clicking in on each one, and you've got, like, 12 of them, you're probably unlikely to do it. You're going to click back, click back again. So one is the ability to keep it on one screen and keep it fast, right? So you're not switching back and forth between screens.
+
+181
+00:18:56.350 --> 00:19:00.109
+Patrick Adelsbach: And editable grid seems to be good for that, but…
+
+182
+00:19:00.110 --> 00:19:04.090
+Miles Greenspoon: That's fair. That… no, that makes a ton of sense. Okay, so,
+
+183
+00:19:04.620 --> 00:19:18.980
+Miles Greenspoon: The action seems to be look into the feasibility of adding either a bulk editor while staying on the screener, or an individual mini editor that pops up, clicking on each
+
+184
+00:19:18.980 --> 00:19:25.059
+Miles Greenspoon: After clicking on each edit button on the, you know, on the module… on the value in the module.
+
+185
+00:19:25.170 --> 00:19:25.840
+Patrick Adelsbach: Yep.
+
+186
+00:19:25.840 --> 00:19:44.729
+Miles Greenspoon: Great. Okay. And then the other big action that I don't think I need to look into, I just need to implement, is the ability, at least for the people, you should be able to filter, for things based on the people's organization, the primary organization.
+
+187
+00:19:44.970 --> 00:19:57.330
+Miles Greenspoon: So, like, if you were to, you know, we want to be able to filter people by country also, and their country is only going to be based on the organization's country.
+
+188
+00:19:57.570 --> 00:19:58.140
+Miles Greenspoon: If that.
+
+189
+00:19:58.140 --> 00:20:00.729
+Patrick Adelsbach: The question… yeah, I think that's one…
+
+190
+00:20:02.780 --> 00:20:06.320
+Patrick Adelsbach: Yeah, see if that massively slows things down by linking tables that way.
+
+191
+00:20:06.590 --> 00:20:07.190
+Miles Greenspoon: Okay.
+
+192
+00:20:07.770 --> 00:20:11.700
+Patrick Adelsbach: Because that was one where I think…
+
+193
+00:20:12.960 --> 00:20:28.650
+Patrick Adelsbach: you could create calculated fields. That's where I think we get to get into, like… we might want to get into, like, how you define field types, one being the calculated field, and the calculated field might be where you want to join specific tables, but not all of them. And it might be, you know.
+
+194
+00:20:28.770 --> 00:20:30.150
+Patrick Adelsbach: Kind of works at.
+
+195
+00:20:30.610 --> 00:20:38.900
+Patrick Adelsbach: Right. Or works at country, right? Or works at some… and you get… the most… you're talking about, like, the most flexible version, but it might slow things down?
+
+196
+00:20:39.030 --> 00:20:43.080
+Miles Greenspoon: Sure, okay, got it. Yeah, that makes sense.
+
+197
+00:20:43.680 --> 00:20:47.770
+Miles Greenspoon: Cool. And then, did I show you some of the things I did with the pipeline stuff?
+
+198
+00:20:47.770 --> 00:20:48.090
+Patrick Adelsbach: No.
+
+199
+00:20:48.090 --> 00:20:58.299
+Miles Greenspoon: Alright, so this is great, where you can click in to here, let's say you see everyone you won, and you can, like, go in and see
+
+200
+00:20:58.480 --> 00:21:05.160
+Miles Greenspoon: All of the… like, it shows you, based on what you click, like, where… what's happening here.
+
+201
+00:21:05.350 --> 00:21:10.099
+Miles Greenspoon: like, the individual stages, and then you can close that out.
+
+202
+00:21:10.590 --> 00:21:13.940
+Patrick Adelsbach: What you might want to do there is… click on it again.
+
+203
+00:21:14.240 --> 00:21:14.770
+Miles Greenspoon: Yeah.
+
+204
+00:21:15.580 --> 00:21:22.510
+Patrick Adelsbach: That table you have there? Yeah. Why not replace that with your other table that's fully customizable?
+
+205
+00:21:23.090 --> 00:21:26.480
+Patrick Adelsbach: And so somebody can click in, like, and you're reusing the same widget.
+
+206
+00:21:26.870 --> 00:21:27.500
+Miles Greenspoon: Okay.
+
+207
+00:21:27.780 --> 00:21:34.099
+Patrick Adelsbach: And instead of a… instead of a fixed table where somebody's like, these are my four columns, they can customize it any way they want.
+
+208
+00:21:34.100 --> 00:21:52.070
+Miles Greenspoon: Okay, so basically the action is when clicking into the analysis of pipeline, the relevant state… the relevant filters from the… I guess it's from the leads table would pop up.
+
+209
+00:21:52.370 --> 00:21:58.140
+Patrick Adelsbach: What I'd say is what would pop up is that… is basically you're changing… instead of having a static table.
+
+210
+00:21:58.140 --> 00:21:58.610
+Miles Greenspoon: Right.
+
+211
+00:21:58.610 --> 00:22:05.060
+Patrick Adelsbach: of these four columns, it would open up a dynamic table similar, or identical, essentially, to the one you're using for leads.
+
+212
+00:22:05.060 --> 00:22:05.889
+Miles Greenspoon: Got it.
+
+213
+00:22:05.890 --> 00:22:11.470
+Patrick Adelsbach: where you can choose columns. It'll come up with four… it'll come up with a default
+
+214
+00:22:12.200 --> 00:22:20.939
+Patrick Adelsbach: setup, maybe these four columns, but the user can then… you also still… you also have the sortable buttons and the filter buttons on the tops.
+
+215
+00:22:20.940 --> 00:22:21.370
+Miles Greenspoon: I see.
+
+216
+00:22:21.370 --> 00:22:26.430
+Patrick Adelsbach: All that same functionality is there, and you just reuse that widget entirely down here.
+
+217
+00:22:27.280 --> 00:22:31.480
+Miles Greenspoon: That makes sense. And then the other thing you can do, by the way, is you can…
+
+218
+00:22:31.480 --> 00:22:33.289
+Patrick Adelsbach: Wait, actually, you know what you… is it?
+
+219
+00:22:33.850 --> 00:22:35.749
+Patrick Adelsbach: Could you actually,
+
+220
+00:22:37.410 --> 00:22:42.249
+Patrick Adelsbach: define this dashboard a little bit. If you're reusing this for the most part, like, essentially, you've got
+
+221
+00:22:43.140 --> 00:22:50.399
+Patrick Adelsbach: You could take any… Field, any… with multiple values, like, any drop-down… any… like, any drop-down field, perhaps.
+
+222
+00:22:50.400 --> 00:22:50.990
+Miles Greenspoon: Yep.
+
+223
+00:22:51.350 --> 00:23:04.569
+Patrick Adelsbach: and you put it in the top, like, you don't even have to hardcode in the status, right? You… like, this is one version of that, but you put in any drop-down field you can put in the top, and if you click on it, you get, essentially, the other widget
+
+224
+00:23:05.500 --> 00:23:09.040
+Patrick Adelsbach: The, the ta… your dynamic table down below.
+
+225
+00:23:10.260 --> 00:23:10.940
+Patrick Adelsbach: I don't accept that.
+
+226
+00:23:10.940 --> 00:23:12.429
+Miles Greenspoon: So the, I think…
+
+227
+00:23:12.430 --> 00:23:21.650
+Patrick Adelsbach: Essentially, you put in… you decided… the, the status up top… Right. …is… oh, you've got there, I see you've got… you've got group by stage, surface type.
+
+228
+00:23:21.650 --> 00:23:24.339
+Miles Greenspoon: That's exactly what I was about to show you, so you can…
+
+229
+00:23:24.520 --> 00:23:42.400
+Miles Greenspoon: So you can see, the analysis of, you know, you always see the leads and the value here based on any of these different variables. So you can see it based on, you know, asset class, you can see it based on owner, you can see it based on fund.
+
+230
+00:23:42.400 --> 00:23:43.949
+Patrick Adelsbach: And these are leads, basically.
+
+231
+00:23:43.950 --> 00:23:44.490
+Miles Greenspoon: These are both.
+
+232
+00:23:44.490 --> 00:23:44.850
+Patrick Adelsbach: holiday.
+
+233
+00:23:44.850 --> 00:23:46.980
+Miles Greenspoon: This is all through the leads.
+
+234
+00:23:47.650 --> 00:23:48.539
+Patrick Adelsbach: Are you a patina.
+
+235
+00:23:48.540 --> 00:24:01.950
+Miles Greenspoon: there's different ways to train the lead. So I think to some degree, like, once we define exactly what the important, ways of seeing it are, it is… you can… you can go in, and, like, this is, like, super dynamic, right?
+
+236
+00:24:01.950 --> 00:24:02.780
+Patrick Adelsbach: Yeah, that's great.
+
+237
+00:24:02.780 --> 00:24:03.300
+Miles Greenspoon: you can't see.
+
+238
+00:24:03.300 --> 00:24:13.020
+Patrick Adelsbach: And so you might want to be… you might be able to do… you have to look at the actual options, but if you… you might be able to do it for any drop-down in the lead. Instead of… instead of hard-coding the things in that…
+
+239
+00:24:13.200 --> 00:24:14.889
+Patrick Adelsbach: Top right drop-down.
+
+240
+00:24:14.890 --> 00:24:15.610
+Miles Greenspoon: Okay.
+
+241
+00:24:15.610 --> 00:24:20.050
+Patrick Adelsbach: You have it look for any fields that have a type… any fields that have a type drop-down.
+
+242
+00:24:20.110 --> 00:24:24.190
+Miles Greenspoon: Yeah, so I think that these are all the ones that are multi-select.
+
+243
+00:24:24.580 --> 00:24:25.370
+Patrick Adelsbach: select, yeah, okay.
+
+244
+00:24:25.370 --> 00:24:27.630
+Miles Greenspoon: So that, but yeah, that would be the goal of.
+
+245
+00:24:27.630 --> 00:24:30.860
+Patrick Adelsbach: Single or multiple, yeah, yeah, drop-down or multi-select, right?
+
+246
+00:24:30.860 --> 00:24:39.749
+Miles Greenspoon: Right, so any, any drop-down or multi-select field, even ones that create, that are, like, future created, should automatically be populated into the.
+
+247
+00:24:39.750 --> 00:24:41.379
+Patrick Adelsbach: Oh, that you already… that's how you've done it?
+
+248
+00:24:41.380 --> 00:24:43.210
+Miles Greenspoon: I believe so, I'll double check.
+
+249
+00:24:43.210 --> 00:24:47.489
+Patrick Adelsbach: That's great, that's perfect. I think I love that, it's dynamic, there's no maintenance to it.
+
+250
+00:24:47.490 --> 00:24:49.200
+Miles Greenspoon: Exactly, that was the… that was…
+
+251
+00:24:49.200 --> 00:24:56.810
+Patrick Adelsbach: Yeah, and if you really, really wanted to at some point, you could set… you could actually add a level… a field at the field level that says exclude it.
+
+252
+00:24:56.980 --> 00:24:57.570
+Miles Greenspoon: Right.
+
+253
+00:24:57.670 --> 00:24:58.240
+Miles Greenspoon: Right?
+
+254
+00:24:58.240 --> 00:25:00.360
+Patrick Adelsbach: But you don't need to do that now unless it becomes a problem.
+
+255
+00:25:00.360 --> 00:25:00.970
+Miles Greenspoon: Right.
+
+256
+00:25:01.090 --> 00:25:02.709
+Miles Greenspoon: And then…
+
+257
+00:25:02.910 --> 00:25:12.470
+Miles Greenspoon: also have it by, like, FLAR, by asset class, and owner coverage, and I'm sure that there is a way, we'll figure it out, to figure out which
+
+258
+00:25:12.470 --> 00:25:23.939
+Miles Greenspoon: roles have views into which, elements of this. So that's a… that could be a future problem. Oh, and there's also…
+
+259
+00:25:24.080 --> 00:25:36.979
+Miles Greenspoon: you know, you can… sorry, you can also filter it by literally everything up here, too. So if you only want to focus on advisory, and then you want to see, you know, everything advisory related to different asset classes.
+
+260
+00:25:36.980 --> 00:25:41.869
+Patrick Adelsbach: So are those things on the top the same as the things on the side? Are those advisory as the class lead owner?
+
+261
+00:25:42.780 --> 00:25:45.079
+Miles Greenspoon: Yeah, for the most part. I think the only.
+
+262
+00:25:45.080 --> 00:25:50.420
+Patrick Adelsbach: It should be. I mean, I would make them identical, because it seems like… I would… I would make them identical. You can either…
+
+263
+00:25:50.420 --> 00:25:52.330
+Miles Greenspoon: So adding stage up here, too.
+
+264
+00:25:52.800 --> 00:25:56.099
+Patrick Adelsbach: I assume so. I don't think I'm trying to think if there's any reason not to.
+
+265
+00:25:56.560 --> 00:25:59.680
+Patrick Adelsbach: Do you need them in both places, though? What's the difference of doing it one…
+
+266
+00:26:00.630 --> 00:26:03.070
+Miles Greenspoon: Just giving more… so let's say that.
+
+267
+00:26:03.070 --> 00:26:05.350
+Patrick Adelsbach: Services by status, okay, I get you, I get you, yeah.
+
+268
+00:26:05.350 --> 00:26:25.060
+Miles Greenspoon: Right? And so, I mean, for this, like, hedge fund and, like, this should show everything, unless it's tagged as multiple things. So, to some degree, it allows for, like, okay, let's say that you want to see everyone in APC that, and then you go to here for asset class, you can see everyone, like, you have 14
+
+269
+00:26:25.170 --> 00:26:39.900
+Miles Greenspoon: Interesting that this is saying 10, but this is saying 14 leads, so I have to figure out what the disconnect is there. But then you can see everyone at EPC that also has, like, other relevant leads.
+
+270
+00:26:40.220 --> 00:26:48.090
+Patrick Adelsbach: Yeah, actually, basically what you've done here is you've got the filters on the top, and then the… that bar chart that drop down to the group by.
+
+271
+00:26:48.380 --> 00:26:49.220
+Miles Greenspoon: Yeah, exactly.
+
+272
+00:26:49.220 --> 00:26:53.099
+Patrick Adelsbach: It's a group bot, yeah. It's a… it's a very clever way of doing it.
+
+273
+00:26:53.400 --> 00:26:55.139
+Miles Greenspoon: I'm… I'm just now confused.
+
+274
+00:26:55.140 --> 00:26:55.590
+Patrick Adelsbach: Bye.
+
+275
+00:26:55.590 --> 00:26:57.270
+Miles Greenspoon: Why there are 18.
+
+276
+00:26:57.520 --> 00:27:00.630
+Miles Greenspoon: Or 14 here, and 10 here, but…
+
+277
+00:27:00.980 --> 00:27:03.219
+Patrick Adelsbach: You'll figure that out.
+
+278
+00:27:03.330 --> 00:27:09.589
+Miles Greenspoon: Oh, this is why, because it is 10 active leads and 4 inactive leads.
+
+279
+00:27:09.950 --> 00:27:12.009
+Patrick Adelsbach: So you probably want that to be only…
+
+280
+00:27:12.500 --> 00:27:17.249
+Patrick Adelsbach: If you have a filter at some point, you want to be… yeah, you have to think of a better way so that it doesn't… yeah, it doesn't get hidden.
+
+281
+00:27:17.460 --> 00:27:21.290
+Miles Greenspoon: Yeah, okay. Right. So…
+
+282
+00:27:21.290 --> 00:27:27.299
+Patrick Adelsbach: probably just filter it by active, right? Show the whole thing. Don't have the system manually
+
+283
+00:27:28.100 --> 00:27:36.719
+Patrick Adelsbach: Okay, so it's active leads, right, yeah. I would just get rid of the word active leads, call it leads, and then have a filter up top that says active and, you know, active only, or something.
+
+284
+00:27:36.720 --> 00:27:37.880
+Miles Greenspoon: Sure, okay.
+
+285
+00:27:37.880 --> 00:27:39.220
+Patrick Adelsbach: Active, yes.
+
+286
+00:27:39.220 --> 00:27:40.510
+Miles Greenspoon: Makes sense. Okay.
+
+287
+00:27:40.760 --> 00:27:54.009
+Miles Greenspoon: So yeah, so these are the different, different dashboards. Similar here, you can filter here by different funds, you can group this by, you know, LP type, so let's say you're going to…
+
+288
+00:27:54.380 --> 00:27:58.189
+Miles Greenspoon: APC… You can see everybody
+
+289
+00:27:58.900 --> 00:28:05.769
+Miles Greenspoon: And here, similar investor breakdown, decline, and the reason why it's declined.
+
+290
+00:28:05.770 --> 00:28:12.189
+Patrick Adelsbach: Again, this is something… have you, have you seen the new format of the leads yet?
+
+291
+00:28:12.190 --> 00:28:13.759
+Miles Greenspoon: No, if you can send that over, that would be.
+
+292
+00:28:13.760 --> 00:28:19.709
+Patrick Adelsbach: Yeah, so I'm in the middle today, I'm actually making… sending back a few final, like, tiny little tweaking comments back, I'll copy you in on it.
+
+293
+00:28:19.710 --> 00:28:33.490
+Miles Greenspoon: Okay, great. But… yeah, and then there's also… I showed Agaliki this morning, and she, like, was, like, laughing with giddiness over how incredible it is that there's, like, a duplicates piece here.
+
+294
+00:28:33.490 --> 00:28:34.019
+Patrick Adelsbach: Let me see it.
+
+295
+00:28:34.020 --> 00:28:39.410
+Miles Greenspoon: Make it very easy, it's loading, this, like, takes a little bit to… to load.
+
+296
+00:28:40.080 --> 00:28:52.430
+Miles Greenspoon: And so, just showing that there are potential duplicates. I don't understand why the similarities here, are zero to all of them. I think that it should be, like.
+
+297
+00:28:53.080 --> 00:28:57.350
+Miles Greenspoon: There are a couple of pieces here that, like, are just, like, not really well-defined.
+
+298
+00:28:57.910 --> 00:29:05.640
+Miles Greenspoon: Like, because this says and sons every time, it shows, like, it shows the Aunt Sons each time here, too.
+
+299
+00:29:06.000 --> 00:29:21.769
+Miles Greenspoon: So, need to, need to, like, work on it a little bit. But just, like, the, and the actions should be… oh, I don't know why that just did that, but, then the actions should show
+
+300
+00:29:23.100 --> 00:29:29.090
+Miles Greenspoon: either, like, not… show that it's not a duplicate, or, you know, like, delete record A or delete record B.
+
+301
+00:29:29.090 --> 00:29:29.860
+Patrick Adelsbach: Huh. Yeah.
+
+302
+00:29:29.860 --> 00:29:30.580
+Miles Greenspoon: So…
+
+303
+00:29:30.580 --> 00:29:32.149
+Patrick Adelsbach: Merge, it might be a merge bot, you know.
+
+304
+00:29:32.150 --> 00:29:33.780
+Miles Greenspoon: Yeah, exactly.
+
+305
+00:29:33.780 --> 00:29:38.790
+Patrick Adelsbach: Alright, that's… yeah, great. We'll take a look at that once… worked out.
+
+306
+00:29:38.790 --> 00:29:43.190
+Miles Greenspoon: Oh, maybe this was the… okay, so if you look at lead stage.
+
+307
+00:29:43.820 --> 00:29:52.509
+Miles Greenspoon: Yes, okay, this is what we were talking about before, right? Where you can edit the individual piece of, like, what it's called.
+
+308
+00:29:52.660 --> 00:29:59.079
+Miles Greenspoon: What the parent is for, for each of them, and, like, where it is in the display order, so…
+
+309
+00:29:59.500 --> 00:30:01.389
+Patrick Adelsbach: We see… what are we looking at here?
+
+310
+00:30:01.390 --> 00:30:06.300
+Miles Greenspoon: So this is… this is the different lead stages, right? So, like, if you…
+
+311
+00:30:06.640 --> 00:30:16.599
+Miles Greenspoon: were to say, for example, anything that is, you know, exploratory, we can just say, like, open…
+
+312
+00:30:16.800 --> 00:30:24.399
+Miles Greenspoon: And this is just, like… Rather than calling it exploratory, we can call it, you know, like.
+
+313
+00:30:24.400 --> 00:30:24.940
+Patrick Adelsbach: Me.
+
+314
+00:30:24.940 --> 00:30:25.260
+Miles Greenspoon: Peru.
+
+315
+00:30:25.260 --> 00:30:32.500
+Patrick Adelsbach: So I would really try to merge this page together with the fields page, right? To me, you're at the field.
+
+316
+00:30:32.660 --> 00:30:43.669
+Patrick Adelsbach: You're in Leeds, you look for the field name, whatever, the stage name, and one of the choices… the field type should be a drop-down, and if the field type is drop-down, then you choose all those things.
+
+317
+00:30:43.900 --> 00:30:44.540
+Miles Greenspoon: Right, okay.
+
+318
+00:30:44.540 --> 00:30:49.439
+Patrick Adelsbach: But to me, to me, those two pages are kind of the same. They really should be together at fields.
+
+319
+00:30:49.440 --> 00:30:52.359
+Miles Greenspoon: Right, and to some degree, the layouts, I guess, but…
+
+320
+00:30:52.360 --> 00:31:04.779
+Patrick Adelsbach: Well, the layout would be so you create all the fields and the field attributes, and then you use them in layouts. Once they're created in a field, you can drop them on the page, and you can make that as fancy as you want, but that layouts is kind of where you're putting them.
+
+321
+00:31:05.370 --> 00:31:07.700
+Miles Greenspoon: That makes sense. Okay, so…
+
+322
+00:31:08.030 --> 00:31:18.600
+Miles Greenspoon: The action is to merge the reference data and fields views to have one comprehensive control panel to manage
+
+323
+00:31:18.600 --> 00:31:29.140
+Miles Greenspoon: The drop-down values, configurable field options, as well as the custom fields, in each of the individual entities.
+
+324
+00:31:29.400 --> 00:31:34.999
+Patrick Adelsbach: Right, and I would be… and I would… I would say that that should all be at… in the place labeled fields, right? You're basically…
+
+325
+00:31:35.000 --> 00:31:35.810
+Miles Greenspoon: In the place.
+
+326
+00:31:35.810 --> 00:31:45.559
+Patrick Adelsbach: You're executing that by creating a field type called dropdown, and then all of those things in the reference data pop up if the field type is drop-down.
+
+327
+00:31:45.850 --> 00:31:47.150
+Miles Greenspoon: Okay, great.
+
+328
+00:31:47.750 --> 00:31:49.420
+Miles Greenspoon: Cool.
+
+329
+00:31:49.610 --> 00:31:51.250
+Miles Greenspoon: Otherwise, yeah.
+
+330
+00:31:51.250 --> 00:31:51.810
+Patrick Adelsbach: I think it's.
+
+331
+00:31:51.810 --> 00:31:52.600
+Miles Greenspoon: Something like that.
+
+332
+00:31:52.680 --> 00:32:04.180
+Patrick Adelsbach: Yeah, I think it's a good example, because one of the things I was thinking of is, like, how easy, and I assume it's easy after everything you've done, to add different kinds of field types, right? And we can be as complicated as we want, right? One field type could be a…
+
+333
+00:32:04.700 --> 00:32:07.380
+Patrick Adelsbach: calculated field type, right? Like.
+
+334
+00:32:07.500 --> 00:32:13.569
+Patrick Adelsbach: this is the city of the organization, right? You're kind of… you're about… you're pulling fields together, or…
+
+335
+00:32:15.050 --> 00:32:22.640
+Patrick Adelsbach: or the number of owners that a lead has, right? Right. Or…
+
+336
+00:32:23.430 --> 00:32:28.409
+Patrick Adelsbach: one thing that I think… it's like, it's like a totally random thing that's kind of nice, is
+
+337
+00:32:29.000 --> 00:32:32.560
+Patrick Adelsbach: if I could save, you know, multiple
+
+338
+00:32:33.850 --> 00:32:46.670
+Patrick Adelsbach: text screen… text strings, right? Like, if I've got… if I've got, Orange County Retirement, and I want to know that as Orange County, as OSERS, as OC space ERS, kind of all the nicknames.
+
+339
+00:32:46.880 --> 00:32:47.500
+Miles Greenspoon: Right.
+
+340
+00:32:47.870 --> 00:32:55.730
+Patrick Adelsbach: have a field type, have a field type that says, I can put in multiple text strings, and then later you can use that in the search function.
+
+341
+00:32:55.910 --> 00:33:10.569
+Patrick Adelsbach: Right? Okay. If one user might type in OSERS, one might type in OC space ERS, and one might type in Orange County. And so, if at a… if at an object level, right, at an entity level, you can capture multiple strings, then you can use it later.
+
+342
+00:33:10.900 --> 00:33:11.330
+Miles Greenspoon: So.
+
+343
+00:33:11.560 --> 00:33:19.830
+Patrick Adelsbach: the action that I'm now is just, can I create a field type that is multiple text strings, or something, whatever, you can think of a better way of saying it, and then…
+
+344
+00:33:20.210 --> 00:33:31.119
+Patrick Adelsbach: You know, if… if the user on this page chooses multiple text strings, then they have the ability to put in discrete, you know, add more, add more, as many as they want.
+
+345
+00:33:31.410 --> 00:33:31.920
+Miles Greenspoon: Okay.
+
+346
+00:33:31.920 --> 00:33:33.390
+Patrick Adelsbach: names, right?
+
+347
+00:33:33.390 --> 00:33:45.509
+Miles Greenspoon: Got it. That makes sense. So, a list of… so something… adding multiple text strings as a field type, or, like, text multiple select as a field type, with the ability to add more…
+
+348
+00:33:45.840 --> 00:33:56.079
+Miles Greenspoon: All of which… Show up as a relevant option when filtered or searched for under that
+
+349
+00:33:56.490 --> 00:33:59.199
+Miles Greenspoon: Under that field name.
+
+350
+00:33:59.600 --> 00:34:15.230
+Patrick Adelsbach: Yes. And also on the… if you're just viewing that entity in a non-cumbersome way, it'll show up all the different… all the different, you know, whatever you want to call it, nicknames, aka, right? Right. That… that are relevant for that entity.
+
+351
+00:34:15.739 --> 00:34:21.400
+Patrick Adelsbach: And I think that's just a great… Test for how flexible this…
+
+352
+00:34:21.670 --> 00:34:28.149
+Patrick Adelsbach: kind of ability to create new fields and new field types is, as well. Yes. It's a cool use case, and also it's a… it's a test.
+
+353
+00:34:28.389 --> 00:34:30.179
+Miles Greenspoon: Yeah.
+
+354
+00:34:31.350 --> 00:34:47.750
+Miles Greenspoon: So, I want to move from what we did here to looking at some of the things that you just sent to me to make sure that I'm capturing everything. It will, I guess, is there anything in which you just sent that you think is important for, like, immediate implementation?
+
+355
+00:34:47.750 --> 00:34:50.829
+Patrick Adelsbach: No, and I actually highlight… it's the one thing I highlighted to you there in bold, is.
+
+356
+00:34:50.830 --> 00:34:51.420
+Miles Greenspoon: Oh, no.
+
+357
+00:34:51.429 --> 00:34:57.019
+Patrick Adelsbach: Not Phase 1. Read it, and tell me if you agree, but… basically.
+
+358
+00:34:57.399 --> 00:35:04.979
+Patrick Adelsbach: I think, like, I said probably 4 things, probably 3 of those 4 were basically, like, how do we envision this?
+
+359
+00:35:05.419 --> 00:35:13.139
+Patrick Adelsbach: as a product we can sell, or provide to clients. And so in order to… right now, this is… we have one client with multiple users.
+
+360
+00:35:13.350 --> 00:35:13.900
+Miles Greenspoon: Right.
+
+361
+00:35:13.900 --> 00:35:29.340
+Patrick Adelsbach: let's take a step up and have a global admin page where we can provision for multiple clients, and each client's gonna have their own admin, and they can provision their own users, right? Like, sort of the idea of kind of separating that so we have this master level. Sure. And I mentioned in my message that
+
+362
+00:35:29.440 --> 00:35:43.549
+Patrick Adelsbach: I think if I bring this up to anybody except for you, they're gonna be like, we're not a software firm, we're never gonna do this, it's not worth doing, and maybe we're not, and there's a lot of wood we should chop before we actually use it, but let's put it in place now, because now's our chance.
+
+363
+00:35:43.590 --> 00:35:52.749
+Miles Greenspoon: Yeah, I guess the question is, are we offering this as a CRM to other people, or are we offering our data to other people?
+
+364
+00:35:53.370 --> 00:36:09.810
+Patrick Adelsbach: I've got that in my message, separate. So, start out by thinking of it as a CRM to other people, then we can provision to offer our data, yes or no. Or other people's data, yes or no, right? We can layer in frequent data, if we want. Like, we can have… we can figure out ways of layering different data types to our users.
+
+365
+00:36:10.100 --> 00:36:10.430
+Miles Greenspoon: Right.
+
+366
+00:36:10.430 --> 00:36:13.339
+Patrick Adelsbach: But, geez, I've got in my mind right now.
+
+367
+00:36:13.920 --> 00:36:19.780
+Patrick Adelsbach: What if we went to, like, all these tiny little RIAs that don't have budget?
+
+368
+00:36:20.100 --> 00:36:20.450
+Miles Greenspoon: Right.
+
+369
+00:36:20.450 --> 00:36:23.030
+Patrick Adelsbach: We offer them a great solution for free.
+
+370
+00:36:23.320 --> 00:36:25.849
+Patrick Adelsbach: As they're allocating to the interval fund.
+
+371
+00:36:26.410 --> 00:36:27.140
+Miles Greenspoon: Okay.
+
+372
+00:36:27.140 --> 00:36:31.549
+Patrick Adelsbach: Right? Like, who knows? Right? Like, if we're creating something, so, like.
+
+373
+00:36:31.770 --> 00:36:47.850
+Patrick Adelsbach: you know, right now, we had this idea of, like, of max light or something that we were going to give to the RIAs, but it really wasn't that valuable, right? Because the alt is such a… we couldn't offer them everything, because for, like, it would just be… our data would be out too broad to too many organizations.
+
+374
+00:36:48.260 --> 00:36:54.710
+Patrick Adelsbach: And, and, and so, and…
+
+375
+00:36:54.990 --> 00:37:04.570
+Patrick Adelsbach: And they weren't that interested in the private market stuff, right? It was kind of nice to have. This could be a much bigger value add, and then we could just think about where we want to embed in eventually.
+
+376
+00:37:04.990 --> 00:37:18.599
+Patrick Adelsbach: actually information about alts, right? We can drop in our research in here, we can drop in all kinds of information over time, but getting this on their desktop as a parrot, and also as a marketing tool could potentially be really, really cool.
+
+377
+00:37:18.910 --> 00:37:20.219
+Miles Greenspoon: Interesting. Huh.
+
+378
+00:37:20.440 --> 00:37:24.080
+Patrick Adelsbach: I don't see if he's bringing my… bringing my doorbell. Oh, it's FedEx. Okay.
+
+379
+00:37:24.510 --> 00:37:27.420
+Miles Greenspoon: Yeah, no, I'm definitely a mat trying to imagine, like.
+
+380
+00:37:27.870 --> 00:37:34.270
+Miles Greenspoon: what… how… how we incorporate that as a value add. And I agree with you, like, where it's… it's…
+
+381
+00:37:34.630 --> 00:37:50.630
+Miles Greenspoon: would it be RIAs? Would it be… I mean, it's certainly maybe not, like, MFOs, unless they, like, don't have a way to, you know, track… you know, because I didn't include, I don't know if I showed you, but, like, for organizations, like, I think for people also, there is a document module now.
+
+382
+00:37:51.210 --> 00:37:51.950
+Patrick Adelsbach: Oh, good.
+
+383
+00:37:51.950 --> 00:37:53.650
+Miles Greenspoon: So,
+
+384
+00:37:54.280 --> 00:38:03.500
+Miles Greenspoon: you know, I'm not sure exactly, like, what we want to do with it, but, like, you know, you know, a way for them to, like, track all their different fee arrangements, all their different, like.
+
+385
+00:38:04.470 --> 00:38:15.559
+Miles Greenspoon: you know, assign them to different funds and stuff, too. Like, yeah, I can definitely see how this could… the same bones of something like this could turn into, like.
+
+386
+00:38:15.760 --> 00:38:35.560
+Miles Greenspoon: you know, a way to track what they're allocated to against their, you know, total allocation. I mean, this is something like the capital raise thing, having, you know, one view of each individual, like, if each of this is a family within a family office, and you see this is how much they're allocated to, you know.
+
+387
+00:38:35.950 --> 00:38:40.649
+Miles Greenspoon: is, like, their commitments per year, or something like that. Like, yeah, totally. That would be…
+
+388
+00:38:41.840 --> 00:38:44.810
+Patrick Adelsbach: There's so many, there's so many things that you can do, and that's why we're,
+
+389
+00:38:44.920 --> 00:38:55.159
+Patrick Adelsbach: after your next version, like, we can talk a little bit about consolidation of a few things, so it doesn't become an albatross, because there's so many things we can add to it. I think there's a few little things we can do, like…
+
+390
+00:38:56.510 --> 00:39:06.869
+Patrick Adelsbach: you know, between, like, you know, kind of, you know, if you really think about, like, here's your view versions, here's your, here's the ability to view an individual record.
+
+391
+00:39:07.200 --> 00:39:07.790
+Miles Greenspoon: Right.
+
+392
+00:39:08.210 --> 00:39:13.730
+Patrick Adelsbach: Here's your individual… your ability to… to view… or edit…
+
+393
+00:39:14.490 --> 00:39:24.619
+Patrick Adelsbach: Here's the ability to view or edit an individual record. Here's your ability to view or edit all of the records within a type, like all your leads, all your activities, all your organizations.
+
+394
+00:39:24.620 --> 00:39:25.220
+Miles Greenspoon: Yep.
+
+395
+00:39:25.220 --> 00:39:36.569
+Patrick Adelsbach: And then here's some flexible layout for creating your own dashboards, right? And then I think your number of things in that left blue toolbar will start to shrink.
+
+396
+00:39:36.850 --> 00:39:48.450
+Patrick Adelsbach: Yeah. It'll become just… it'll just ease navigation. You can drop all the admin stuff, potentially, to an admin, like, fun, like, little things like that, like, I think that right now, there's a time to think about
+
+397
+00:39:49.690 --> 00:39:52.089
+Patrick Adelsbach: Kind of making sure that we keep it simple, and it's
+
+398
+00:39:53.540 --> 00:40:01.510
+Patrick Adelsbach: Yeah, this is great. Let me know… Oh, last thing, well, last little thing, actually. In the views, when you're on the leads page, I think.
+
+399
+00:40:02.670 --> 00:40:05.070
+Patrick Adelsbach: Is it leads, or people, or activities, yeah.
+
+400
+00:40:07.600 --> 00:40:13.329
+Patrick Adelsbach: Yeah, views. Yeah, one really cool thing there is to be able to share it across your organization.
+
+401
+00:40:13.580 --> 00:40:14.319
+Patrick Adelsbach: Right, sure.
+
+402
+00:40:14.320 --> 00:40:16.419
+Miles Greenspoon: So that we… we have that, actually, once.
+
+403
+00:40:16.420 --> 00:40:17.100
+Patrick Adelsbach: Do you?
+
+404
+00:40:17.230 --> 00:40:20.940
+Miles Greenspoon: If you go to…
+
+405
+00:40:21.430 --> 00:40:26.390
+Miles Greenspoon: let's say that you duplicate it, right? So… Or…
+
+406
+00:40:26.640 --> 00:40:30.889
+Miles Greenspoon: let's say you go to this, right? And then you do…
+
+407
+00:40:31.180 --> 00:40:36.359
+Miles Greenspoon: save a screener, you can share with team, right? So then you can call it…
+
+408
+00:40:37.360 --> 00:40:42.809
+Patrick Adelsbach: Okay, so you did it at the time, you can't re-convert it into… at the time you save it, you can call it, you can say share it.
+
+409
+00:40:42.810 --> 00:40:57.010
+Miles Greenspoon: Yeah, and I don't know, like, exactly… just because I don't think I have the ability to, like, log in and test other people's views, but, like, it is shared, so, like, what we can do is then have,
+
+410
+00:40:57.010 --> 00:41:04.799
+Miles Greenspoon: a section here called, for all the different views, called, like, team views, that, that, pop up.
+
+411
+00:41:04.820 --> 00:41:19.859
+Miles Greenspoon: And… or that you can, like, search for. We have to figure out exactly what that would look like, so it's, again, so it's not so cumbersome, but the… the ability to, like, either have private views or team views, or, like, shared views, is… is embedded in the system.
+
+412
+00:41:19.870 --> 00:41:37.859
+Miles Greenspoon: Similar to distribution lists, by the way, well, you have, like, your official, like, your own distribution list of, like, how it's segmented out, and then you also have a tab for the official distribution list that can only be, like, can only be bulk modified by, by people.
+
+413
+00:41:38.190 --> 00:41:39.749
+Miles Greenspoon: By, like, the… by…
+
+414
+00:41:39.750 --> 00:41:42.480
+Patrick Adelsbach: That's right, you give the ability to create your own distribution list, right.
+
+415
+00:41:42.480 --> 00:41:43.600
+Miles Greenspoon: Yeah. Exactly.
+
+416
+00:41:43.780 --> 00:41:48.320
+Miles Greenspoon: Oh, and that works now also, so, like, let's say you make a new list.
+
+417
+00:41:48.630 --> 00:42:07.160
+Miles Greenspoon: And you, like, call it, you know, Patrick's weekly newsletter, and, you know, you put it on here, you can put it as either Axia or AC Private Markets, you can send weekly… I don't really think the frequency is needed. You put it on private list,
+
+418
+00:42:07.980 --> 00:42:17.390
+Miles Greenspoon: And then, let's say you only want to send it out to people in the United, like, you know, prospects in the United States, you can search for that.
+
+419
+00:42:17.390 --> 00:42:31.370
+Miles Greenspoon: And add everyone here that's, that's on that list, or that's here, and then it doesn't show it automatically, so action, actually, to automatically show who has been added.
+
+420
+00:42:31.640 --> 00:42:41.190
+Miles Greenspoon: and the current members, but then if you refresh this, you'll see that all of those people are current members of the distribution list. So…
+
+421
+00:42:41.190 --> 00:42:44.040
+Patrick Adelsbach: So how does it create for distribution lists that are, like.
+
+422
+00:42:44.340 --> 00:42:47.959
+Patrick Adelsbach: Are you basically going to recreate the distribution list?
+
+423
+00:42:48.180 --> 00:42:50.930
+Patrick Adelsbach: Really quickly, every time before you send something?
+
+424
+00:42:51.160 --> 00:42:54.010
+Patrick Adelsbach: Because they're static. They're static. After you create them, they're static, right? You kind of…
+
+425
+00:42:54.010 --> 00:42:58.290
+Miles Greenspoon: After you create them, they… the…
+
+426
+00:42:59.240 --> 00:43:06.080
+Miles Greenspoon: Custom distribution lists are static, the official distribution lists are dynamic.
+
+427
+00:43:06.290 --> 00:43:08.250
+Miles Greenspoon: So… .
+
+428
+00:43:09.150 --> 00:43:14.010
+Patrick Adelsbach: You can almost… I mean, why not make them kind of the same thing, right? It's almost like a saved screen, right?
+
+429
+00:43:14.120 --> 00:43:21.200
+Patrick Adelsbach: You save the screen for any distribution list, and then you kind of… you can either keep it dynamic, or you can say.
+
+430
+00:43:22.200 --> 00:43:25.200
+Patrick Adelsbach: Make this, kind of, kind of give me a snapshot of it.
+
+431
+00:43:26.740 --> 00:43:34.860
+Patrick Adelsbach: Interesting. Right? Like, you can make them… your personal list, basically, you can stop it right here without adding anybody, right? You can basically say, I want to save this
+
+432
+00:43:36.110 --> 00:43:39.940
+Patrick Adelsbach: template, right? I might want to reuse it every once in a while.
+
+433
+00:43:40.870 --> 00:43:48.459
+Patrick Adelsbach: Or you can say, no, I actually want to make one really custom, where I'm going to, like, select individuals, and then, like, save this as an instance.
+
+434
+00:43:48.660 --> 00:43:49.360
+Patrick Adelsbach: Right? Interesting.
+
+435
+00:43:49.360 --> 00:43:55.360
+Miles Greenspoon: So basically, the option… the option for each distribution list to be either static or dynamic.
+
+436
+00:43:55.660 --> 00:43:59.319
+Patrick Adelsbach: Right, whether they're… whether they're kind of axial ones, or…
+
+437
+00:43:59.670 --> 00:44:00.300
+Miles Greenspoon: Right.
+
+438
+00:44:00.300 --> 00:44:01.640
+Patrick Adelsbach: Or, or individual ones.
+
+439
+00:44:01.640 --> 00:44:11.649
+Miles Greenspoon: individual ones. Okay, got it. So, in the dynamic ones, there's a set of filters, and if somebody is added to the system with those exact filters.
+
+440
+00:44:11.650 --> 00:44:24.499
+Miles Greenspoon: then they are added to the distribution list. Or, maybe not that, maybe there's a feature of, you know, other people that, you know, have those distribution list, like, that match the filters.
+
+441
+00:44:24.530 --> 00:44:28.890
+Miles Greenspoon: on here that, you know, it… you know, you know, Matt…
+
+442
+00:44:29.500 --> 00:44:45.039
+Miles Greenspoon: I don't know exactly what it is, but, you know, you add the filters, and if people are created in the system that match those filters, when you go to that distribution list, you're able to see anyone who's created since you developed a distribution list, and you can add each individual, or all, or something like that, I don't know.
+
+443
+00:44:45.040 --> 00:44:59.229
+Patrick Adelsbach: Something like that. There's definitely an elegant solution in there that I would actually reuse the same technology here as you had in Leeds also, right? Like, I think you're doing the same thing. You're filtering down, you're saving a default view.
+
+444
+00:44:59.270 --> 00:45:10.659
+Patrick Adelsbach: Right? And then you're saving an instance of that. You could almost… you could also add that last step to the leads, right? Like, here, I've created… I've… I've done a filter, I've saved it as, like, a… as, like, a…
+
+445
+00:45:11.070 --> 00:45:30.239
+Patrick Adelsbach: a saved screen, but what if I just want a snapshot… I want to save a list of all the stuff that's in there right now? I click a button, and I click… I create a list, and that's not dynamic, right? You could actually use the identical technology, or the identical screen, almost identical screens in both, because in both cases, you could say, oh, my screen came up with these 52,
+
+446
+00:45:30.550 --> 00:45:35.630
+Patrick Adelsbach: Right? Doesn't matter if there are 52 things I want on the distribution list, Or 52.
+
+447
+00:45:35.850 --> 00:45:42.610
+Patrick Adelsbach: Or 52 new kind of results of things that might go on a distribution list, or 52… leads.
+
+448
+00:45:43.390 --> 00:45:50.260
+Patrick Adelsbach: if I want to create a list, or 52, or 52, people, right? Doesn't matter, right? Any of these entities.
+
+449
+00:45:50.620 --> 00:45:55.460
+Patrick Adelsbach: You have a screen, You can save that as something you want to run it periodically.
+
+450
+00:45:56.220 --> 00:45:59.850
+Patrick Adelsbach: Then you could also exp… you could kind of export that to a list.
+
+451
+00:46:00.360 --> 00:46:07.040
+Patrick Adelsbach: And if you export something to a list, you can also add things manually, right? Like, maybe I… maybe I created a list
+
+452
+00:46:07.280 --> 00:46:14.819
+Patrick Adelsbach: Based on the filters, that it had 53 people I wanted to… Invite to a conference.
+
+453
+00:46:15.030 --> 00:46:15.370
+Miles Greenspoon: Okay.
+
+454
+00:46:15.370 --> 00:46:33.199
+Patrick Adelsbach: And now I want to add… I'm like, oh, it didn't catch this person, I want to add that, I want to add this person, I want to add this person. You add 12 more manually. And now you've got, like… because they're not… you can't do that if it's dynamic, right? Because those people will get lost the next time. But once you take a snapshot, you can add them, manually.
+
+455
+00:46:33.210 --> 00:46:36.279
+Patrick Adelsbach: And then you can… and I love the idea of basically just kind of, like.
+
+456
+00:46:36.580 --> 00:46:49.200
+Patrick Adelsbach: reusing, like, what you've been able to create in leads, and then take that same technology and use it in dashboards, use that same dashboard here in the distribution list.
+
+457
+00:46:49.370 --> 00:46:51.640
+Miles Greenspoon: Yeah, interesting. Okay.
+
+458
+00:46:52.230 --> 00:46:54.000
+Miles Greenspoon: I need to re-look at the…
+
+459
+00:46:54.170 --> 00:47:00.939
+Miles Greenspoon: transcript in the notes to make sure that I'm fully, fully understanding, but thank you for explaining it, and that's…
+
+460
+00:47:03.360 --> 00:47:06.990
+Miles Greenspoon: I think that I… I think that I'm picking up what you're putting down.
+
+461
+00:47:06.990 --> 00:47:10.459
+Patrick Adelsbach: But just to, like, I hammer home, because I think it's really important.
+
+462
+00:47:11.280 --> 00:47:30.200
+Patrick Adelsbach: the table that you've created in the leads is great, right? Where you can… where you can sort it, filter it, like, you're gonna be able to… you're gonna try to figure out how to do adjustable columns, you're gonna figure out how to do the editing better, but, like, think about that as the gold standard, right? Now, how do we use that everywhere? Oh, no, of course, we want to use that same table for activities, people, and organizations, right? Easy, right?
+
+463
+00:47:30.420 --> 00:47:32.419
+Miles Greenspoon: Yes, this is all… this is all the same. And then…
+
+464
+00:47:32.420 --> 00:47:44.410
+Patrick Adelsbach: But what about… what about dashboards? Now, dashboards, you've got this nice, pretty picture on top, and a table below. Might as well use this same table that allows us to filter, select columns, all sorts of things down below. Right. Right?
+
+465
+00:47:44.540 --> 00:47:50.240
+Patrick Adelsbach: And similarly, when you are… Creating a distribution list.
+
+466
+00:47:50.730 --> 00:47:56.650
+Patrick Adelsbach: Might as well use this… you've got this great way of drilling down into a table.
+
+467
+00:47:57.080 --> 00:47:57.610
+Miles Greenspoon: Right.
+
+468
+00:47:58.080 --> 00:47:58.970
+Patrick Adelsbach: Right? So it's…
+
+469
+00:47:59.430 --> 00:48:10.959
+Patrick Adelsbach: honest, you might be able to… yeah, I mean, if… if distribution lists are always people, you could also just do that as part of the people filter, right? You could also almost integrate those together even more so, but… Interesting.
+
+470
+00:48:10.960 --> 00:48:19.000
+Miles Greenspoon: Okay, so the distribu- when creating a new list, the ability to, you know, create a private list, I'm just going to…
+
+471
+00:48:19.910 --> 00:48:22.120
+Miles Greenspoon: Is…
+
+472
+00:48:22.700 --> 00:48:31.959
+Miles Greenspoon: you know, the find and add people is all filtered through the same filters as the distribution… as the people module. Okay.
+
+473
+00:48:31.960 --> 00:48:32.620
+Patrick Adelsbach: Yes.
+
+474
+00:48:32.620 --> 00:48:34.769
+Miles Greenspoon: Perfectly understand it. Okay, great.
+
+475
+00:48:35.180 --> 00:48:36.340
+Miles Greenspoon: That makes a ton of sense.
+
+476
+00:48:36.680 --> 00:48:38.160
+Miles Greenspoon: So, okay.
+
+477
+00:48:38.330 --> 00:48:39.300
+Miles Greenspoon: Cool. Cool.
+
+478
+00:48:39.300 --> 00:48:52.660
+Patrick Adelsbach: This is awesome. I'm so happy, I'm so excited. I'm so, like… you don't necessarily… like, as much as you were, like, vibe coding all over the weekend, like, I was at the playground with my kids, like, daydreaming about what this might be, it might be able to happen, so…
+
+479
+00:48:53.410 --> 00:48:55.900
+Miles Greenspoon: I'm so glad. Now, this is,
+
+480
+00:48:55.990 --> 00:49:01.270
+Miles Greenspoon: This is everything I enjoy doing from the standpoint of, like.
+
+481
+00:49:01.270 --> 00:49:17.479
+Miles Greenspoon: learning new skills, finding ways to contribute to the organization, like, I'm having a time of my life. I do have to, like… I will take everything. I want to do some of the work now, just so that it's fresh in my mind, but then I do, like, for the rest of the day, unfortunately, have to focus on, like, other pieces of my.
+
+482
+00:49:17.480 --> 00:49:18.099
+Patrick Adelsbach: I get, I get.
+
+483
+00:49:18.100 --> 00:49:18.630
+Miles Greenspoon: Muhammad.
+
+484
+00:49:18.630 --> 00:49:24.099
+Patrick Adelsbach: And frankly, once we have a prototype, if this really kind of takes hold, we get it in, we make it live.
+
+485
+00:49:24.100 --> 00:49:24.800
+Miles Greenspoon: Like…
+
+486
+00:49:26.080 --> 00:49:32.759
+Patrick Adelsbach: I think your first… two months should be taking everything your group does and making ECHO do it.
+
+487
+00:49:33.180 --> 00:49:33.770
+Miles Greenspoon: Yeah.
+
+488
+00:49:34.090 --> 00:49:47.389
+Patrick Adelsbach: So you get rid of the need to have that much day job, and you have more time to focus on this, right? Because this thing… there's… there's… there's a lot of different angles that this could go in terms of, like.
+
+489
+00:49:48.160 --> 00:49:51.839
+Patrick Adelsbach: Creating efficiencies in the organization and possibilities outside the organization.
+
+490
+00:49:52.740 --> 00:50:09.260
+Miles Greenspoon: Yeah, no, I totally hear you. We're trying to work on developing agents through Glean for most of what my team is doing already anyway, so that's, definitely trying to infuse AI to automate workflows as much as I can.
+
+491
+00:50:09.660 --> 00:50:12.740
+Patrick Adelsbach: But, yeah, I'll let you get back to the… I'll let you get back to the day job, and we'll…
+
+492
+00:50:12.750 --> 00:50:13.380
+Miles Greenspoon: Yeah, well…
+
+493
+00:50:13.380 --> 00:50:16.390
+Patrick Adelsbach: We'll talk when you are ready to, to talk more on it.
+
+494
+00:50:16.390 --> 00:50:27.229
+Miles Greenspoon: Again, this is… this is literally 5 days of building, so it's… it's… it's crazy. It's… I'm… I'm really, really excited about this. So, cool. Thank you for chatting. I appreciate it.
+
+495
+00:50:27.230 --> 00:50:27.840
+Patrick Adelsbach: Thanks, Miles.
+
+496
+00:50:27.840 --> 00:50:29.200
+Miles Greenspoon: We'll get… talk soon. Bye.
+
