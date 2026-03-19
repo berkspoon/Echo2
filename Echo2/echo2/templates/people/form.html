@@ -181,22 +181,38 @@
         </div>
     </div>
 
-    {# feedback: [padelsbach] custom EAV fields must appear in edit forms #}
+    {# feedback: [padelsbach] custom EAV fields in correct sections with (custom) label #}
     {% from "components/_field_renderer.html" import render_field %}
     {% if sections is defined %}
+      {% set known_sections = ['Basic Information', 'Contact Details'] %}
+      {% set ns = namespace(has_additional=false) %}
       {% for sec_name, fields in sections.items() %}
         {% set eav_fields = fields | selectattr("storage_type", "equalto", "eav") | list %}
-        {% if eav_fields %}
+        {% if eav_fields and sec_name in known_sections %}
         <div class="bg-white shadow rounded-lg p-6 mt-6">
-          <h3 class="text-lg font-semibold text-gray-900 mb-4">{{ sec_name }}</h3>
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">{{ sec_name }} <em class="text-sm font-normal text-gray-400">(custom)</em></h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-            {% for fd in eav_fields %}
-              {{ render_field(fd, record, users) }}
-            {% endfor %}
+            {% for fd in eav_fields %}{{ render_field(fd, record, users) }}{% endfor %}
           </div>
         </div>
+        {% elif eav_fields %}
+          {% set ns.has_additional = true %}
         {% endif %}
       {% endfor %}
+      {% if ns.has_additional %}
+      <div class="bg-white shadow rounded-lg p-6 mt-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Additional Custom Information</h3>
+        {% for sec_name, fields in sections.items() %}
+          {% set eav_fields = fields | selectattr("storage_type", "equalto", "eav") | list %}
+          {% if eav_fields and sec_name not in known_sections %}
+          <h4 class="text-sm font-medium text-gray-600 mt-4 mb-2">{{ sec_name }}</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+            {% for fd in eav_fields %}{{ render_field(fd, record, users) }}{% endfor %}
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
     {% endif %}
 
     <!-- Submit -->
