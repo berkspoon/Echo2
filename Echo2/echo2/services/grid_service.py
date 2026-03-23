@@ -478,8 +478,8 @@ def _execute_query(
     query = _apply_filters(entity_type, query, filters)
 
     # feedback: [padelsbach] pre-filter for has_active_leads virtual column
-    if col_filters and "has_active_leads" in col_filters:
-        want_active = "true" in col_filters.pop("has_active_leads").lower()
+    if col_filters and "cf_has_active_leads" in col_filters:
+        want_active = "true" in col_filters.pop("cf_has_active_leads").lower()
         # Find org IDs with active leads
         all_leads_resp = sb.table("leads").select("organization_id, rating").eq("is_deleted", False).execute()
         active_org_ids: set[str] = set()

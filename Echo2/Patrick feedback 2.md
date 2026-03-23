@@ -262,30 +262,30 @@
 ## Action items
 
 - **Miles**
-    - [ ] Ensure custom fields appear as editable in basic information edit forms, not just in tables
-    - [ ] Add ability to resize columns in table views
-    - [ ] Investigate feasibility of bulk editor on screener or individual mini pop-up editor for quick edits
-    - [ ] Add linked organization fields to people screener columns
-    - [ ] Remove sections from field definitions and make them layout-specific only
-    - [ ] Develop default layouts based on existing sections
-    - [ ] Implement field visibility and suggestion conditions based on other field values
-    - [ ] Investigate performance impact of filtering people by organization attributes through table joins
-    - [ ] Replace static pipeline analysis table with dynamic customizable table component
-    - [ ] Make pipeline grouping automatically include all dropdown and multi-select fields, including custom ones
-    - [ ] Add stage filter to top filter bar in pipeline view
-    - [ ] Change pipeline view to show only active leads by default with explicit active/inactive filter
-    - [ ] Merge reference data management into fields section, making dropdown values configurable within field type
-    - [ ] Add calculated field type for pulling data from related entities
-    - [ ] Create multiple text strings field type for storing aliases and nicknames
-    - [ ] Implement team views section for shared screeners separate from private views
-    - [ ] Add option for distribution lists to be either dynamic or static
-    - [ ] Integrate distribution list creation with people module filtering
-    - [ ] Allow manual additions to static snapshot distribution lists
-    - [ ] Automatically show current members when adding people to distribution lists
-    - [ ] Test and refine duplicate detection similarity scoring algorithm
-    - [ ] Implement merge functionality for duplicate records
-    - [ ] Review Patrick's message about multi-tenant architecture and phase one priorities
-    - [ ] Review meeting transcript to ensure full understanding of all discussed items
+    - [x] Ensure custom fields appear as editable in basic information edit forms, not just in tables
+    - [x] Add ability to resize columns in table views
+    - [x] Investigate feasibility of bulk editor on screener or individual mini pop-up editor for quick edits — implemented pop-up row editor
+    - [x] Add linked organization fields to people screener columns
+    - [x] Remove sections from field definitions and make them layout-specific only
+    - [x] Develop default layouts based on existing sections
+    - [x] Implement field visibility and suggestion conditions based on other field values
+    - [x] Investigate performance impact of filtering people by organization attributes through table joins — implemented as virtual columns with batch resolution
+    - [x] Replace static pipeline analysis table with dynamic customizable table component
+    - [x] Make pipeline grouping automatically include all dropdown and multi-select fields, including custom ones
+    - [x] Add stage filter to top filter bar in pipeline view
+    - [x] Change pipeline view to show only active leads by default with explicit active/inactive filter
+    - [x] Merge reference data management into fields section, making dropdown values configurable within field type
+    - [x] Add calculated field type for pulling data from related entities — implemented as specific virtual columns (org fields on people/leads, aggregates on orgs)
+    - [x] Create multiple text strings field type for storing aliases and nicknames
+    - [x] Implement team views section for shared screeners separate from private views
+    - [x] Add option for distribution lists to be either dynamic or static
+    - [x] Integrate distribution list creation with people module filtering
+    - [x] Allow manual additions to static snapshot distribution lists
+    - [x] Automatically show current members when adding people to distribution lists
+    - [ ] Test and refine duplicate detection similarity scoring algorithm — deferred per Patrick
+    - [ ] Implement merge functionality for duplicate records — deferred per Patrick
+    - [ ] Review Patrick's message about multi-tenant architecture and phase one priorities — deferred (Patrick said "Not Phase 1")
+    - [x] Review meeting transcript to ensure full understanding of all discussed items
     - [ ] Focus remaining work day on non-CRM job responsibilities
 - **Patrick**
     - [ ] Send updated leads format with final tweaks and copy Miles

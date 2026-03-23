@@ -141,7 +141,7 @@
     {% elif ftype == 'text_list' %}
     {# feedback: [padelsbach] multiple text strings field type for aliases/nicknames #}
     {% set items = value if value is iterable and value is not string else [] %}
-    <div x-data="{ items: {{ items | tojson }} }" class="mt-1 space-y-2">
+    <div x-data='{ "items": {{ items | tojson }} }' class="mt-1 space-y-2">
       <template x-for="(item, idx) in items" :key="idx">
         <div class="flex items-center gap-2">
           <input type="text" x-model="items[idx]"
