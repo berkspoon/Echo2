@@ -32,7 +32,8 @@
                     hx-trigger="change"
                     hx-target="#pipeline-chart"
                     hx-include="[name='service'],[name='asset_class'],[name='owner'],[name='org_type'],[name='from'],[name='to'],[name='active_filter'],[name='stage'],[name='group_by']"
-                    name="metric">
+                    name="metric"
+                    onchange="var h=document.querySelector('#ap-filter-form input[name=metric]'); if(h) h.value=this.value;">
                 <option value="count" {{ 'selected' if metric == 'count' else '' }}>Lead Count</option>
                 <option value="revenue" {{ 'selected' if metric == 'revenue' else '' }}>Expected Revenue ($)</option>
                 <option value="flar" {{ 'selected' if metric == 'flar' else '' }}>Yr1 FLAR ($)</option>
@@ -43,7 +44,8 @@
                     hx-trigger="change"
                     hx-target="#pipeline-chart"
                     hx-include="[name='service'],[name='asset_class'],[name='owner'],[name='org_type'],[name='from'],[name='to'],[name='active_filter'],[name='stage'],[name='metric']"
-                    name="group_by">
+                    name="group_by"
+                    onchange="var h=document.querySelector('#ap-filter-form input[name=group_by]'); if(h) h.value=this.value;">
                 {% for gf in groupable_fields %}
                 <option value="{{ gf.value }}" {{ 'selected' if group_by == gf.value else '' }}>{{ gf.label }}</option>
                 {% endfor %}

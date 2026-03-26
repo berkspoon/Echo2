@@ -2,14 +2,23 @@
 {% if presets %}
 <div class="flex flex-wrap gap-2">
     {% for p in presets %}
-    <a href="{{ p.url }}"
-       class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors
-              {{ 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' }}">
-        {{ p.view_name }}
-        {% if p.is_shared and not p.is_own %}
-        <span class="text-xs text-gray-400">(shared)</span>
+    <div class="group relative inline-flex items-center">
+        <a href="{{ p.url }}"
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors
+                  bg-white border-gray-300 text-gray-700 hover:bg-gray-50">
+            {{ p.view_name }}
+            {% if p.is_shared and not p.is_own %}
+            <span class="text-xs text-gray-400">(shared)</span>
+            {% endif %}
+        </a>
+        {% if p.is_own %}
+        <form method="POST" action="/views/{{ p.id }}/delete" class="hidden group-hover:inline-flex absolute -top-1 -right-1"
+              onsubmit="return confirm('Delete preset &quot;{{ p.view_name }}&quot;?');">
+            <button type="submit" class="w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600"
+                    title="Delete preset">&times;</button>
+        </form>
         {% endif %}
-    </a>
+    </div>
     {% endfor %}
 </div>
 {% else %}

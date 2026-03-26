@@ -780,6 +780,9 @@
 
 {# ── JavaScript for column filters, screener actions, and column resizing ─── #}
 <script>
+/** Users data for lookup fields in bulk edit */
+window._bulkEditUsers = {{ users | tojson | safe }};
+
 /** feedback: [padelsbach] column resizing via drag */
 function startColResize(e, fieldName) {
   e.preventDefault();
@@ -1016,6 +1019,16 @@ function onBulkFieldChange(containerId, entityType) {
     container.innerHTML = '<input type="date" id="' + inputId + '" name="field_value" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" required>';
   } else if (ftype === 'number' || ftype === 'currency') {
     container.innerHTML = '<input type="number" id="' + inputId + '" name="field_value" step="any" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" required>';
+  } else if (ftype === 'lookup') {
+    // Lookup fields (e.g. coverage_owner, assigned_to) — render user select
+    var usersData = window._bulkEditUsers || [];
+    var html = '<select id="' + inputId + '" name="field_value" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" required>';
+    html += '<option value="">-- Select --</option>';
+    for (var i = 0; i < usersData.length; i++) {
+      html += '<option value="' + usersData[i].id + '">' + usersData[i].display_name + '</option>';
+    }
+    html += '</select>';
+    container.innerHTML = html;
   } else {
     container.innerHTML = '<input type="text" id="' + inputId + '" name="field_value" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" required>';
   }

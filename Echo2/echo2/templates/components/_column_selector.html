@@ -171,7 +171,7 @@ function columnSelector() {
       });
       var colSet = new Set(cols);
       // Use base_url for drill-down grids (window.location is the dashboard, not the drill-down)
-      var baseUrl = '{{ base_url }}';
+      var baseUrl = '{{ base_url | safe }}';
       var url = baseUrl.includes('?') ? new URL(baseUrl, window.location.origin) : new URL(window.location);
       url.searchParams.set('visible_columns', cols.join(','));
       url.searchParams.set('page', '1');
