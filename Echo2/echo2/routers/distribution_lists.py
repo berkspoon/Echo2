@@ -836,13 +836,23 @@ async def save_list_filters(
     # Strip internal keys
     filter_criteria = {k: v for k, v in filter_criteria.items() if not k.startswith("_")}
 
+    # Require at least one meaningful filter (cf_* column filter or q search text)
+    has_filters = any(k.startswith("cf_") for k in filter_criteria) or filter_criteria.get("q")
+    if not has_filters:
+        return HTMLResponse(
+            '<div class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">'
+            'At least one filter is required. Use the column filter icons in the grid '
+            'to define who should be on this list before saving.'
+            '</div>'
+        )
+
+    # Resolve count before saving so user can see impact
+    member_count = len(_resolve_dynamic_members(filter_criteria))
+
     sb.table("distribution_lists").update({
         "filter_criteria": filter_criteria,
         "list_mode": "dynamic",  # Saving filters makes it dynamic
     }).eq("id", str(list_id)).execute()
-
-    # Resolve and show count
-    member_count = len(_resolve_dynamic_members(filter_criteria))
 
     return HTMLResponse(
         f'<div class="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">'

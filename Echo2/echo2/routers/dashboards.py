@@ -53,6 +53,25 @@ FP_STAGE_COLORS = {
     "declined": "bg-red-400",
 }
 
+# Traction scores for Hot Prospects (2E)
+_TRACTION_SCORES = {
+    "target_identified": 0,
+    "intro_scheduled": 0,
+    "initial_meeting_complete": 1,
+    "ddq_materials_sent": 2,
+    "due_diligence": 3,
+    "ic_review": 4,
+    "soft_circle": 5,
+    "legal_docs": 5,
+    "closed": 5,
+    "declined": 0,
+}
+
+
+def _compute_traction_score(stage: str) -> int:
+    """Return traction score for a fundraise stage."""
+    return _TRACTION_SCORES.get(stage, 0)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -637,13 +656,15 @@ def _build_advisory_funnel(all_leads: list[dict]) -> list[dict]:
     ]
 
 
-def _group_advisory_leads(all_leads: list[dict], group_by: str) -> list[dict]:
-    """Group advisory leads by a dimension, returning bar chart data."""
+def _group_advisory_leads(all_leads: list[dict], group_by: str, metric: str = "revenue") -> list[dict]:
+    """Group advisory leads by a dimension, returning bar chart data.
+    metric: 'revenue' (default), 'count', or 'flar'.
+    """
     stage_labels = {s["value"]: s["label"] for s in get_reference_data("lead_stage")}
     service_type_labels = {s["value"]: s["label"] for s in get_reference_data("service_type")}
     ac_labels = {a["value"]: a["label"] for a in get_reference_data("asset_class")}
 
-    groups: dict[str, dict] = defaultdict(lambda: {"count": 0, "total_revenue": 0.0})
+    groups: dict[str, dict] = defaultdict(lambda: {"count": 0, "total_revenue": 0.0, "total_flar": 0.0})
 
     color_cycle = ["bg-blue-400", "bg-indigo-400", "bg-purple-400", "bg-cyan-400",
                    "bg-teal-400", "bg-yellow-400", "bg-orange-400", "bg-pink-400",
@@ -664,6 +685,7 @@ def _group_advisory_leads(all_leads: list[dict], group_by: str) -> list[dict]:
             for ac in (acs or ["unspecified"]):
                 groups[ac]["count"] += 1
                 groups[ac]["total_revenue"] += _safe_float(lead.get("expected_revenue"))
+                groups[ac]["total_flar"] += _safe_float(lead.get("expected_yr1_flar"))
             continue
         elif group_by == "owner":
             key = str(lead.get("aksia_owner_id") or "unassigned")
@@ -676,11 +698,13 @@ def _group_advisory_leads(all_leads: list[dict], group_by: str) -> list[dict]:
                 for mv in (raw_val or ["Unspecified"]):
                     groups[str(mv)]["count"] += 1
                     groups[str(mv)]["total_revenue"] += _safe_float(lead.get("expected_revenue"))
+                    groups[str(mv)]["total_flar"] += _safe_float(lead.get("expected_yr1_flar"))
                 continue
             else:
                 key = str(raw_val or "Unspecified")
         groups[key]["count"] += 1
         groups[key]["total_revenue"] += _safe_float(lead.get("expected_revenue"))
+        groups[key]["total_flar"] += _safe_float(lead.get("expected_yr1_flar"))
 
     # Resolve labels
     if group_by == "stage":
@@ -723,20 +747,40 @@ def _group_advisory_leads(all_leads: list[dict], group_by: str) -> list[dict]:
         ordered_keys = sorted(groups.keys(), key=lambda k: groups[k]["total_revenue"], reverse=True)
         color_map = {}
 
+    # Compute bar_pct based on selected metric
     max_revenue = max((g["total_revenue"] for g in groups.values()), default=1) or 1
+    max_count = max((g["count"] for g in groups.values()), default=1) or 1
+    max_flar = max((g["total_flar"] for g in groups.values()), default=1) or 1
 
     bars = []
     for idx, key in enumerate(ordered_keys):
         g = groups[key]
         if g["count"] == 0:
             continue
+        # Determine bar sizing by metric
+        if metric == "count":
+            bar_pct = _pct(g["count"], max_count)
+            metric_value = g["count"]
+            metric_fmt = f"{g['count']} lead{'s' if g['count'] != 1 else ''}"
+        elif metric == "flar":
+            bar_pct = _pct(g["total_flar"], max_flar)
+            metric_value = g["total_flar"]
+            metric_fmt = f"${_fmt_currency(g['total_flar'])}"
+        else:  # revenue (default)
+            bar_pct = _pct(g["total_revenue"], max_revenue)
+            metric_value = g["total_revenue"]
+            metric_fmt = f"${_fmt_currency(g['total_revenue'])}"
         bars.append({
             "key": key,
             "label": label_map.get(key, key.replace("_", " ").title()),
             "count": g["count"],
             "total_revenue": g["total_revenue"],
+            "total_flar": g["total_flar"],
             "revenue_fmt": _fmt_currency(g["total_revenue"]),
-            "bar_pct": _pct(g["total_revenue"], max_revenue),
+            "flar_fmt": _fmt_currency(g["total_flar"]),
+            "bar_pct": bar_pct,
+            "metric_value": metric_value,
+            "metric_fmt": metric_fmt,
             "color": color_map.get(key, color_cycle[idx % len(color_cycle)]),
         })
     return bars
@@ -758,6 +802,7 @@ async def advisory_pipeline(
     date_to: str = Query("", alias="to"),
     active_filter: str = Query("active", alias="active_filter"),
     stage: str = Query("", alias="stage"),
+    metric: str = Query("revenue"),
 ):
     """Advisory Pipeline Dashboard with filters."""
     sb = get_supabase()
@@ -782,7 +827,7 @@ async def advisory_pipeline(
     win_rate = _pct(won_count, won_count + lost_count) if (won_count + lost_count) > 0 else 0.0
 
     # 2. Pipeline by Stage (default group-by)
-    pipeline_by_stage = _group_advisory_leads(all_leads, "stage")
+    pipeline_by_stage = _group_advisory_leads(all_leads, "stage", metric=metric)
 
     # 3. Revenue by Service Type
     svc_groups = defaultdict(lambda: {"count": 0, "total_revenue": 0.0})
@@ -880,6 +925,7 @@ async def advisory_pipeline(
         # Pipeline chart (default: grouped by stage)
         "pipeline_by_stage": pipeline_by_stage,
         "group_by": "stage",
+        "metric": metric,
         # Revenue by service
         "revenue_by_service": revenue_by_service,
         # FLAR
@@ -933,15 +979,17 @@ async def advisory_pipeline_chart(
     date_to: str = Query("", alias="to"),
     active_filter: str = Query("active", alias="active_filter"),
     stage: str = Query("", alias="stage"),
+    metric: str = Query("revenue"),
 ):
     """HTMX partial: advisory pipeline chart grouped by selected dimension."""
     all_leads = _load_advisory_leads(service, asset_class, owner, org_type, date_from, date_to, active_filter, stage)
-    bars = _group_advisory_leads(all_leads, group_by)
+    bars = _group_advisory_leads(all_leads, group_by, metric=metric)
 
     context = {
         "request": request,
         "pipeline_by_stage": bars,
         "group_by": group_by,
+        "metric": metric,
         # Pass filter params for drill-down links
         "filter_service": service,
         "filter_asset_class": asset_class,
@@ -969,6 +1017,7 @@ async def advisory_pipeline_drilldown(
     date_to: str = Query("", alias="to"),
     active_filter: str = Query("active", alias="active_filter"),
     stage: str = Query("", alias="stage"),
+    metric: str = Query("revenue"),
 ):
     """HTMX partial: drill-down table for a specific bar in advisory chart."""
     # Build extra_filters from dashboard context
@@ -1005,7 +1054,7 @@ async def advisory_pipeline_drilldown(
     extra_filters["_lead_ids"] = lead_ids if lead_ids else ["00000000-0000-0000-0000-000000000000"]
 
     # Build drilldown base URL for HTMX reloads (preserves all dashboard context)
-    drilldown_params = f"dimension={dimension}&value={value}&service={service}&asset_class={asset_class}&owner={owner}&org_type={org_type}&from={date_from}&to={date_to}&active_filter={active_filter}&stage={stage}"
+    drilldown_params = f"dimension={dimension}&value={value}&service={service}&asset_class={asset_class}&owner={owner}&org_type={org_type}&from={date_from}&to={date_to}&active_filter={active_filter}&stage={stage}&metric={metric}"
     drilldown_base_url = f"/dashboards/advisory-pipeline/drilldown?{drilldown_params}"
 
     from services.grid_service import build_grid_context
@@ -1036,14 +1085,59 @@ async def advisory_pipeline_drilldown(
     grid_ctx["request"] = request
     grid_ctx["user"] = current_user
 
-    return templates.TemplateResponse("dashboards/_advisory_drilldown.html", grid_ctx)
+    # Grid-internal reloads (column change, sort, paginate) should return just
+    # the grid partial, not the full drilldown wrapper which would cause nesting.
+    is_grid_reload = any(request.query_params.get(p) for p in ("visible_columns", "sort_by", "page_size"))
+    template = "components/_grid.html" if is_grid_reload else "dashboards/_advisory_drilldown.html"
+    return templates.TemplateResponse(template, grid_ctx)
+
+
+# ---------------------------------------------------------------------------
+# ADVISORY PIPELINE — Dashboard Presets
+# ---------------------------------------------------------------------------
+
+@router.get("/advisory-pipeline/presets", response_class=HTMLResponse)
+async def advisory_pipeline_presets(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """HTMX partial: list of saved dashboard presets for advisory pipeline."""
+    sb = get_supabase()
+    uid = str(current_user.id)
+    # Load own + shared presets
+    resp = (
+        sb.table("saved_views")
+        .select("id, view_name, filters, columns, is_shared, user_id")
+        .eq("entity_type", "dashboard_advisory")
+        .or_(f"user_id.eq.{uid},is_shared.eq.true")
+        .order("view_name")
+        .execute()
+    )
+    presets = resp.data or []
+
+    # Build URL for each preset from its saved filters/columns
+    for p in presets:
+        filters = p.get("filters") or {}
+        columns = p.get("columns") or {}
+        # columns stores display settings (group_by, metric)
+        params = {**filters, **columns}
+        qs = "&".join(f"{k}={v}" for k, v in params.items() if v)
+        p["url"] = f"/dashboards/advisory-pipeline?{qs}" if qs else "/dashboards/advisory-pipeline"
+        p["is_own"] = p.get("user_id") == uid
+
+    context = {
+        "request": request,
+        "presets": presets,
+        "user": current_user,
+    }
+    return templates.TemplateResponse("dashboards/_advisory_presets.html", context)
 
 
 # ---------------------------------------------------------------------------
 # CAPITAL RAISE — shared data loader & helpers
 # ---------------------------------------------------------------------------
 
-def _load_capital_raise_prospects(fund_ticker: Optional[str] = None) -> tuple[list[dict], list[dict], dict, Optional[dict]]:
+def _load_capital_raise_prospects(fund_ticker: Optional[str] = None, owner: Optional[str] = None) -> tuple[list[dict], list[dict], dict, Optional[dict]]:
     """Load capital raise prospects. Returns (prospects, funds, funds_by_id, current_fund)."""
     sb = get_supabase()
     funds_resp = sb.table("funds").select("id, fund_name, ticker, brand, target_raise_mn").eq("is_active", True).order("ticker").execute()
@@ -1065,6 +1159,8 @@ def _load_capital_raise_prospects(fund_ticker: Optional[str] = None) -> tuple[li
     )
     if current_fund:
         query = query.eq("fund_id", str(current_fund["id"]))
+    if owner:
+        query = query.eq("aksia_owner_id", owner)
 
     resp = query.execute()
     prospects = resp.data or []
@@ -1108,11 +1204,16 @@ def _group_capital_raise_prospects(prospects: list[dict], group_by: str) -> list
                    "bg-teal-400", "bg-yellow-400", "bg-orange-400", "bg-pink-400",
                    "bg-green-400", "bg-red-400", "bg-gray-400"]
 
-    # Resolve org data if needed for lp_type grouping
+    # Resolve org data if needed for lp_type or country grouping
     org_map = {}
-    if group_by == "lp_type":
+    if group_by in ("lp_type", "country"):
         org_ids = list({str(fp["organization_id"]) for fp in prospects if fp.get("organization_id")})
         org_map = batch_resolve_orgs(org_ids)
+
+    # Country label resolution
+    country_labels = {}
+    if group_by == "country":
+        country_labels = {c["value"]: c["label"] for c in get_reference_data("country")}
 
     for fp in prospects:
         if group_by == "stage":
@@ -1120,6 +1221,9 @@ def _group_capital_raise_prospects(prospects: list[dict], group_by: str) -> list
         elif group_by == "lp_type":
             org_data = org_map.get(str(fp.get("organization_id", "")), {})
             key = org_data.get("organization_type", "unknown") if isinstance(org_data, dict) else "unknown"
+        elif group_by == "country":
+            org_data = org_map.get(str(fp.get("organization_id", "")), {})
+            key = org_data.get("country", "unknown") if isinstance(org_data, dict) else "unknown"
         elif group_by == "fund":
             key = str(fp.get("fund_id") or "none")
         else:
@@ -1134,6 +1238,10 @@ def _group_capital_raise_prospects(prospects: list[dict], group_by: str) -> list
         color_map = FP_STAGE_COLORS
     elif group_by == "lp_type":
         label_map = org_type_labels
+        ordered_keys = sorted(groups.keys(), key=lambda k: groups[k]["total_allocation"], reverse=True)
+        color_map = {}
+    elif group_by == "country":
+        label_map = country_labels
         ordered_keys = sorted(groups.keys(), key=lambda k: groups[k]["total_allocation"], reverse=True)
         color_map = {}
     elif group_by == "fund":
@@ -1179,9 +1287,10 @@ def _group_capital_raise_prospects(prospects: list[dict], group_by: str) -> list
 async def capital_raise_all(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
+    owner: str = Query(""),
 ):
     """Capital Raise Dashboard — all funds."""
-    return await _render_capital_raise(request, current_user, fund_ticker=None)
+    return await _render_capital_raise(request, current_user, fund_ticker=None, owner=owner or None)
 
 
 # Static paths must come before {fund_ticker} dynamic path
@@ -1191,10 +1300,12 @@ async def capital_raise_chart(
     current_user: CurrentUser = Depends(get_current_user),
     group_by: str = Query("stage"),
     fund_ticker: str = Query("", alias="fund_ticker"),
+    owner: str = Query(""),
 ):
     """HTMX partial: capital raise chart grouped by selected dimension."""
     prospects, funds, funds_by_id, current_fund = _load_capital_raise_prospects(
-        fund_ticker if fund_ticker else None
+        fund_ticker if fund_ticker else None,
+        owner=owner or None,
     )
     bars = _group_capital_raise_prospects(prospects, group_by)
 
@@ -1203,6 +1314,7 @@ async def capital_raise_chart(
         "fp_pipeline": bars,
         "cr_group_by": group_by,
         "current_fund_ticker": fund_ticker or "",
+        "filter_owner": owner,
     }
     return templates.TemplateResponse("dashboards/_capital_raise_chart.html", context)
 
@@ -1214,6 +1326,7 @@ async def capital_raise_drilldown(
     dimension: str = Query("stage"),
     value: str = Query(""),
     fund_ticker: str = Query("", alias="fund_ticker"),
+    owner: str = Query(""),
 ):
     """HTMX partial: drill-down table for a specific bar in capital raise chart."""
     # Build extra_filters from dashboard context
@@ -1221,7 +1334,8 @@ async def capital_raise_drilldown(
 
     # Pre-load prospects matching dashboard filters to get IDs
     prospects, funds, funds_by_id, current_fund = _load_capital_raise_prospects(
-        fund_ticker if fund_ticker else None
+        fund_ticker if fund_ticker else None,
+        owner=owner or None,
     )
 
     # Filter to matching prospects based on dimension+value
@@ -1236,6 +1350,14 @@ async def capital_raise_drilldown(
             ot = org_data.get("organization_type", "unknown") if isinstance(org_data, dict) else "unknown"
             if ot == value:
                 matching_prospects.append(fp)
+    elif dimension == "country":
+        org_ids = list({str(fp["organization_id"]) for fp in prospects if fp.get("organization_id")})
+        org_map = batch_resolve_orgs(org_ids)
+        for fp in prospects:
+            org_data = org_map.get(str(fp.get("organization_id", "")), {})
+            country = org_data.get("country", "unknown") if isinstance(org_data, dict) else "unknown"
+            if country == value:
+                matching_prospects.append(fp)
     elif dimension == "fund":
         matching_prospects = [fp for fp in prospects if str(fp.get("fund_id") or "none") == value]
     else:
@@ -1245,7 +1367,7 @@ async def capital_raise_drilldown(
     extra_filters["_lead_ids"] = lead_ids if lead_ids else ["00000000-0000-0000-0000-000000000000"]
 
     # Build drilldown base URL for HTMX reloads (preserves all dashboard context)
-    drilldown_params = f"dimension={dimension}&value={value}&fund_ticker={fund_ticker}"
+    drilldown_params = f"dimension={dimension}&value={value}&fund_ticker={fund_ticker}&owner={owner}"
     drilldown_base_url = f"/dashboards/capital-raise/drilldown?{drilldown_params}"
 
     from services.grid_service import build_grid_context
@@ -1259,7 +1381,7 @@ async def capital_raise_drilldown(
     )
 
     # Add drilldown metadata
-    dim_labels = {"stage": "Stage", "lp_type": "LP Type", "fund": "Fund"}
+    dim_labels = {"stage": "Stage", "lp_type": "LP Type", "fund": "Fund", "country": "Country"}
     grid_ctx["drilldown_dimension"] = dim_labels.get(dimension, dimension.replace("_", " ").title())
     grid_ctx["drilldown_value"] = value.replace("_", " ").title()
     grid_ctx["is_drilldown"] = True
@@ -1267,7 +1389,11 @@ async def capital_raise_drilldown(
     grid_ctx["request"] = request
     grid_ctx["user"] = current_user
 
-    return templates.TemplateResponse("dashboards/_capital_raise_drilldown.html", grid_ctx)
+    # Grid-internal reloads (column change, sort, paginate) should return just
+    # the grid partial, not the full drilldown wrapper which would cause nesting.
+    is_grid_reload = any(request.query_params.get(p) for p in ("visible_columns", "sort_by", "page_size"))
+    template = "components/_grid.html" if is_grid_reload else "dashboards/_capital_raise_drilldown.html"
+    return templates.TemplateResponse(template, grid_ctx)
 
 
 @router.get("/capital-raise/{fund_ticker}", response_class=HTMLResponse)
@@ -1275,14 +1401,15 @@ async def capital_raise_fund(
     request: Request,
     fund_ticker: str,
     current_user: CurrentUser = Depends(get_current_user),
+    owner: str = Query(""),
 ):
     """Capital Raise Dashboard — specific fund."""
-    return await _render_capital_raise(request, current_user, fund_ticker=fund_ticker)
+    return await _render_capital_raise(request, current_user, fund_ticker=fund_ticker, owner=owner or None)
 
 
-async def _render_capital_raise(request: Request, current_user: CurrentUser, fund_ticker: Optional[str]):
+async def _render_capital_raise(request: Request, current_user: CurrentUser, fund_ticker: Optional[str], owner: Optional[str] = None):
     """Shared renderer for capital raise dashboard."""
-    prospects, funds, funds_by_id, current_fund = _load_capital_raise_prospects(fund_ticker)
+    prospects, funds, funds_by_id, current_fund = _load_capital_raise_prospects(fund_ticker, owner=owner)
 
     # Batch resolve orgs
     org_ids = list({str(fp["organization_id"]) for fp in prospects if fp.get("organization_id")})
@@ -1366,7 +1493,46 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
             "decline_reason": decline_labels.get(fp.get("decline_reason", ""), fp.get("decline_reason", "—")),
         })
 
+    # Hot Prospects — orgs with traction score >= 3, grouped by org
+    hot_orgs: dict[str, dict] = {}
+    for fp in prospects:
+        score = _compute_traction_score(fp.get("stage", ""))
+        if score < 3:
+            continue
+        org_id = str(fp.get("organization_id", ""))
+        org_data = org_map.get(org_id, {})
+        org_name = org_data.get("company_name", "Unknown") if isinstance(org_data, dict) else "Unknown"
+        fund_data = funds_by_id.get(str(fp.get("fund_id", "")), {})
+        ticker = fund_data.get("ticker", "?")
+        alloc = _safe_float(fp.get("target_allocation_mn"))
+        if org_id not in hot_orgs:
+            hot_orgs[org_id] = {
+                "org_name": org_name,
+                "org_id": org_id,
+                "max_score": score,
+                "highest_stage": fp.get("stage", ""),
+                "tickers": set(),
+                "total_allocation": 0.0,
+            }
+        entry = hot_orgs[org_id]
+        if score > entry["max_score"]:
+            entry["max_score"] = score
+            entry["highest_stage"] = fp.get("stage", "")
+        entry["tickers"].add(ticker)
+        entry["total_allocation"] += alloc
+
+    hot_prospects = sorted(hot_orgs.values(), key=lambda x: (-x["max_score"], -x["total_allocation"]))
+    for hp in hot_prospects:
+        hp["tickers_str"] = ", ".join(sorted(hp["tickers"]))
+        hp["allocation_fmt"] = _fmt_mn(hp["total_allocation"])
+        hp["stage_label"] = stage_labels.get(hp["highest_stage"], hp["highest_stage"].replace("_", " ").title())
+        hp["badge_class"] = "bg-green-100 text-green-800" if hp["max_score"] >= 5 else "bg-amber-100 text-amber-800"
+
     last_refreshed = datetime.now().strftime("%b %d, %Y %I:%M %p")
+
+    # Load users for owner dropdown
+    sb = get_supabase()
+    users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
 
     context = {
         "request": request,
@@ -1375,6 +1541,9 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
         "current_fund_ticker": fund_ticker,
         "current_fund": current_fund,
         "last_refreshed": last_refreshed,
+        # Owner filter
+        "users": users_resp.data or [],
+        "filter_owner": owner or "",
         # Allocation
         "total_target": total_target,
         "total_target_fmt": _fmt_mn(total_target),
@@ -1401,6 +1570,8 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
         # Declined
         "declined": declined,
         "total_prospects": len(prospects),
+        # Hot Prospects
+        "hot_prospects": hot_prospects,
     }
 
     return templates.TemplateResponse("dashboards/capital_raise.html", context)

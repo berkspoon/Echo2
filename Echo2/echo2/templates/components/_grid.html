@@ -18,6 +18,9 @@
      grid_container_id — e.g. "organization-grid-container"
 #}
 
+{# Default is_drilldown to false when not passed #}
+{% set is_drilldown = is_drilldown | default(false) %}
+
 {# ── Helper: build query string from current filters + col_filters + visible_columns ─── #}
 {% set ns = namespace(qs_parts=[]) %}
 {# Preserve visible column selection across sort/paginate/filter links #}
@@ -160,18 +163,29 @@
     {% endif %}
   </div>
 
-  {# Page size selector #}
-  <div class="flex items-center gap-2 text-sm text-gray-500">
-    <span>Show</span>
-    <select class="rounded border border-gray-300 px-2 py-1 text-sm"
-            hx-get="{{ base_url }}" hx-target="#{{ grid_container_id }}" hx-push-url="true"
-            hx-include="closest form" name="page_size"
-            onchange="this.closest('div').querySelector('input[name=page_size_hx]') || (function(el){ let url=new URL(window.location); url.searchParams.set('page_size', el.value); url.searchParams.set('page', '1'); htmx.ajax('GET', url.pathname+url.search, {target:'#{{ grid_container_id }}', pushUrl:true}); })(this)">
-      {% for ps in [25, 50, 100] %}
-      <option value="{{ ps }}" {{ 'selected' if pagination.page_size == ps else '' }}>{{ ps }}</option>
-      {% endfor %}
-    </select>
-    <span>per page</span>
+  <div class="flex items-center gap-3">
+    {# Export button #}
+    {% if not is_drilldown %}
+    <a id="export-btn-{{ grid_container_id }}" href="javascript:void(0)" onclick="exportGrid('{{ grid_container_id }}', '{{ entity_type }}')"
+       class="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700">
+      <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      Export
+    </a>
+    {% endif %}
+
+    {# Page size selector #}
+    <div class="flex items-center gap-2 text-sm text-gray-500">
+      <span>Show</span>
+      <select class="rounded border border-gray-300 px-2 py-1 text-sm"
+              hx-get="{{ base_url }}" hx-target="#{{ grid_container_id }}" hx-push-url="true"
+              hx-include="closest form" name="page_size"
+              onchange="this.closest('div').querySelector('input[name=page_size_hx]') || (function(el){ let url=new URL(window.location); url.searchParams.set('page_size', el.value); url.searchParams.set('page', '1'); htmx.ajax('GET', url.pathname+url.search, {target:'#{{ grid_container_id }}', pushUrl:true}); })(this)">
+        {% for ps in [25, 50, 100] %}
+        <option value="{{ ps }}" {{ 'selected' if pagination.page_size == ps else '' }}>{{ ps }}</option>
+        {% endfor %}
+      </select>
+      <span>per page</span>
+    </div>
   </div>
 </div>
 
@@ -181,6 +195,15 @@
   <table class="min-w-full divide-y divide-gray-200">
     <thead class="bg-gray-50">
       <tr>
+        {# Bulk select checkbox column (not on drilldown grids) #}
+        {% if not is_drilldown %}
+        <th class="px-2 py-3 w-10">
+          <input type="checkbox" id="select-all-{{ grid_container_id }}"
+                 onchange="toggleSelectAll(this, '{{ grid_container_id }}')"
+                 class="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+        </th>
+        {% endif %}
+
         {# Entity-specific pre-columns (e.g. task status with action buttons) #}
         {% if entity_type == 'task' %}
         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">Status</th>
@@ -244,6 +267,14 @@
           {% elif entity_type == 'task' %}onclick="window.location='/tasks/{{ row.id }}'"
           {% elif entity_type == 'distribution_list' %}onclick="window.location='/distribution-lists/{{ row.id }}'"
           {% endif %}>
+
+        {# Bulk select checkbox cell (not on drilldown grids) #}
+        {% if not is_drilldown %}
+        <td class="px-2 py-3 w-10" onclick="event.stopPropagation()">
+          <input type="checkbox" class="row-select-{{ grid_container_id }} h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                 value="{{ row.id }}" onchange="updateBulkBar('{{ grid_container_id }}')">
+        </td>
+        {% endif %}
 
         {# Task status pre-column #}
         {% if entity_type == 'task' %}
@@ -585,7 +616,7 @@
       {# Expandable leads panel row for organizations #}
       {% if entity_type == 'organization' %}
       <tr id="leads-panel-row-{{ row.id }}">
-        <td colspan="{{ columns|length + extra_columns|length + 1 }}" class="p-0">
+        <td colspan="{{ columns|length + extra_columns|length + (2 if not is_drilldown else 1) }}" class="p-0">
           <div id="leads-panel-{{ row.id }}"></div>
         </td>
       </tr>
@@ -594,7 +625,10 @@
       {% endfor %}
       {% else %}
       <tr>
-        <td colspan="{{ columns|length + extra_columns|length + (2 if entity_type == 'task' else 1) }}" class="px-4 py-8 text-center text-sm text-gray-500">
+        {% set base_colspan = columns|length + extra_columns|length + 1 %}
+        {% if entity_type == 'task' %}{% set base_colspan = base_colspan + 1 %}{% endif %}
+        {% if not is_drilldown %}{% set base_colspan = base_colspan + 1 %}{% endif %}
+        <td colspan="{{ base_colspan }}" class="px-4 py-8 text-center text-sm text-gray-500">
           No records found.
           {% if entity_type == 'organization' %}
           <a href="/organizations/new" class="ml-1 text-brand-600 hover:underline">Create one</a>
@@ -646,6 +680,63 @@
   </div>
   {% endif %}
 </div>
+
+{# ── Floating Bulk Action Bar ─── #}
+{% if not is_drilldown %}
+<div id="bulk-bar-{{ grid_container_id }}" class="hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t shadow-lg p-3">
+  <div class="max-w-7xl mx-auto flex items-center justify-between">
+    <span id="bulk-count-{{ grid_container_id }}" class="text-sm font-medium text-gray-700">0 selected</span>
+    <div class="flex gap-2">
+      <button onclick="exportSelected('{{ grid_container_id }}', '{{ entity_type }}')"
+              class="px-3 py-1.5 text-sm font-medium rounded-md bg-green-600 text-white hover:bg-green-700">Export Selected</button>
+      <button onclick="bulkEdit('{{ grid_container_id }}', '{{ entity_type }}')"
+              class="px-3 py-1.5 text-sm font-medium rounded-md bg-brand-500 text-white hover:bg-brand-600">Edit Selected</button>
+      <button onclick="bulkDelete('{{ grid_container_id }}', '{{ entity_type }}')"
+              class="px-3 py-1.5 text-sm font-medium rounded-md bg-red-500 text-white hover:bg-red-600">Delete Selected</button>
+      <button onclick="clearSelection('{{ grid_container_id }}')"
+              class="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50">Clear</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Bulk Edit Modal ─── #}
+{% if not is_drilldown %}
+<div id="bulk-edit-modal-{{ grid_container_id }}" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+  <div class="bg-white rounded-lg shadow-xl w-[28rem] p-6">
+    <h3 class="text-lg font-semibold mb-4">Bulk Edit Selected Records</h3>
+    <form id="bulk-edit-form-{{ grid_container_id }}" onsubmit="submitBulkEdit(event, '{{ grid_container_id }}', '{{ entity_type }}'); return false;">
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Field to Update</label>
+        <select id="bulk-edit-field-{{ grid_container_id }}" onchange="onBulkFieldChange('{{ grid_container_id }}', '{{ entity_type }}')"
+                class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" required>
+          <option value="">-- Select field --</option>
+          {% for col in columns if col.field_name not in ['id', 'created_at', 'updated_at', 'created_by'] and col.get('storage_type') != 'linked' %}
+          <option value="{{ col.field_name }}" data-type="{{ col.field_type }}"
+                  {% if col.options is defined and col.options %}data-options='{{ col.options | tojson }}'{% endif %}>
+            {{ col.display_name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">New Value</label>
+        <div id="bulk-edit-value-container-{{ grid_container_id }}">
+          <input type="text" id="bulk-edit-value-{{ grid_container_id }}" name="field_value"
+                 class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                 placeholder="Select a field first">
+        </div>
+      </div>
+      <div id="bulk-edit-error-{{ grid_container_id }}" class="hidden mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700"></div>
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="closeBulkEditModal('{{ grid_container_id }}')"
+                class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
+        <button type="submit" class="px-4 py-2 text-sm text-white bg-brand-500 rounded-md hover:bg-brand-600">Apply to Selected</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 {# ── Save Screener Modal ─── #}
 <div id="save-view-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
@@ -820,6 +911,187 @@ function renameScreener(viewId, currentName) {
   form.appendChild(input);
   document.body.appendChild(form);
   form.submit();
+}
+
+/* ── Bulk Selection & Actions ─── */
+
+/** Toggle all row checkboxes */
+function toggleSelectAll(checkbox, containerId) {
+  var boxes = document.querySelectorAll('.row-select-' + containerId);
+  boxes.forEach(function(cb) { cb.checked = checkbox.checked; });
+  updateBulkBar(containerId);
+}
+
+/** Count selected rows and show/hide the floating bulk bar */
+function updateBulkBar(containerId) {
+  var boxes = document.querySelectorAll('.row-select-' + containerId + ':checked');
+  var bar = document.getElementById('bulk-bar-' + containerId);
+  var countEl = document.getElementById('bulk-count-' + containerId);
+  if (!bar) return;
+  if (boxes.length > 0) {
+    bar.classList.remove('hidden');
+    countEl.textContent = boxes.length + ' selected';
+  } else {
+    bar.classList.add('hidden');
+  }
+  // Update select-all checkbox state
+  var allBoxes = document.querySelectorAll('.row-select-' + containerId);
+  var selectAll = document.getElementById('select-all-' + containerId);
+  if (selectAll) {
+    selectAll.checked = allBoxes.length > 0 && boxes.length === allBoxes.length;
+    selectAll.indeterminate = boxes.length > 0 && boxes.length < allBoxes.length;
+  }
+}
+
+/** Get array of selected record IDs */
+function getSelectedIds(containerId) {
+  var boxes = document.querySelectorAll('.row-select-' + containerId + ':checked');
+  var ids = [];
+  boxes.forEach(function(cb) { ids.push(cb.value); });
+  return ids;
+}
+
+/** Clear all selections and hide bulk bar */
+function clearSelection(containerId) {
+  var boxes = document.querySelectorAll('.row-select-' + containerId);
+  boxes.forEach(function(cb) { cb.checked = false; });
+  var selectAll = document.getElementById('select-all-' + containerId);
+  if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
+  var bar = document.getElementById('bulk-bar-' + containerId);
+  if (bar) bar.classList.add('hidden');
+}
+
+/** Open the bulk edit modal */
+function bulkEdit(containerId, entityType) {
+  var ids = getSelectedIds(containerId);
+  if (ids.length === 0) return;
+  var modal = document.getElementById('bulk-edit-modal-' + containerId);
+  if (modal) {
+    // Reset form
+    var fieldSelect = document.getElementById('bulk-edit-field-' + containerId);
+    if (fieldSelect) fieldSelect.value = '';
+    var valueContainer = document.getElementById('bulk-edit-value-container-' + containerId);
+    if (valueContainer) valueContainer.innerHTML = '<input type="text" id="bulk-edit-value-' + containerId + '" name="field_value" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" placeholder="Select a field first">';
+    var errEl = document.getElementById('bulk-edit-error-' + containerId);
+    if (errEl) { errEl.classList.add('hidden'); errEl.textContent = ''; }
+    modal.classList.remove('hidden');
+  }
+}
+
+/** Close the bulk edit modal */
+function closeBulkEditModal(containerId) {
+  var modal = document.getElementById('bulk-edit-modal-' + containerId);
+  if (modal) modal.classList.add('hidden');
+}
+
+/** Update the value input based on selected field type */
+function onBulkFieldChange(containerId, entityType) {
+  var fieldSelect = document.getElementById('bulk-edit-field-' + containerId);
+  var option = fieldSelect.options[fieldSelect.selectedIndex];
+  var ftype = option.getAttribute('data-type') || 'text';
+  var optionsStr = option.getAttribute('data-options');
+  var container = document.getElementById('bulk-edit-value-container-' + containerId);
+  var inputId = 'bulk-edit-value-' + containerId;
+
+  if (ftype === 'dropdown' || ftype === 'multi_select') {
+    var opts = [];
+    try { opts = JSON.parse(optionsStr || '[]'); } catch(e) {}
+    var html = '<select id="' + inputId + '" name="field_value" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" required>';
+    html += '<option value="">-- Select --</option>';
+    for (var i = 0; i < opts.length; i++) {
+      var o = opts[i];
+      var val = typeof o === 'object' ? (o.value || o.id || '') : o;
+      var label = typeof o === 'object' ? (o.label || o.display_name || val) : o;
+      html += '<option value="' + val + '">' + label.replace(/_/g, ' ') + '</option>';
+    }
+    html += '</select>';
+    container.innerHTML = html;
+  } else if (ftype === 'boolean') {
+    container.innerHTML = '<select id="' + inputId + '" name="field_value" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" required>' +
+      '<option value="">-- Select --</option><option value="true">Yes</option><option value="false">No</option></select>';
+  } else if (ftype === 'date') {
+    container.innerHTML = '<input type="date" id="' + inputId + '" name="field_value" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" required>';
+  } else if (ftype === 'number' || ftype === 'currency') {
+    container.innerHTML = '<input type="number" id="' + inputId + '" name="field_value" step="any" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" required>';
+  } else {
+    container.innerHTML = '<input type="text" id="' + inputId + '" name="field_value" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500" required>';
+  }
+}
+
+/** Submit bulk edit via fetch POST */
+function submitBulkEdit(event, containerId, entityType) {
+  event.preventDefault();
+  var ids = getSelectedIds(containerId);
+  var fieldSelect = document.getElementById('bulk-edit-field-' + containerId);
+  var valueEl = document.getElementById('bulk-edit-value-' + containerId);
+  var errEl = document.getElementById('bulk-edit-error-' + containerId);
+
+  if (!fieldSelect.value) {
+    errEl.textContent = 'Please select a field.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  var body = new FormData();
+  body.append('record_ids', ids.join(','));
+  body.append('field_name', fieldSelect.value);
+  body.append('field_value', valueEl ? valueEl.value : '');
+
+  fetch('/views/bulk-edit/' + entityType, { method: 'POST', body: body })
+    .then(function(resp) {
+      if (!resp.ok) return resp.text().then(function(t) { throw new Error(t || 'Error'); });
+      return resp.text();
+    })
+    .then(function() {
+      closeBulkEditModal(containerId);
+      clearSelection(containerId);
+      document.body.dispatchEvent(new Event('gridRefresh'));
+    })
+    .catch(function(err) {
+      errEl.textContent = err.message || 'An error occurred.';
+      errEl.classList.remove('hidden');
+    });
+}
+
+/** Export all grid data (respects current filters/columns/sort) */
+function exportGrid(containerId, entityType) {
+  var url = new URL(window.location);
+  url.pathname = '/views/export/' + entityType;
+  // Keep all current query params (filters, sort, columns)
+  window.location.href = url.toString();
+}
+
+/** Export only selected rows */
+function exportSelected(containerId, entityType) {
+  var ids = getSelectedIds(containerId);
+  if (ids.length === 0) return;
+  var url = new URL(window.location);
+  url.pathname = '/views/export/' + entityType;
+  url.searchParams.set('record_ids', ids.join(','));
+  window.location.href = url.toString();
+}
+
+/** Bulk delete with confirmation */
+function bulkDelete(containerId, entityType) {
+  var ids = getSelectedIds(containerId);
+  if (ids.length === 0) return;
+  if (!confirm('Are you sure you want to delete ' + ids.length + ' record(s)? This action can be reversed by an admin.')) return;
+
+  var body = new FormData();
+  body.append('record_ids', ids.join(','));
+
+  fetch('/views/bulk-delete/' + entityType, { method: 'POST', body: body })
+    .then(function(resp) {
+      if (!resp.ok) return resp.text().then(function(t) { throw new Error(t || 'Error'); });
+      return resp.text();
+    })
+    .then(function() {
+      clearSelection(containerId);
+      document.body.dispatchEvent(new Event('gridRefresh'));
+    })
+    .catch(function(err) {
+      alert('Delete failed: ' + (err.message || 'Unknown error'));
+    });
 }
 </script>
 

@@ -13,17 +13,37 @@
 
     <!-- Fund Selector Tabs -->
     <div class="flex flex-wrap gap-2">
-        <a href="/dashboards/capital-raise"
+        <a href="/dashboards/capital-raise{{ '?owner=' + filter_owner if filter_owner else '' }}"
            class="px-4 py-2 text-sm font-medium rounded-md transition-colors {{ 'bg-brand-500 text-white' if not current_fund_ticker else 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50' }}">
             All Funds
         </a>
         {% for fund in funds %}
-        <a href="/dashboards/capital-raise/{{ fund.ticker }}"
+        <a href="/dashboards/capital-raise/{{ fund.ticker }}{{ '?owner=' + filter_owner if filter_owner else '' }}"
            class="px-4 py-2 text-sm font-medium rounded-md transition-colors {{ 'bg-brand-500 text-white' if current_fund_ticker == fund.ticker else 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50' }}">
             {{ fund.ticker }}
             <span class="text-xs opacity-75">{{ fund.fund_name }}</span>
         </a>
         {% endfor %}
+    </div>
+
+    <!-- Owner Filter Bar -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex flex-wrap items-end gap-4">
+            <div class="w-52">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Pipeline Owner</label>
+                <select name="owner"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="var base = '{{ '/dashboards/capital-raise/' + current_fund_ticker if current_fund_ticker else '/dashboards/capital-raise' }}'; window.location = base + '?owner=' + this.value;">
+                    <option value="">All Owners</option>
+                    <option value="{{ user.id }}" {{ 'selected' if filter_owner == user.id|string else '' }}>My Pipeline</option>
+                    {% for u in users %}
+                    {% if u.id|string != user.id|string %}
+                    <option value="{{ u.id }}" {{ 'selected' if filter_owner == u.id|string else '' }}>{{ u.display_name }}</option>
+                    {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
     </div>
 
     <!-- 1. Allocation Progress -->
@@ -92,10 +112,11 @@
                             hx-get="/dashboards/capital-raise/chart"
                             hx-trigger="change"
                             hx-target="#cr-pipeline-chart"
-                            hx-vals='{"fund_ticker": "{{ current_fund_ticker or "" }}"}'
+                            hx-vals='{"fund_ticker": "{{ current_fund_ticker or "" }}", "owner": "{{ filter_owner }}"}'
                             name="group_by">
                         <option value="stage" {{ 'selected' if cr_group_by == 'stage' else '' }}>Stage</option>
                         <option value="lp_type" {{ 'selected' if cr_group_by == 'lp_type' else '' }}>LP Type</option>
+                        <option value="country" {{ 'selected' if cr_group_by == 'country' else '' }}>Country</option>
                         <option value="fund" {{ 'selected' if cr_group_by == 'fund' else '' }}>Fund</option>
                     </select>
                 </div>
@@ -115,6 +136,46 @@
 
     <!-- Drill-down Panel (populated via HTMX on bar click) -->
     <div id="cr-drilldown-panel"></div>
+
+    <!-- Hot Prospects -->
+    {% if hot_prospects %}
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">
+            Hot Prospects
+            <span class="text-xs font-normal text-gray-400 ml-2">Organizations with advanced pipeline traction</span>
+        </h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Organization</th>
+                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Stage</th>
+                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Fund(s)</th>
+                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Allocation ($M)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for hp in hot_prospects %}
+                    <tr>
+                        <td class="py-2 text-gray-900 font-medium">
+                            <a href="/organizations/{{ hp.org_id }}" class="hover:text-brand-600">{{ hp.org_name }}</a>
+                        </td>
+                        <td class="py-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ hp.badge_class }}">
+                                {{ hp.stage_label }}
+                            </span>
+                        </td>
+                        <td class="py-2 text-gray-600">
+                            <span class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{{ hp.tickers_str }}</span>
+                        </td>
+                        <td class="py-2 text-right text-gray-600">${{ hp.allocation_fmt }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- 4. Investor Breakdown by Org Type -->
     <div class="bg-white rounded-lg shadow p-6">

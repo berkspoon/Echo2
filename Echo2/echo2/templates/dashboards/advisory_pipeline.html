@@ -10,7 +10,67 @@
         <div>
             <p class="text-xs text-gray-400">Last refreshed: {{ last_refreshed }}</p>
         </div>
+        <button onclick="document.getElementById('save-preset-modal').classList.remove('hidden')"
+                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+            Save Preset
+        </button>
     </div>
+
+    <!-- Dashboard Presets -->
+    <div class="flex items-center gap-3">
+        <a href="/dashboards/advisory-pipeline"
+           class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium border transition-colors bg-brand-500 text-white border-brand-500">
+            Default
+        </a>
+        <div hx-get="/dashboards/advisory-pipeline/presets" hx-trigger="load" hx-swap="innerHTML"
+             class="flex flex-wrap gap-2"></div>
+    </div>
+
+    <!-- Save Preset Modal -->
+    <div id="save-preset-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-96">
+            <h3 class="text-sm font-semibold text-gray-900 mb-4">Save Dashboard Preset</h3>
+            <form method="POST" action="/views/save">
+                <input type="hidden" name="entity_type" value="dashboard_advisory">
+                <input type="hidden" name="filters" id="preset-filters" value="{}">
+                <input type="hidden" name="columns" id="preset-columns" value="{}">
+                <div class="mb-4">
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Preset Name</label>
+                    <input type="text" name="view_name" required
+                           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                           placeholder="e.g. Focus Pipeline">
+                </div>
+                <div class="mb-4">
+                    <label class="flex items-center gap-2 text-sm text-gray-600">
+                        <input type="checkbox" name="is_shared" value="true" class="rounded border-gray-300">
+                        Share with team
+                    </label>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="document.getElementById('save-preset-modal').classList.add('hidden')"
+                            class="px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
+                    <button type="submit"
+                            class="px-3 py-2 text-sm text-white bg-brand-500 rounded-md hover:bg-brand-600">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    // Populate preset filter/column values from current URL params before modal opens
+    document.querySelector('#save-preset-modal form').addEventListener('submit', function() {
+        var params = new URLSearchParams(window.location.search);
+        var filters = {};
+        var columns = {};
+        var filterKeys = ['service', 'asset_class', 'owner', 'org_type', 'from', 'to', 'active_filter', 'stage'];
+        var columnKeys = ['group_by', 'metric'];
+        filterKeys.forEach(function(k) { if (params.get(k)) filters[k] = params.get(k); });
+        columnKeys.forEach(function(k) { if (params.get(k)) columns[k] = params.get(k); });
+        document.getElementById('preset-filters').value = JSON.stringify(filters);
+        document.getElementById('preset-columns').value = JSON.stringify(columns);
+    });
+    </script>
 
     <!-- Filter bar -->
     <div class="bg-white rounded-lg shadow p-4">

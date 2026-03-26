@@ -1,0 +1,17 @@
+<!-- Advisory Pipeline Presets Partial -->
+{% if presets %}
+<div class="flex flex-wrap gap-2">
+    {% for p in presets %}
+    <a href="{{ p.url }}"
+       class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors
+              {{ 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+        {{ p.view_name }}
+        {% if p.is_shared and not p.is_own %}
+        <span class="text-xs text-gray-400">(shared)</span>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-xs text-gray-400">No saved presets yet.</p>
+{% endif %}

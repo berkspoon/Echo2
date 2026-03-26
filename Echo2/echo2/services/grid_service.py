@@ -310,6 +310,7 @@ def build_grid_context(
     extra_columns: Optional[list[dict]] = None,
     saved_view_id: Optional[str] = None,
     grid_container_id_override: Optional[str] = None,
+    export_mode: bool = False,
 ) -> dict:
     """Build everything the _grid.html template needs.
 
@@ -322,6 +323,7 @@ def build_grid_context(
         extra_columns: non-field-def computed columns
         saved_view_id: UUID of a saved view to load
         grid_container_id_override: custom container ID (useful for drilldowns)
+        export_mode: if True, fetch all matching rows (no page_size cap)
 
     Returns:
         dict with keys: columns, rows, pagination, sort_by, sort_dir,
@@ -378,8 +380,12 @@ def build_grid_context(
         sort_by = default_sort_col
 
     # 5. Pagination
-    page = max(1, int(params.get("page", "1")))
-    page_size = min(100, max(10, int(params.get("page_size", "25"))))
+    if export_mode:
+        page = 1
+        page_size = 50000  # fetch all rows for export
+    else:
+        page = max(1, int(params.get("page", "1")))
+        page_size = min(100, max(10, int(params.get("page_size", "25"))))
 
     # 6. Filters — merge saved-view filters with query-param overrides
     filters = {}

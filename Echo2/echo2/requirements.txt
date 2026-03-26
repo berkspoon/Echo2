@@ -19,5 +19,8 @@ pydantic-settings==2.7.1
 # Session middleware
 itsdangerous==2.2.0
 
+# Excel export
+openpyxl==3.1.5
+
 # Dev tools
 Faker==33.0.0

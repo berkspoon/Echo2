@@ -20,16 +20,31 @@
   {% include "components/_grid.html" %}
 
   {# Save button — uses merged_filters computed inside _grid.html #}
+  {% set ns = namespace(has_cf=false) %}
+  {% if merged_filters %}
+    {% for k in merged_filters %}
+      {% if k.startswith('cf_') %}{% set ns.has_cf = true %}{% endif %}
+    {% endfor %}
+  {% endif %}
+  {% set has_active_filters = ns.has_cf or (merged_filters and merged_filters.get('q')) %}
   <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
-    <p class="text-xs text-gray-400">
-      Saving will set this list to <strong>dynamic</strong> mode. Members are resolved from filters at send time.
-    </p>
+    <div>
+      <p class="text-xs text-gray-400">
+        Saving will set this list to <strong>dynamic</strong> mode. Members are resolved from filters at send time.
+      </p>
+      {% if not has_active_filters %}
+      <p class="text-xs text-amber-600 mt-1">
+        Apply at least one column filter before saving. Without filters, all contacts would be included.
+      </p>
+      {% endif %}
+    </div>
     <form hx-post="/distribution-lists/{{ list_id }}/save-filters"
           hx-target="#dl-filter-save-status"
           hx-swap="innerHTML">
       <input type="hidden" name="filters" value='{{ merged_filters | tojson }}'>
       <button type="submit"
-              class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+              class="px-4 py-2 text-sm font-medium text-white rounded-md shadow-sm
+                     {% if has_active_filters %}bg-brand-500 hover:bg-brand-600{% else %}bg-gray-300 cursor-not-allowed{% endif %}">
         Save Filters
       </button>
     </form>

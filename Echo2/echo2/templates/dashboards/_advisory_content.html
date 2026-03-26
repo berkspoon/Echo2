@@ -26,12 +26,23 @@
     <div class="flex items-center justify-between mb-4">
         <h3 class="text-sm font-semibold text-gray-900">Pipeline Analysis</h3>
         <div class="flex items-center gap-2">
-            <label class="text-xs text-gray-500">Group by:</label>
+            <label class="text-xs text-gray-500">Metric:</label>
             <select class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                     hx-get="/dashboards/advisory-pipeline/chart"
                     hx-trigger="change"
                     hx-target="#pipeline-chart"
-                    hx-include="[name='service'],[name='asset_class'],[name='owner'],[name='org_type'],[name='from'],[name='to'],[name='active_filter'],[name='stage']"
+                    hx-include="[name='service'],[name='asset_class'],[name='owner'],[name='org_type'],[name='from'],[name='to'],[name='active_filter'],[name='stage'],[name='group_by']"
+                    name="metric">
+                <option value="count" {{ 'selected' if metric == 'count' else '' }}>Lead Count</option>
+                <option value="revenue" {{ 'selected' if metric == 'revenue' else '' }}>Expected Revenue ($)</option>
+                <option value="flar" {{ 'selected' if metric == 'flar' else '' }}>Yr1 FLAR ($)</option>
+            </select>
+            <label class="text-xs text-gray-500 ml-2">Group by:</label>
+            <select class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                    hx-get="/dashboards/advisory-pipeline/chart"
+                    hx-trigger="change"
+                    hx-target="#pipeline-chart"
+                    hx-include="[name='service'],[name='asset_class'],[name='owner'],[name='org_type'],[name='from'],[name='to'],[name='active_filter'],[name='stage'],[name='metric']"
                     name="group_by">
                 {% for gf in groupable_fields %}
                 <option value="{{ gf.value }}" {{ 'selected' if group_by == gf.value else '' }}>{{ gf.label }}</option>

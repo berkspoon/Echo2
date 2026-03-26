@@ -133,4 +133,38 @@ Mark fixed items with `[x]`.
 - [x] [Admin] Manage Values stuck in "Loading..." — Stale uvicorn process from before code changes was serving old code. Fixed by killing all Python processes and restarting.
 - [ ] [Admin] Visibility conditions UI should use dropdowns instead of text inputs for field selection and value selection (severity: low) — deferred to polish pass
 
+## Session 21 Testing — March 26, 2026
+
+### Bug Fixes
+- [x] [Has Active Leads] Filter works for both Orgs and People — server logs confirmed requests returning 200 with filtered results. Grid updates behind the dropdown.
+- [x] [Distribution Lists] Filter editor 500 error — `merged_filters` undefined in `_filter_editor.html`. Fixed by computing and passing in endpoint.
+- [x] [Distribution Lists] Dynamic list preview/send — `_resolve_dynamic_members` crashed on org-level virtual filters; `_build_send_preview` had N+1 queries. Both fixed.
+- [x] [Dashboards] Drill-down column selector refreshed whole dashboard page — `applyColumns()` used `window.location` instead of drill-down `base_url`. Fixed.
+
+### Enhancements
+- [x] [Admin] Dropdown values now manageable from individual field edit page (not just field list)
+- [x] [Admin] Section assignment dropdown in field editor (populated from page_layouts + field_definitions)
+- [x] [Dashboards] Drill-down grids no longer show column filter icons (per Patrick feedback)
+- [x] [Distribution Lists] Dynamic vs static member display split — "Dynamic Members" (blue) and "Manual Additions" (amber) sections
+- [x] [Grid] Linked org columns (org_city, org_country, org_type, org_aum_mn) now filterable on People and Leads grids
+- [x] [Admin] Linked/calculated field type — admin-configurable `storage_type='linked'` with source entity/field/relationship dropdowns
+- [x] [Admin] Linked field source field is now a dropdown (not text input); "Direct FK" renamed to "Direct reference" with help text
+
+## Josh Feedback — Round 6 (March 26, 2026)
+
+**Stakeholder:** Josh (power user)
+
+### Bugs
+- [x] [Dashboards] Applying additional columns to dashboard drill-down table shows "no records found" — drilldown endpoint returned full wrapper template on grid reload, causing nested HTML. Fixed by detecting grid-internal reloads and returning just the grid partial (severity: high)
+- [x] [Distribution Lists] Dynamic filter form automatically adds everyone — empty filter criteria `{}` saved when no column filters applied, matching all non-DNC people. Fixed with server-side validation requiring at least one `cf_*` filter and UI warning (severity: high)
+
+### Enhancements
+- [x] [Grid] Bulk add/select/update — row checkboxes, select all, floating bulk action bar with "Edit Selected" and "Delete Selected" (severity: high) — **Fixed: Checkboxes on each grid row + select-all header checkbox (hidden on drilldown grids). Floating bulk action bar with count, Edit Selected, Delete Selected, Clear. Bulk edit modal with field selector (type-aware value input). POST /views/bulk-edit/{entity_type} with core+EAV support and audit logging. POST /views/bulk-delete/{entity_type} (admin only, soft delete with audit). All grid entities supported.**
+- [x] [Dashboards] Advisory pipeline analysis bar should reflect lead count, not expected revenue amount — add metric selector (count/revenue/FLAR) (severity: medium) — **Fixed: Added metric selector (Lead Count / Expected Revenue / Yr1 FLAR) next to group-by. Bar sizing and labels change by metric. Metric param passed through chart and drilldown endpoints.**
+- [x] [Dashboards] Separate focus-rated dashboard view — implement as saved dashboard preset with stage=focus filter (severity: medium) — **Fixed: Dashboard presets system using saved_views table with entity_type='dashboard_advisory'. Save Preset button captures current filter state. Presets shown as link buttons above filter bar. Reuses existing POST /views/save endpoint.**
+- [x] [Dashboards] Capital raise: analysis by country — add "Country" as group-by dimension on capital raise chart (severity: medium) — **Fixed: Added "Country" option to capital raise group-by dropdown. Resolves org country via batch_resolve_orgs(). Country labels from reference_data. Drilldown filtering by country supported.**
+- [x] [Dashboards] Capital raise: filter by owner for personal pipeline view (severity: medium) — **Fixed: Added owner dropdown to capital raise dashboard with "My Pipeline" option. Owner filter applied at DB query level. Persists across fund tab switches, chart, and drilldown.**
+- [x] [Dashboards] Capital raise: highlight organizations with most traction — "Hot Prospects" section with traction scoring based on stage advancement (severity: medium) — **Fixed: Traction scoring (0-5) by stage. Hot Prospects table shows orgs with score >= 3. Green badge for score 5 (soft circle+), amber for 3-4 (DD/IC review). Grouped by org with highest stage, fund tickers, total allocation.**
+- [x] [General] Enable exporting of data to Excel — add Export button to grid toolbar generating .xlsx (severity: high) — **Fixed: Export button in grid toolbar downloads .xlsx via GET /views/export/{entity_type}. Respects current filters, column selection, and sort order. Uses openpyxl with type-aware formatting (currency #,##0, dates as dates, booleans Yes/No, dropdowns title-cased). Enriched display values (org names, owner names, fund tickers) instead of raw UUIDs. Auto-sized columns. Export Selected button in bulk action bar exports only checked rows via record_ids param. export_mode flag on build_grid_context bypasses page_size cap.**
+
 ## Seed Data Issues
