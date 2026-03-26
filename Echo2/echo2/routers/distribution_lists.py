@@ -150,10 +150,63 @@ def _get_member_count(list_id: str) -> int:
 def _resolve_dynamic_members(filter_criteria: dict) -> list[str]:
     """Resolve person IDs matching filter criteria for a dynamic distribution list.
 
-    Reuses the grid service's filter application logic for the person entity.
+    Handles both people-level and org-level (virtual) column filters.
     feedback: [padelsbach] dynamic distribution lists auto-resolve membership
     """
     sb = get_supabase()
+
+    # Separate org-level filters from people-level filters
+    _ORG_VIRTUAL_FIELDS = {"org_city": "city", "org_country": "country",
+                           "org_type": "organization_type", "org_aum_mn": "aum_mn"}
+    org_filters = {}
+    people_filters = {}
+    for key, val in filter_criteria.items():
+        if not key.startswith("cf_"):
+            people_filters[key] = val
+            continue
+        field_name = key[3:]
+        if field_name in _ORG_VIRTUAL_FIELDS:
+            org_filters[field_name] = val
+        elif field_name == "has_active_leads":
+            org_filters[field_name] = val
+        else:
+            people_filters[key] = val
+
+    # Pre-filter by org-level criteria → get allowed person IDs
+    allowed_person_ids: set[str] | None = None
+    if org_filters:
+        org_query = sb.table("organizations").select("id").eq("is_deleted", False)
+        for field_name, val in org_filters.items():
+            if field_name == "has_active_leads":
+                continue  # handled below
+            real_col = _ORG_VIRTUAL_FIELDS[field_name]
+            if ":" not in val:
+                continue
+            op, operand = val.split(":", 1)
+            if op == "contains":
+                org_query = org_query.ilike(real_col, f"%{operand}%")
+            elif op == "eq":
+                org_query = org_query.eq(real_col, operand)
+            elif op == "neq":
+                org_query = org_query.neq(real_col, operand)
+            elif op == "in":
+                values = [v.strip() for v in operand.split(",") if v.strip()]
+                if values:
+                    org_query = org_query.in_(real_col, values)
+        org_resp = org_query.limit(5000).execute()
+        matching_org_ids = [str(o["id"]) for o in (org_resp.data or [])]
+        if matching_org_ids:
+            pol_resp = (
+                sb.table("person_organization_links")
+                .select("person_id")
+                .in_("link_type", ["primary", "secondary"])
+                .in_("organization_id", matching_org_ids)
+                .execute()
+            )
+            allowed_person_ids = {str(p["person_id"]) for p in (pol_resp.data or [])}
+        else:
+            return []  # No orgs match → no people
+
     query = (
         sb.table("people")
         .select("id")
@@ -161,17 +214,23 @@ def _resolve_dynamic_members(filter_criteria: dict) -> list[str]:
         .eq("do_not_contact", False)  # Always exclude DNC
     )
 
+    # Constrain to people at matching orgs (if org filters were applied)
+    if allowed_person_ids is not None:
+        if not allowed_person_ids:
+            return []
+        query = query.in_("id", list(allowed_person_ids))
+
     # Apply text search
-    q = filter_criteria.get("q", "")
+    q = people_filters.get("q", "")
     if q:
         query = query.or_(f"first_name.ilike.%{q}%,last_name.ilike.%{q}%,email.ilike.%{q}%")
 
     # Apply entity-specific filters
-    if filter_criteria.get("ac"):
-        query = query.contains("asset_classes_of_interest", [filter_criteria["ac"]])
+    if people_filters.get("ac"):
+        query = query.contains("asset_classes_of_interest", [people_filters["ac"]])
 
-    # Apply column filters (cf_* keys)
-    for key, val in filter_criteria.items():
+    # Apply people-level column filters (cf_* keys)
+    for key, val in people_filters.items():
         if not key.startswith("cf_"):
             continue
         field_name = key[3:]  # strip cf_ prefix
@@ -263,27 +322,70 @@ def _build_send_preview(list_id: str) -> dict:
                 person_ids.add(m["person_id"])
                 l2_member_count += 1
 
-    # 4. For each person, check DNC and RFP Hold
+    # 4. Batch-load people, org links, and org details (avoids N+1 queries)
     included = []
     excluded_dnc = []
     excluded_rfp_hold = []
 
-    for pid in person_ids:
-        person = _get_person_with_org(pid)
+    pid_list = list(person_ids)
+    if not pid_list:
+        return {
+            "included": [], "excluded_dnc": [], "excluded_rfp_hold": [],
+            "total_members": 0, "sendable_count": 0, "l2_lists": l2_lists, "l2_member_count": l2_member_count,
+        }
+
+    # Batch fetch people
+    people_resp = (
+        sb.table("people")
+        .select("id, first_name, last_name, email, do_not_contact, is_deleted")
+        .in_("id", pid_list)
+        .execute()
+    )
+    people_map = {str(p["id"]): p for p in (people_resp.data or [])}
+
+    # Batch fetch primary org links
+    pol_resp = (
+        sb.table("person_organization_links")
+        .select("person_id, organization_id")
+        .in_("person_id", pid_list)
+        .eq("link_type", "primary")
+        .execute()
+    )
+    person_org_map = {str(lnk["person_id"]): str(lnk["organization_id"]) for lnk in (pol_resp.data or [])}
+
+    # Batch fetch org details
+    org_ids_needed = list(set(person_org_map.values()))
+    org_map = {}
+    if org_ids_needed:
+        orgs_resp = (
+            sb.table("organizations")
+            .select("id, company_name, rfp_hold")
+            .in_("id", org_ids_needed)
+            .execute()
+        )
+        org_map = {str(o["id"]): o for o in (orgs_resp.data or [])}
+
+    for pid in pid_list:
+        person = people_map.get(str(pid))
         if not person or person.get("is_deleted"):
             continue
 
+        org_id = person_org_map.get(str(pid))
+        org = org_map.get(org_id) if org_id else None
+        org_name = org["company_name"] if org else None
+        org_rfp_hold = org.get("rfp_hold", False) if org else False
+
         person_info = {
             "id": person["id"],
-            "name": person["full_name"],
+            "name": f"{person['first_name']} {person['last_name']}",
             "email": person.get("email"),
-            "org_name": person.get("org_name"),
+            "org_name": org_name,
         }
 
         if person.get("do_not_contact"):
             excluded_dnc.append({**person_info, "reason": "Do Not Contact"})
-        elif person.get("org_rfp_hold"):
-            excluded_rfp_hold.append({**person_info, "reason": f"RFP Hold ({person.get('org_name', 'Unknown Org')})"})
+        elif org_rfp_hold:
+            excluded_rfp_hold.append({**person_info, "reason": f"RFP Hold ({org_name or 'Unknown Org'})"})
         else:
             included.append(person_info)
 
@@ -874,6 +976,47 @@ async def get_distribution_list(
         .data or []
     )
 
+    # Dynamic members (for dynamic lists): resolve and enrich first page
+    dynamic_members = []
+    dynamic_total = 0
+    if dist_list.get("list_mode") == "dynamic":
+        dynamic_ids = _resolve_dynamic_members(dist_list.get("filter_criteria", {}))
+        dynamic_total = len(dynamic_ids)
+        # Paginate: show first 25 dynamic members
+        dm_page_ids = dynamic_ids[:25]
+        if dm_page_ids:
+            dm_people_resp = (
+                sb.table("people")
+                .select("id, first_name, last_name, email")
+                .in_("id", dm_page_ids)
+                .execute()
+            )
+            dm_people_map = {str(p["id"]): p for p in (dm_people_resp.data or [])}
+            # Batch resolve primary orgs
+            dm_pol_resp = (
+                sb.table("person_organization_links")
+                .select("person_id, organization_id")
+                .in_("person_id", dm_page_ids)
+                .eq("link_type", "primary")
+                .execute()
+            )
+            dm_org_map_local = {str(lnk["person_id"]): str(lnk["organization_id"]) for lnk in (dm_pol_resp.data or [])}
+            dm_org_ids = list(set(dm_org_map_local.values()))
+            dm_orgs = {}
+            if dm_org_ids:
+                dm_orgs_resp = sb.table("organizations").select("id, company_name").in_("id", dm_org_ids).execute()
+                dm_orgs = {str(o["id"]): o["company_name"] for o in (dm_orgs_resp.data or [])}
+            for pid in dm_page_ids:
+                person = dm_people_map.get(str(pid))
+                if person:
+                    org_id = dm_org_map_local.get(str(pid))
+                    dynamic_members.append({
+                        "person_id": person["id"],
+                        "person_name": f"{person['first_name']} {person['last_name']}",
+                        "person_email": person.get("email"),
+                        "person_org": dm_orgs.get(org_id) if org_id else None,
+                    })
+
     context = {
         "request": request,
         "user": current_user,
@@ -886,6 +1029,8 @@ async def get_distribution_list(
         "members_total": members_total,
         "members_total_pages": members_total_pages,
         "m_page": m_page,
+        "dynamic_members": dynamic_members,
+        "dynamic_total": dynamic_total,
         "send_history": send_history,
         "type_labels": type_labels,
         "active_tab": tab,

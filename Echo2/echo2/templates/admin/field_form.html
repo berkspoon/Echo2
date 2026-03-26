@@ -83,20 +83,62 @@
             <!-- Storage Type -->
             <div>
                 <label for="storage_type" class="block text-sm font-medium text-gray-700">Storage Type</label>
-                <select name="storage_type" id="storage_type"
+                <select name="storage_type" id="storage_type" onchange="toggleLinkedConfig()"
                         {{ 'disabled' if is_system or is_editing else '' }}
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm {{ 'bg-gray-100' if is_system or is_editing else '' }} focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
                     <option value="eav" {{ 'selected' if field and field.storage_type == 'eav' else ('selected' if not field else '') }}>EAV (Custom Field)</option>
                     <option value="core_column" {{ 'selected' if field and field.storage_type == 'core_column' else '' }}>Core Column</option>
+                    <option value="linked" {{ 'selected' if field and field.storage_type == 'linked' else '' }}>Linked (Calculated from Related Entity)</option>
                 </select>
-                <p class="mt-1 text-xs text-gray-500">Custom fields use EAV storage. Core columns map to database table columns.</p>
+                <p class="mt-1 text-xs text-gray-500">Custom fields use EAV. Core columns map to DB columns. Linked fields pull data from related entities.</p>
             </div>
 
-            {# feedback: [padelsbach] section removed from field definitions — managed via Layouts page #}
+            <!-- Linked Field Configuration (shown when storage_type = linked) -->
+            <div id="linked-config-group" class="md:col-span-2" style="display: none;">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 class="text-sm font-semibold text-blue-800 mb-3">Linked Field Configuration</h4>
+                    <p class="text-xs text-blue-600 mb-3">Pull a field value from a related entity. This field is read-only and automatically calculated.</p>
+                    {% set lc = (field.linked_config if field and field.linked_config else {}) or {} %}
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Source Entity</label>
+                            <select name="linked_source_entity" id="linked_source_entity"
+                                    class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                                <option value="">— Select —</option>
+                                <option value="organization" {{ 'selected' if lc.get('source_entity') == 'organization' else '' }}>Organization</option>
+                                <option value="person" {{ 'selected' if lc.get('source_entity') == 'person' else '' }}>Person</option>
+                                <option value="lead" {{ 'selected' if lc.get('source_entity') == 'lead' else '' }}>Lead</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Source Field</label>
+                            <input type="text" name="linked_source_field" value="{{ lc.get('source_field', '') }}"
+                                   placeholder="e.g. city, country, organization_type"
+                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Link Via</label>
+                            <select name="linked_link_via" id="linked_link_via"
+                                    class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                                <option value="person_organization_links" {{ 'selected' if lc.get('link_via') == 'person_organization_links' else '' }}>Person → Org (via person_organization_links)</option>
+                                <option value="direct" {{ 'selected' if lc.get('link_via') == 'direct' else '' }}>Direct FK (e.g. leads.organization_id)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section Assignment -->
             <div>
-                <label class="block text-sm font-medium text-gray-700">Section</label>
-                <p class="mt-1 text-sm text-gray-500">Sections are managed via the <a href="/admin/layouts/{{ entity_type or 'organization' }}" class="text-brand-600 hover:underline">Layout Designer</a>. New fields appear in the "Other" section until added to a layout.</p>
-                <input type="hidden" name="section_name" value="{{ field.section_name if field else 'Other' }}">
+                <label for="section_name" class="block text-sm font-medium text-gray-700">Section</label>
+                <select name="section_name" id="section_name"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    {% for sec in sections %}
+                    <option value="{{ sec }}" {{ 'selected' if field and field.section_name == sec else ('selected' if sec == 'Other' and (not field or not field.section_name) else '') }}>{{ sec }}</option>
+                    {% endfor %}
+                    <option value="Other" {{ 'selected' if not sections or (field and field.section_name == 'Other') else '' }}>Other</option>
+                </select>
+                <p class="mt-1 text-xs text-gray-500">Choose which form section this field appears in. Manage sections via the <a href="/admin/layouts/{{ entity_type or 'organization' }}" class="text-brand-600 hover:underline">Layout Designer</a>.</p>
             </div>
 
             <!-- Dropdown Category (shown for dropdown/multi_select types) -->
@@ -111,6 +153,18 @@
                 </select>
                 <p class="mt-1 text-xs text-gray-500">Required for Dropdown and Multi-Select field types.</p>
             </div>
+
+            <!-- Inline Dropdown Values Management (edit mode only) -->
+            {% if is_editing and field.dropdown_category %}
+            <div id="dropdown-values-panel" class="md:col-span-2">
+                <div class="border border-gray-200 rounded-lg p-4 bg-gray-50"
+                     hx-get="/admin/fields/{{ field.id }}/values"
+                     hx-trigger="load"
+                     hx-swap="innerHTML">
+                    <p class="text-sm text-gray-400">Loading values...</p>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- Default Value -->
             <div>
@@ -247,7 +301,13 @@ function toggleDropdownCategory() {
         group.style.display = 'none';
     }
 }
+function toggleLinkedConfig() {
+    const st = document.getElementById('storage_type').value;
+    const group = document.getElementById('linked-config-group');
+    group.style.display = (st === 'linked') ? '' : 'none';
+}
 toggleDropdownCategory();
+toggleLinkedConfig();
 </script>
 {% endblock %}
 {% endblock %}

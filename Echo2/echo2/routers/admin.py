@@ -122,9 +122,14 @@ async def new_field_form(
     cat_resp = sb.table("reference_data").select("category").execute()
     categories = sorted(set(r["category"] for r in (cat_resp.data or [])))
 
-    # Get existing sections for this entity type for the dropdown
+    # Load sections from page_layouts (authoritative) + field_definitions (fallback)
+    layout_resp = sb.table("page_layouts").select("sections").eq("entity_type", entity_type).eq("is_active", True).maybe_single().execute()
+    layout_sections = []
+    if layout_resp and layout_resp.data and layout_resp.data.get("sections"):
+        layout_sections = [s.get("title", s.get("name", "")) for s in layout_resp.data["sections"] if s.get("title") or s.get("name")]
     existing_fields = get_field_definitions(entity_type, active_only=False)
-    sections = sorted(set(f.get("section_name") or "Other" for f in existing_fields))
+    field_sections = sorted(set(f.get("section_name") or "Other" for f in existing_fields))
+    sections = sorted(set(layout_sections + field_sections))
 
     return templates.TemplateResponse("admin/field_form.html", {
         "request": request,
@@ -159,8 +164,14 @@ async def edit_field_form(
     cat_resp = sb.table("reference_data").select("category").execute()
     categories = sorted(set(r["category"] for r in (cat_resp.data or [])))
 
+    # Load sections from page_layouts (authoritative) + field_definitions (fallback)
+    layout_resp = sb.table("page_layouts").select("sections").eq("entity_type", entity_type).eq("is_active", True).maybe_single().execute()
+    layout_sections = []
+    if layout_resp and layout_resp.data and layout_resp.data.get("sections"):
+        layout_sections = [s.get("title", s.get("name", "")) for s in layout_resp.data["sections"] if s.get("title") or s.get("name")]
     existing_fields = get_field_definitions(entity_type, active_only=False)
-    sections = sorted(set(f.get("section_name") or "Other" for f in existing_fields))
+    field_sections = sorted(set(f.get("section_name") or "Other" for f in existing_fields))
+    sections = sorted(set(layout_sections + field_sections))
 
     return templates.TemplateResponse("admin/field_form.html", {
         "request": request,
@@ -304,13 +315,26 @@ async def create_field(
     )
     max_order = (max_order_resp.data[0]["display_order"] if max_order_resp.data else 0) + 1
 
+    # Parse linked field configuration
+    linked_config = None
+    if storage_type == "linked":
+        source_entity = (form.get("linked_source_entity") or "").strip()
+        source_field = (form.get("linked_source_field") or "").strip()
+        link_via = (form.get("linked_link_via") or "person_organization_links").strip()
+        if source_entity and source_field:
+            linked_config = {
+                "source_entity": source_entity,
+                "source_field": source_field,
+                "link_via": link_via,
+            }
+
     row = {
         "entity_type": entity_type,
         "field_name": field_name,
         "display_name": display_name,
         "field_type": field_type,
         "storage_type": storage_type,
-        "is_required": is_required,
+        "is_required": False if storage_type == "linked" else is_required,
         "is_system": False,
         "display_order": max_order,
         "section_name": section_name,
@@ -320,8 +344,9 @@ async def create_field(
         "validation_rules": {},
         "visibility_rules": visibility_rules,
         "suggestion_rules": suggestion_rules,
+        "linked_config": linked_config,
         "grid_default_visible": True,
-        "grid_sortable": True,
+        "grid_sortable": False if storage_type == "linked" else True,
         "grid_filterable": True,
         "created_by": str(current_user.id),
     }
@@ -559,6 +584,20 @@ async def update_field(
         update_data["field_type"] = field_type
         storage_type = (form.get("storage_type") or old_field["storage_type"]).strip()
         update_data["storage_type"] = storage_type
+
+    # Parse linked field configuration
+    effective_storage = update_data.get("storage_type", old_field["storage_type"])
+    if effective_storage == "linked":
+        source_entity = (form.get("linked_source_entity") or "").strip()
+        source_field = (form.get("linked_source_field") or "").strip()
+        link_via = (form.get("linked_link_via") or "person_organization_links").strip()
+        if source_entity and source_field:
+            update_data["linked_config"] = {
+                "source_entity": source_entity,
+                "source_field": source_field,
+                "link_via": link_via,
+            }
+        update_data["is_required"] = False  # Linked fields are never required
 
     sb.table("field_definitions").update(update_data).eq("id", field_id).execute()
 

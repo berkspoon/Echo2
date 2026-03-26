@@ -125,4 +125,12 @@ Mark fixed items with `[x]`.
 - Duplicate detection merge functionality — Patrick: "We'll take a look once worked out."
 - Editable Excel-style grid — Pop-up editor covers the use case per Patrick.
 
+### Post-Implementation Bug Fixes (March 22, 2026)
+- [x] [Distribution Lists] 500 error on distribution lists page — `list_mode` column didn't exist. Root cause: DB migration not applied. Fixed by running migrate_schema.sql in Supabase SQL Editor.
+- [x] [Grid] "Has Active Leads" filter showing people without active leads — `_extract_column_filters()` keeps `cf_` prefix but pre-filter checked for key without prefix. Fixed key to `cf_has_active_leads`.
+- [x] [Fields] text_list (nicknames) values don't persist — Alpine.js `x-data` attribute used double quotes which broke JSON array parsing. Fixed to single-quoted attribute.
+- [x] [Forms] Custom EAV fields appeared in generic bottom section — Updated all 5 entity form templates to render EAV fields in their correct section with "(custom)" label. Unknown sections grouped under "Additional Custom Information".
+- [x] [Admin] Manage Values stuck in "Loading..." — Stale uvicorn process from before code changes was serving old code. Fixed by killing all Python processes and restarting.
+- [ ] [Admin] Visibility conditions UI should use dropdowns instead of text inputs for field selection and value selection (severity: low) — deferred to polish pass
+
 ## Seed Data Issues

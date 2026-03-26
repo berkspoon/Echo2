@@ -158,7 +158,7 @@ _VIRTUAL_COLUMNS: dict[str, list[dict]] = {
             "display_name": "Org City",
             "field_type": "text",
             "sortable": False,
-            "filterable": False,
+            "filterable": True,
             "section_name": "Organization",
             "is_system": True,
             "is_active": True,
@@ -173,7 +173,7 @@ _VIRTUAL_COLUMNS: dict[str, list[dict]] = {
             "display_name": "Org Country",
             "field_type": "text",
             "sortable": False,
-            "filterable": False,
+            "filterable": True,
             "section_name": "Organization",
             "is_system": True,
             "is_active": True,
@@ -188,7 +188,7 @@ _VIRTUAL_COLUMNS: dict[str, list[dict]] = {
             "display_name": "Org Type",
             "field_type": "text",
             "sortable": False,
-            "filterable": False,
+            "filterable": True,
             "section_name": "Organization",
             "is_system": True,
             "is_active": True,
@@ -203,7 +203,7 @@ _VIRTUAL_COLUMNS: dict[str, list[dict]] = {
             "display_name": "Org AUM ($M)",
             "field_type": "currency",
             "sortable": False,
-            "filterable": False,
+            "filterable": True,
             "section_name": "Organization",
             "is_system": True,
             "is_active": True,
@@ -237,7 +237,7 @@ _VIRTUAL_COLUMNS: dict[str, list[dict]] = {
             "display_name": "Org Country",
             "field_type": "text",
             "sortable": False,
-            "filterable": False,
+            "filterable": True,
             "section_name": "Organization",
             "is_system": True,
             "is_active": True,
@@ -252,7 +252,7 @@ _VIRTUAL_COLUMNS: dict[str, list[dict]] = {
             "display_name": "Org City",
             "field_type": "text",
             "sortable": False,
-            "filterable": False,
+            "filterable": True,
             "section_name": "Organization",
             "is_system": True,
             "is_active": True,
@@ -267,7 +267,7 @@ _VIRTUAL_COLUMNS: dict[str, list[dict]] = {
             "display_name": "Org Type",
             "field_type": "text",
             "sortable": False,
-            "filterable": False,
+            "filterable": True,
             "section_name": "Organization",
             "is_system": True,
             "is_active": True,
@@ -282,7 +282,7 @@ _VIRTUAL_COLUMNS: dict[str, list[dict]] = {
             "display_name": "Org AUM ($M)",
             "field_type": "currency",
             "sortable": False,
-            "filterable": False,
+            "filterable": True,
             "section_name": "Organization",
             "is_system": True,
             "is_active": True,
@@ -402,6 +402,7 @@ def build_grid_context(
     rows, total_count = _execute_query(
         entity_type, filters, sort_by, sort_dir, page, page_size,
         col_filters=col_filters,
+        field_defs=field_defs,
     )
 
     # 8. Enrich rows
@@ -460,6 +461,7 @@ def _execute_query(
     page_size: int,
     *,
     col_filters: Optional[dict] = None,
+    field_defs: Optional[list[dict]] = None,
 ) -> tuple[list[dict], int]:
     """Run the Supabase query with filters, sort, pagination. Returns (rows, total)."""
     sb = get_supabase()
@@ -480,6 +482,7 @@ def _execute_query(
     # feedback: [padelsbach] pre-filter for has_active_leads virtual column
     if col_filters and "cf_has_active_leads" in col_filters:
         want_active = "true" in col_filters.pop("cf_has_active_leads").lower()
+        _nil = ["00000000-0000-0000-0000-000000000000"]
         # Find org IDs with active leads
         all_leads_resp = sb.table("leads").select("organization_id, rating").eq("is_deleted", False).execute()
         active_org_ids: set[str] = set()
@@ -487,24 +490,99 @@ def _execute_query(
             if l.get("rating") not in _INACTIVE_STAGES:
                 active_org_ids.add(str(l["organization_id"]))
         if entity_type == "organization":
-            target_ids = list(active_org_ids) if want_active else None
-            if want_active and target_ids:
-                query = query.in_("id", target_ids)
-            elif want_active:
-                query = query.in_("id", ["00000000-0000-0000-0000-000000000000"])
+            if want_active:
+                query = query.in_("id", list(active_org_ids) or _nil)
+            else:
+                # Orgs WITHOUT active leads: get all non-deleted org IDs, subtract active
+                all_orgs_resp = sb.table("organizations").select("id").eq("is_deleted", False).execute()
+                all_org_ids = {str(o["id"]) for o in (all_orgs_resp.data or [])}
+                no_leads_ids = list(all_org_ids - active_org_ids)
+                query = query.in_("id", no_leads_ids or _nil)
         elif entity_type == "person":
-            # Find person IDs at orgs with active leads
+            # Find person IDs at orgs with active leads via primary org link
             if active_org_ids:
-                pol_resp = sb.table("person_organization_links").select("person_id").eq("link_type", "primary").in_("organization_id", list(active_org_ids)).execute()
-                person_ids_with_leads = [str(p["person_id"]) for p in (pol_resp.data or [])]
+                pol_resp = (
+                    sb.table("person_organization_links")
+                    .select("person_id")
+                    .in_("link_type", ["primary", "secondary"])
+                    .in_("organization_id", list(active_org_ids))
+                    .execute()
+                )
+                person_ids_with_leads = list({str(p["person_id"]) for p in (pol_resp.data or [])})
             else:
                 person_ids_with_leads = []
-            if want_active and person_ids_with_leads:
-                query = query.in_("id", person_ids_with_leads)
-            elif want_active:
-                query = query.in_("id", ["00000000-0000-0000-0000-000000000000"])
+            if want_active:
+                query = query.in_("id", person_ids_with_leads or _nil)
+            else:
+                # People WITHOUT active leads: get all non-deleted person IDs, subtract
+                all_people_resp = sb.table("people").select("id").eq("is_deleted", False).execute()
+                all_person_ids = {str(p["id"]) for p in (all_people_resp.data or [])}
+                no_leads_ids = list(all_person_ids - set(person_ids_with_leads))
+                query = query.in_("id", no_leads_ids or _nil)
 
-    # Apply per-column filters
+    # Pre-filter for org-linked virtual/linked columns
+    # These don't exist on the entity table — resolve via organizations table first
+    # Start with hardcoded virtual columns, then extend with admin-configured linked fields
+    _ORG_LINKED_COLS = {
+        "org_city": "city", "org_country": "country",
+        "org_type": "organization_type", "org_aum_mn": "aum_mn",
+    }
+    # Dynamically add linked fields that point to organization
+    if field_defs:
+        for fd in field_defs:
+            if fd.get("storage_type") == "linked" and fd.get("linked_config"):
+                lc = fd["linked_config"]
+                if lc.get("source_entity") == "organization" and fd["field_name"] not in _ORG_LINKED_COLS:
+                    _ORG_LINKED_COLS[fd["field_name"]] = lc["source_field"]
+    if col_filters and entity_type in ("person", "lead"):
+        org_cf = {}
+        for k in list(col_filters.keys()):
+            field_name = k[3:] if k.startswith("cf_") else k
+            if field_name in _ORG_LINKED_COLS:
+                org_cf[field_name] = col_filters.pop(k)
+        if org_cf:
+            org_query = sb.table("organizations").select("id").eq("is_deleted", False)
+            for virt_name, real_col in _ORG_LINKED_COLS.items():
+                if virt_name not in org_cf:
+                    continue
+                val = org_cf[virt_name]
+                if ":" not in val:
+                    continue
+                op, operand = val.split(":", 1)
+                if op == "contains":
+                    org_query = org_query.ilike(real_col, f"%{operand}%")
+                elif op == "eq":
+                    org_query = org_query.eq(real_col, operand)
+                elif op == "neq":
+                    org_query = org_query.neq(real_col, operand)
+                elif op == "in":
+                    values = [v.strip() for v in operand.split(",") if v.strip()]
+                    if values:
+                        org_query = org_query.in_(real_col, values)
+                elif op == "gte":
+                    org_query = org_query.gte(real_col, operand)
+                elif op == "lte":
+                    org_query = org_query.lte(real_col, operand)
+            org_resp = org_query.limit(5000).execute()
+            matching_org_ids = [str(o["id"]) for o in (org_resp.data or [])]
+            _nil_id = ["00000000-0000-0000-0000-000000000000"]
+            if entity_type == "person":
+                if matching_org_ids:
+                    pol_resp = (
+                        sb.table("person_organization_links")
+                        .select("person_id")
+                        .in_("link_type", ["primary", "secondary"])
+                        .in_("organization_id", matching_org_ids)
+                        .execute()
+                    )
+                    person_ids = list({str(p["person_id"]) for p in (pol_resp.data or [])})
+                    query = query.in_("id", person_ids or _nil_id)
+                else:
+                    query = query.in_("id", _nil_id)
+            elif entity_type == "lead":
+                query = query.in_("organization_id", matching_org_ids or _nil_id)
+
+    # Apply per-column filters (remaining non-virtual filters)
     if col_filters:
         query = _apply_column_filters(query, col_filters, entity_type)
 
@@ -693,6 +771,84 @@ def _date_field_for_entity(entity_type: str) -> Optional[str]:
 # Row enrichment
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _resolve_linked_fields(entity_type: str, rows: list[dict], field_defs: list[dict]) -> None:
+    """Resolve admin-configured linked fields (storage_type='linked').
+
+    Linked fields pull data from a related entity via a defined link path.
+    E.g., a Person field that shows their organization's city.
+    """
+    if not rows:
+        return
+
+    linked_fields = [
+        fd for fd in field_defs
+        if fd.get("storage_type") == "linked" and fd.get("linked_config")
+    ]
+    if not linked_fields:
+        return
+
+    sb = get_supabase()
+
+    # Group linked fields by (source_entity, link_via) for batching
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for fd in linked_fields:
+        lc = fd["linked_config"]
+        key = (lc["source_entity"], lc.get("link_via", "direct"))
+        groups.setdefault(key, []).append(fd)
+
+    for (source_entity, link_via), fields_in_group in groups.items():
+        source_fields = list({fd["linked_config"]["source_field"] for fd in fields_in_group})
+        select_cols = "id, " + ", ".join(source_fields)
+
+        source_table = {
+            "organization": "organizations",
+            "person": "people",
+            "lead": "leads",
+            "activity": "activities",
+            "contract": "contracts",
+        }.get(source_entity, f"{source_entity}s")
+
+        if link_via == "person_organization_links":
+            # Person → Organization via junction table
+            row_ids = [str(r["id"]) for r in rows]
+            pol_resp = (
+                sb.table("person_organization_links")
+                .select("person_id, organization_id")
+                .in_("person_id", row_ids)
+                .eq("link_type", "primary")
+                .execute()
+            )
+            entity_to_source = {str(lnk["person_id"]): str(lnk["organization_id"]) for lnk in (pol_resp.data or [])}
+            source_ids = list(set(entity_to_source.values()))
+
+        elif link_via == "direct":
+            # Direct FK: entity has a column named <source_entity>_id
+            fk_col = f"{source_entity}_id"
+            source_ids = list({str(r[fk_col]) for r in rows if r.get(fk_col)})
+            entity_to_source = {str(r["id"]): str(r[fk_col]) for r in rows if r.get(fk_col)}
+
+        else:
+            continue
+
+        if not source_ids:
+            for row in rows:
+                for fd in fields_in_group:
+                    row[fd["field_name"]] = None
+            continue
+
+        source_resp = sb.table(source_table).select(select_cols).in_("id", source_ids).execute()
+        source_map = {str(s["id"]): s for s in (source_resp.data or [])}
+
+        for row in rows:
+            src_id = entity_to_source.get(str(row["id"]))
+            src_data = source_map.get(src_id) if src_id else None
+            for fd in fields_in_group:
+                src_field = fd["linked_config"]["source_field"]
+                # Only set if not already populated by entity-specific enrichment
+                if fd["field_name"] not in row:
+                    row[fd["field_name"]] = src_data.get(src_field) if src_data else None
+
+
 def _enrich_rows(entity_type: str, rows: list[dict], field_defs: list[dict]) -> None:
     """In-place enrichment: resolve lookups, compute display values."""
     if not rows:
@@ -712,6 +868,9 @@ def _enrich_rows(entity_type: str, rows: list[dict], field_defs: list[dict]) -> 
         _enrich_tasks(rows)
     elif entity_type == "distribution_list":
         _enrich_distribution_lists(rows)
+
+    # Resolve admin-configured linked fields (storage_type='linked')
+    _resolve_linked_fields(entity_type, rows, field_defs)
 
     # Load EAV values for custom fields (all entities)
     entity_ids = [str(r["id"]) for r in rows if r.get("id")]

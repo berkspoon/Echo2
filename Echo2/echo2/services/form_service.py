@@ -94,10 +94,11 @@ def build_form_context(
         eav_values = load_custom_values(entity_type, str(record["id"]))
         merged_record.update(eav_values)
 
-    # Compute suggestion state for each field
+    # Mark linked fields as read-only; compute suggestion state for others
     form_state = merged_record
     for fd in field_defs:
         fd["_is_suggested"] = _is_field_suggested(fd, form_state)
+        fd["_readonly"] = fd.get("storage_type") == "linked"
 
     ctx = {
         "field_defs": field_defs,
@@ -132,6 +133,10 @@ def parse_form_data(entity_type: str, form_data, field_defs: list[dict]) -> dict
     for fd in field_defs:
         fname = fd["field_name"]
         ftype = fd["field_type"]
+
+        # Skip linked/calculated fields — they're read-only
+        if fd.get("storage_type") == "linked":
+            continue
 
         if ftype == "boolean":
             parsed[fname] = form_data.get(fname) == "on"

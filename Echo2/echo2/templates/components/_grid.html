@@ -146,8 +146,8 @@
     {# Column selector toggle #}
     {% include "components/_column_selector.html" %}
 
-    {# Active column filter badges #}
-    {% if col_filters is defined and col_filters %}
+    {# Active column filter badges (hidden in drill-down grids) #}
+    {% if col_filters is defined and col_filters and not hide_column_filters %}
     <div class="flex items-center gap-1 flex-wrap">
       {% for cf_key, cf_val in col_filters.items() %}
       <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-brand-50 text-brand-700 rounded-full border border-brand-200">
@@ -206,9 +206,9 @@
             <span>{{ col.display_name }}</span>
             {% endif %}
 
-            {# Per-column filter icon + dropdown #}
+            {# Per-column filter icon + dropdown (hidden in drill-down grids) #}
             {% set cf_key_check = 'cf_' ~ col.field_name %}
-            {% if col.get('filterable', true) is not false %}
+            {% if col.get('filterable', true) is not false and not hide_column_filters %}
             {% include "components/_column_filter.html" %}
             {% endif %}
           </div>

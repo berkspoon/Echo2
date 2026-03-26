@@ -364,7 +364,17 @@ ALTER TABLE distribution_list_members ADD COLUMN IF NOT EXISTS is_manual BOOLEAN
 -- Apply via: ALTER TABLE distribution_lists ADD CONSTRAINT IF NOT EXISTS dl_list_mode_check CHECK (list_mode IN ('static', 'dynamic'));
 
 -- =====================================================================
+-- Phase 6: Linked/calculated fields
+-- =====================================================================
+ALTER TABLE field_definitions ADD COLUMN IF NOT EXISTS linked_config JSONB;
+-- linked_config stores: {"source_entity": "organization", "source_field": "city",
+--   "link_via": "person_organization_links" or "direct" (for leads.organization_id)}
+-- storage_type 'linked' indicates this is a calculated/linked field.
+-- No CHECK constraint change needed — storage_type is already a free TEXT column.
+
+-- =====================================================================
 -- Done! Verify with:
 --   SELECT column_name FROM information_schema.columns WHERE table_name = 'people' AND column_name = 'is_deleted';
 --   SELECT count(*) FROM field_definitions;
+--   SELECT column_name FROM information_schema.columns WHERE table_name = 'field_definitions' AND column_name = 'linked_config';
 -- =====================================================================

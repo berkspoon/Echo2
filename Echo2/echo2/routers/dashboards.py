@@ -1032,6 +1032,7 @@ async def advisory_pipeline_drilldown(
     grid_ctx["drilldown_dimension"] = dim_labels.get(dimension, dimension.replace("_", " ").title())
     grid_ctx["drilldown_value"] = value.replace("_", " ").title()
     grid_ctx["is_drilldown"] = True
+    grid_ctx["hide_column_filters"] = True
     grid_ctx["request"] = request
     grid_ctx["user"] = current_user
 
@@ -1262,6 +1263,7 @@ async def capital_raise_drilldown(
     grid_ctx["drilldown_dimension"] = dim_labels.get(dimension, dimension.replace("_", " ").title())
     grid_ctx["drilldown_value"] = value.replace("_", " ").title()
     grid_ctx["is_drilldown"] = True
+    grid_ctx["hide_column_filters"] = True
     grid_ctx["request"] = request
     grid_ctx["user"] = current_user
 
