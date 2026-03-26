@@ -70,6 +70,10 @@ def enrich_field_definitions(fields: list[dict]) -> list[dict]:
             f["options"] = get_reference_data(f["dropdown_category"])
         elif f.get("dropdown_options"):
             f["options"] = f["dropdown_options"]
+        elif f["field_type"] in ("dropdown", "multi_select"):
+            # Fallback: try field_name as reference_data category
+            opts = get_reference_data(f["field_name"])
+            f["options"] = opts if opts else []
         else:
             f["options"] = []
     return fields

@@ -707,6 +707,10 @@ def _group_advisory_leads(all_leads: list[dict], group_by: str, metric: str = "r
         groups[key]["total_revenue"] += _safe_float(lead.get("expected_revenue"))
         groups[key]["total_flar"] += _safe_float(lead.get("expected_yr1_flar"))
 
+    # Sort key based on selected metric
+    _sort_field = "count" if metric == "count" else ("total_flar" if metric == "flar" else "total_revenue")
+    _sort_fn = lambda k: groups[k][_sort_field]
+
     # Resolve labels
     if group_by == "stage":
         label_map = stage_labels
@@ -714,18 +718,18 @@ def _group_advisory_leads(all_leads: list[dict], group_by: str, metric: str = "r
         color_map = LEAD_STAGE_COLORS
     elif group_by == "service_type":
         label_map = service_type_labels
-        ordered_keys = sorted(groups.keys(), key=lambda k: groups[k]["total_revenue"], reverse=True)
+        ordered_keys = sorted(groups.keys(), key=_sort_fn, reverse=True)
         color_map = {}
     elif group_by == "asset_class":
         label_map = ac_labels
-        ordered_keys = sorted(groups.keys(), key=lambda k: groups[k]["total_revenue"], reverse=True)
+        ordered_keys = sorted(groups.keys(), key=_sort_fn, reverse=True)
         color_map = {}
     elif group_by == "owner":
         user_ids = [k for k in groups.keys() if k != "unassigned"]
         user_names = batch_resolve_users(user_ids)
         label_map = {k: user_names.get(k, "Unknown") for k in user_ids}
         label_map["unassigned"] = "Unassigned"
-        ordered_keys = sorted(groups.keys(), key=lambda k: groups[k]["total_revenue"], reverse=True)
+        ordered_keys = sorted(groups.keys(), key=_sort_fn, reverse=True)
         color_map = {}
     elif group_by == "fund":
         sb = get_supabase()
@@ -736,7 +740,7 @@ def _group_advisory_leads(all_leads: list[dict], group_by: str, metric: str = "r
             fund_names = {str(f["id"]): f.get("ticker") or f.get("fund_name", "?") for f in (fr.data or [])}
         label_map = {k: fund_names.get(k, "Unknown Fund") for k in fund_ids}
         label_map["none"] = "No Fund"
-        ordered_keys = sorted(groups.keys(), key=lambda k: groups[k]["total_revenue"], reverse=True)
+        ordered_keys = sorted(groups.keys(), key=_sort_fn, reverse=True)
         color_map = {}
     else:
         # Generic field — try to resolve labels from reference_data
@@ -745,7 +749,7 @@ def _group_advisory_leads(all_leads: list[dict], group_by: str, metric: str = "r
             label_map = {r["value"]: r["label"] for r in ref_data}
         else:
             label_map = {}
-        ordered_keys = sorted(groups.keys(), key=lambda k: groups[k]["total_revenue"], reverse=True)
+        ordered_keys = sorted(groups.keys(), key=_sort_fn, reverse=True)
         color_map = {}
 
     # Compute bar_pct based on selected metric
@@ -803,7 +807,8 @@ async def advisory_pipeline(
     date_to: str = Query("", alias="to"),
     active_filter: str = Query("active", alias="active_filter"),
     stage: str = Query("", alias="stage"),
-    metric: str = Query("revenue"),
+    metric: str = Query("count"),
+    group_by: str = Query("stage"),
 ):
     """Advisory Pipeline Dashboard with filters."""
     sb = get_supabase()
@@ -827,8 +832,8 @@ async def advisory_pipeline(
     lost_count = len(lost_leads)
     win_rate = _pct(won_count, won_count + lost_count) if (won_count + lost_count) > 0 else 0.0
 
-    # 2. Pipeline by Stage (default group-by)
-    pipeline_by_stage = _group_advisory_leads(all_leads, "stage", metric=metric)
+    # 2. Pipeline chart (grouped by current selection)
+    pipeline_by_stage = _group_advisory_leads(all_leads, group_by, metric=metric)
 
     # 3. Revenue by Service Type
     svc_groups = defaultdict(lambda: {"count": 0, "total_revenue": 0.0})
@@ -925,7 +930,7 @@ async def advisory_pipeline(
         "lost_count": lost_count,
         # Pipeline chart (default: grouped by stage)
         "pipeline_by_stage": pipeline_by_stage,
-        "group_by": "stage",
+        "group_by": group_by,
         "metric": metric,
         # Revenue by service
         "revenue_by_service": revenue_by_service,
@@ -980,7 +985,7 @@ async def advisory_pipeline_chart(
     date_to: str = Query("", alias="to"),
     active_filter: str = Query("active", alias="active_filter"),
     stage: str = Query("", alias="stage"),
-    metric: str = Query("revenue"),
+    metric: str = Query("count"),
 ):
     """HTMX partial: advisory pipeline chart grouped by selected dimension."""
     all_leads = _load_advisory_leads(service, asset_class, owner, org_type, date_from, date_to, active_filter, stage)
@@ -1018,7 +1023,7 @@ async def advisory_pipeline_drilldown(
     date_to: str = Query("", alias="to"),
     active_filter: str = Query("active", alias="active_filter"),
     stage: str = Query("", alias="stage"),
-    metric: str = Query("revenue"),
+    metric: str = Query("count"),
 ):
     """HTMX partial: drill-down table for a specific bar in advisory chart."""
     # Build extra_filters from dashboard context
@@ -1120,8 +1125,10 @@ async def advisory_pipeline_presets(
     for p in presets:
         filters = p.get("filters") or {}
         columns = p.get("columns") or {}
-        # columns stores display settings (group_by, metric)
-        params = {**filters, **columns}
+        # columns stores display settings (group_by, metric) — may be list for grid views
+        params = {**filters}
+        if isinstance(columns, dict):
+            params.update(columns)
         qs = "&".join(f"{k}={v}" for k, v in params.items() if v)
         p["url"] = f"/dashboards/advisory-pipeline?{qs}" if qs else "/dashboards/advisory-pipeline"
         p["is_own"] = p.get("user_id") == uid

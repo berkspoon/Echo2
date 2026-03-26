@@ -38,6 +38,9 @@
 {% endif %}
 {% set filter_qs = ns.qs_parts | join('&') %}
 
+{# URL separator: use & if base_url already contains ?, else ? #}
+{% set url_sep = '&' if '?' in base_url else '?' %}
+
 {# Merged filters for screener save/overwrite — includes col_filters so they persist #}
 {% set merged_filters = {} %}
 {% for k, v in filters.items() if v and not k.startswith('_') and not k.startswith('cf_') %}{% set _ = merged_filters.update({k: v}) %}{% endfor %}
@@ -45,7 +48,7 @@
 
 <div id="{{ grid_container_id }}"
      hx-trigger="gridRefresh from:body"
-     hx-get="{{ base_url }}?{{ filter_qs }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}{% if current_view_id %}&view_id={{ current_view_id }}{% endif %}"
+     hx-get="{{ base_url }}{{ url_sep }}{{ filter_qs }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ pagination.page }}&page_size={{ pagination.page_size }}{% if current_view_id %}&view_id={{ current_view_id }}{% endif %}"
      hx-target="#{{ grid_container_id }}">
 
 {# ── Screener Selector + Column Toggle Bar ─── #}
@@ -65,7 +68,7 @@
       </button>
       <div x-show="open" @click.away="open = false" x-cloak
            class="absolute left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
-        <a href="{{ base_url }}?{{ filter_qs }}" class="block px-4 py-2 text-sm hover:bg-gray-50 {{ 'font-medium text-brand-600' if not current_view_id else '' }}">Default View</a>
+        <a href="{{ base_url }}{{ url_sep }}{{ filter_qs }}" class="block px-4 py-2 text-sm hover:bg-gray-50 {{ 'font-medium text-brand-600' if not current_view_id else '' }}">Default View</a>
         {# feedback: [padelsbach] split screeners into My / Team sections #}
         {% set my_views = saved_views | selectattr("user_id", "equalto", current_user_id) | list %}
         {% set team_views = saved_views | rejectattr("user_id", "equalto", current_user_id) | list %}
@@ -217,7 +220,7 @@
             {# Column name — sortable click #}
             {% if is_sortable %}
             <span class="cursor-pointer hover:text-gray-700"
-                  hx-get="{{ base_url }}?{{ filter_qs }}&sort_by={{ col.field_name }}&sort_dir={{ 'desc' if sort_by == col.field_name and sort_dir == 'asc' else 'asc' }}&page_size={{ pagination.page_size }}"
+                  hx-get="{{ base_url }}{{ url_sep }}{{ filter_qs }}&sort_by={{ col.field_name }}&sort_dir={{ 'desc' if sort_by == col.field_name and sort_dir == 'asc' else 'asc' }}&page_size={{ pagination.page_size }}"
                   hx-target="#{{ grid_container_id }}" hx-push-url="true">
               {{ col.display_name }}
             </span>
@@ -655,7 +658,7 @@
     <div class="flex gap-1">
       {% if pagination.page > 1 %}
       <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
-              hx-get="{{ base_url }}?{{ filter_qs }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page_size={{ pagination.page_size }}&page={{ pagination.page - 1 }}"
+              hx-get="{{ base_url }}{{ url_sep }}{{ filter_qs }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page_size={{ pagination.page_size }}&page={{ pagination.page - 1 }}"
               hx-target="#{{ grid_container_id }}" hx-push-url="true">Prev</button>
       {% endif %}
 
@@ -664,7 +667,7 @@
       <span class="px-3 py-1 text-sm rounded bg-brand-500 text-white">{{ p }}</span>
       {% elif p <= 3 or p >= pagination.total_pages - 2 or (p >= pagination.page - 1 and p <= pagination.page + 1) %}
       <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
-              hx-get="{{ base_url }}?{{ filter_qs }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page_size={{ pagination.page_size }}&page={{ p }}"
+              hx-get="{{ base_url }}{{ url_sep }}{{ filter_qs }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page_size={{ pagination.page_size }}&page={{ p }}"
               hx-target="#{{ grid_container_id }}" hx-push-url="true">{{ p }}</button>
       {% elif p == 4 or p == pagination.total_pages - 3 %}
       <span class="px-3 py-1 text-sm text-gray-400">...</span>
@@ -673,7 +676,7 @@
 
       {% if pagination.page < pagination.total_pages %}
       <button class="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
-              hx-get="{{ base_url }}?{{ filter_qs }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page_size={{ pagination.page_size }}&page={{ pagination.page + 1 }}"
+              hx-get="{{ base_url }}{{ url_sep }}{{ filter_qs }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page_size={{ pagination.page_size }}&page={{ pagination.page + 1 }}"
               hx-target="#{{ grid_container_id }}" hx-push-url="true">Next</button>
       {% endif %}
     </div>

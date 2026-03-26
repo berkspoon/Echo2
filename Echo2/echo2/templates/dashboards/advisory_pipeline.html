@@ -79,6 +79,9 @@
               hx-target="#pipeline-content"
               hx-push-url="true"
               class="flex flex-wrap items-end gap-4">
+            {# Preserve metric/group_by across filter changes #}
+            <input type="hidden" name="metric" value="{{ metric }}">
+            <input type="hidden" name="group_by" value="{{ group_by }}">
 
             <!-- Service Type -->
             <div class="w-40">
