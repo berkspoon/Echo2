@@ -713,7 +713,7 @@
           <option value="">-- Select field --</option>
           {% for col in columns if col.field_name not in ['id', 'created_at', 'updated_at', 'created_by'] and col.get('storage_type') != 'linked' %}
           <option value="{{ col.field_name }}" data-type="{{ col.field_type }}"
-                  {% if col.options is defined and col.options %}data-options='{{ col.options | tojson }}'{% endif %}>
+                  {% if col.options is defined and col.options %}data-options="{{ col.options | tojson | e }}"{% endif %}>
             {{ col.display_name }}
           </option>
           {% endfor %}

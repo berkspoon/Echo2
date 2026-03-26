@@ -153,6 +153,11 @@ def _resolve_dynamic_members(filter_criteria: dict) -> list[str]:
     Handles both people-level and org-level (virtual) column filters.
     feedback: [padelsbach] dynamic distribution lists auto-resolve membership
     """
+    # Guard: require at least one meaningful filter (cf_* or q search)
+    has_meaningful = any(k.startswith("cf_") for k in filter_criteria) or filter_criteria.get("q")
+    if not has_meaningful:
+        return []
+
     sb = get_supabase()
 
     # Separate org-level filters from people-level filters

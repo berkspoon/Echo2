@@ -89,7 +89,165 @@ async def save_current_view(
         "dashboard_capital_raise": "/dashboards/capital-raise",
     }
     redirect_url = url_map.get(entity_type, "/")
+
+    # For dashboard presets, redirect with saved filters so user sees the preset applied
+    if entity_type.startswith("dashboard_") and filters:
+        # Merge filters + columns (display settings) into query string
+        all_params = {**filters}
+        if isinstance(columns, dict):
+            all_params.update(columns)
+        qs = "&".join(f"{k}={v}" for k, v in all_params.items() if v)
+        if qs:
+            redirect_url = f"{redirect_url}?{qs}"
+
     return RedirectResponse(url=redirect_url, status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# EXPORT — GET /views/export/{entity_type}
+# Must be before /{view_id} routes to avoid path conflicts.
+# ---------------------------------------------------------------------------
+
+_ENTITY_LABELS = {
+    "organization": "Organizations",
+    "person": "People",
+    "lead": "Leads",
+    "activity": "Activities",
+    "contract": "Contracts",
+    "task": "Tasks",
+    "distribution_list": "Distribution_Lists",
+}
+
+
+@router.get("/export/{entity_type}")
+async def export_to_excel(
+    request: Request,
+    entity_type: str,
+    record_ids: str = Query(""),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Export grid data to .xlsx. Respects current filters/columns/sort."""
+    _EXPORT_TABLES = {
+        "organization": "organizations", "person": "people", "lead": "leads",
+        "activity": "activities", "contract": "contracts", "task": "tasks",
+        "distribution_list": "distribution_lists",
+    }
+    if entity_type not in _EXPORT_TABLES:
+        raise HTTPException(status_code=400, detail=f"Invalid entity type: {entity_type}")
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, numbers
+
+    # Build grid context in export mode (all rows, no page cap)
+    grid_ctx = build_grid_context(
+        entity_type,
+        request,
+        current_user,
+        base_url=f"/views/export/{entity_type}",
+        export_mode=True,
+    )
+
+    columns = grid_ctx["columns"]
+    rows = grid_ctx["rows"]
+
+    # If record_ids provided, filter to just those
+    if record_ids:
+        id_set = set(rid.strip() for rid in record_ids.split(",") if rid.strip())
+        rows = [r for r in rows if str(r.get("id", "")) in id_set]
+
+    # Build workbook
+    wb = Workbook()
+    ws = wb.active
+    label = _ENTITY_LABELS.get(entity_type, entity_type.title())
+    ws.title = label
+
+    # Header row
+    header_font = Font(bold=True)
+    for col_idx, col_def in enumerate(columns, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=col_def.get("display_name", col_def["field_name"]))
+        cell.font = header_font
+
+    # Data rows
+    for row_idx, row in enumerate(rows, start=2):
+        for col_idx, col_def in enumerate(columns, start=1):
+            fname = col_def["field_name"]
+            ftype = col_def.get("field_type", "text")
+            val = row.get(fname)
+
+            # Resolve display values for enriched fields
+            if entity_type == "lead" and fname == "organization_id":
+                val = row.get("org_name", val)
+            elif entity_type == "lead" and fname == "aksia_owner_id":
+                val = row.get("owner_name", val)
+            elif entity_type == "lead" and fname == "fund_id":
+                val = row.get("fund_ticker", val)
+            elif entity_type == "contract" and fname == "organization_id":
+                val = row.get("org_name", val)
+            elif entity_type == "activity" and fname == "author_id":
+                val = row.get("author_name", val)
+            elif entity_type == "task" and fname == "assigned_to":
+                val = row.get("assigned_to_name", val)
+            elif entity_type == "person" and fname == "first_name":
+                val = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+
+            # Format value by type
+            if val is None:
+                cell = ws.cell(row=row_idx, column=col_idx, value="")
+            elif ftype == "boolean":
+                cell = ws.cell(row=row_idx, column=col_idx, value="Yes" if val else "No")
+            elif ftype == "currency":
+                try:
+                    cell = ws.cell(row=row_idx, column=col_idx, value=float(val))
+                    cell.number_format = '#,##0'
+                except (ValueError, TypeError):
+                    cell = ws.cell(row=row_idx, column=col_idx, value=str(val))
+            elif ftype == "number":
+                try:
+                    cell = ws.cell(row=row_idx, column=col_idx, value=float(val))
+                except (ValueError, TypeError):
+                    cell = ws.cell(row=row_idx, column=col_idx, value=str(val))
+            elif ftype == "date":
+                try:
+                    date_str = str(val)[:10] if val else ""
+                    if date_str:
+                        cell = ws.cell(row=row_idx, column=col_idx, value=datetime.strptime(date_str, "%Y-%m-%d").date())
+                        cell.number_format = numbers.FORMAT_DATE_YYYYMMDD2
+                    else:
+                        cell = ws.cell(row=row_idx, column=col_idx, value="")
+                except (ValueError, TypeError):
+                    cell = ws.cell(row=row_idx, column=col_idx, value=str(val))
+            elif ftype == "multi_select" or ftype == "text_list":
+                if isinstance(val, list):
+                    cell = ws.cell(row=row_idx, column=col_idx, value=", ".join(str(v) for v in val))
+                else:
+                    cell = ws.cell(row=row_idx, column=col_idx, value=str(val) if val else "")
+            elif ftype == "dropdown":
+                cell = ws.cell(row=row_idx, column=col_idx, value=str(val).replace("_", " ").title() if val else "")
+            else:
+                cell = ws.cell(row=row_idx, column=col_idx, value=str(val) if val else "")
+
+    # Auto-size columns (approximate)
+    for col_idx, col_def in enumerate(columns, start=1):
+        max_len = len(col_def.get("display_name", col_def["field_name"]))
+        for row_idx in range(2, min(len(rows) + 2, 52)):  # sample first 50 rows
+            cell_val = ws.cell(row=row_idx, column=col_idx).value
+            if cell_val:
+                max_len = max(max_len, len(str(cell_val)))
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = min(max_len + 3, 50)
+
+    # Write to buffer
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"{label}_{timestamp}.xlsx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/{view_id}/delete", response_class=HTMLResponse)
@@ -460,144 +618,3 @@ async def bulk_delete(
         deleted += 1
 
     return HTMLResponse(f"{deleted} record(s) deleted.")
-
-
-# ---------------------------------------------------------------------------
-# EXPORT — GET /views/export/{entity_type}
-# ---------------------------------------------------------------------------
-
-_ENTITY_LABELS = {
-    "organization": "Organizations",
-    "person": "People",
-    "lead": "Leads",
-    "activity": "Activities",
-    "contract": "Contracts",
-    "task": "Tasks",
-    "distribution_list": "Distribution_Lists",
-}
-
-
-@router.get("/export/{entity_type}")
-async def export_to_excel(
-    request: Request,
-    entity_type: str,
-    record_ids: str = Query(""),
-    current_user: CurrentUser = Depends(get_current_user),
-):
-    """Export grid data to .xlsx. Respects current filters/columns/sort."""
-    if entity_type not in _GRID_EDIT_TABLES:
-        raise HTTPException(status_code=400, detail=f"Invalid entity type: {entity_type}")
-
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, numbers
-
-    # Build grid context in export mode (all rows, no page cap)
-    grid_ctx = build_grid_context(
-        entity_type,
-        request,
-        current_user,
-        base_url=f"/views/export/{entity_type}",
-        export_mode=True,
-    )
-
-    columns = grid_ctx["columns"]
-    rows = grid_ctx["rows"]
-
-    # If record_ids provided, filter to just those
-    if record_ids:
-        id_set = set(rid.strip() for rid in record_ids.split(",") if rid.strip())
-        rows = [r for r in rows if str(r.get("id", "")) in id_set]
-
-    # Build workbook
-    wb = Workbook()
-    ws = wb.active
-    label = _ENTITY_LABELS.get(entity_type, entity_type.title())
-    ws.title = label
-
-    # Header row
-    header_font = Font(bold=True)
-    for col_idx, col_def in enumerate(columns, start=1):
-        cell = ws.cell(row=1, column=col_idx, value=col_def.get("display_name", col_def["field_name"]))
-        cell.font = header_font
-
-    # Data rows
-    for row_idx, row in enumerate(rows, start=2):
-        for col_idx, col_def in enumerate(columns, start=1):
-            fname = col_def["field_name"]
-            ftype = col_def.get("field_type", "text")
-            val = row.get(fname)
-
-            # Resolve display values for enriched fields
-            if entity_type == "lead" and fname == "organization_id":
-                val = row.get("org_name", val)
-            elif entity_type == "lead" and fname == "aksia_owner_id":
-                val = row.get("owner_name", val)
-            elif entity_type == "lead" and fname == "fund_id":
-                val = row.get("fund_ticker", val)
-            elif entity_type == "contract" and fname == "organization_id":
-                val = row.get("org_name", val)
-            elif entity_type == "activity" and fname == "author_id":
-                val = row.get("author_name", val)
-            elif entity_type == "task" and fname == "assigned_to":
-                val = row.get("assigned_to_name", val)
-            elif entity_type == "person" and fname == "first_name":
-                val = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
-
-            # Format value by type
-            if val is None:
-                cell = ws.cell(row=row_idx, column=col_idx, value="")
-            elif ftype == "boolean":
-                cell = ws.cell(row=row_idx, column=col_idx, value="Yes" if val else "No")
-            elif ftype == "currency":
-                try:
-                    cell = ws.cell(row=row_idx, column=col_idx, value=float(val))
-                    cell.number_format = '#,##0'
-                except (ValueError, TypeError):
-                    cell = ws.cell(row=row_idx, column=col_idx, value=str(val))
-            elif ftype == "number":
-                try:
-                    cell = ws.cell(row=row_idx, column=col_idx, value=float(val))
-                except (ValueError, TypeError):
-                    cell = ws.cell(row=row_idx, column=col_idx, value=str(val))
-            elif ftype == "date":
-                try:
-                    date_str = str(val)[:10] if val else ""
-                    if date_str:
-                        cell = ws.cell(row=row_idx, column=col_idx, value=datetime.strptime(date_str, "%Y-%m-%d").date())
-                        cell.number_format = numbers.FORMAT_DATE_YYYYMMDD2
-                    else:
-                        cell = ws.cell(row=row_idx, column=col_idx, value="")
-                except (ValueError, TypeError):
-                    cell = ws.cell(row=row_idx, column=col_idx, value=str(val))
-            elif ftype == "multi_select" or ftype == "text_list":
-                if isinstance(val, list):
-                    cell = ws.cell(row=row_idx, column=col_idx, value=", ".join(str(v) for v in val))
-                else:
-                    cell = ws.cell(row=row_idx, column=col_idx, value=str(val) if val else "")
-            elif ftype == "dropdown":
-                cell = ws.cell(row=row_idx, column=col_idx, value=str(val).replace("_", " ").title() if val else "")
-            else:
-                cell = ws.cell(row=row_idx, column=col_idx, value=str(val) if val else "")
-
-    # Auto-size columns (approximate)
-    for col_idx, col_def in enumerate(columns, start=1):
-        max_len = len(col_def.get("display_name", col_def["field_name"]))
-        for row_idx in range(2, min(len(rows) + 2, 52)):  # sample first 50 rows
-            cell_val = ws.cell(row=row_idx, column=col_idx).value
-            if cell_val:
-                max_len = max(max_len, len(str(cell_val)))
-        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = min(max_len + 3, 50)
-
-    # Write to buffer
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    filename = f"{label}_{timestamp}.xlsx"
-
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )

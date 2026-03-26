@@ -595,10 +595,11 @@ def _load_advisory_leads(
     sb = get_supabase()
     query = (
         sb.table("leads")
-        .select("id, organization_id, rating, service_type, asset_classes, "
+        .select("id, organization_id, lead_type, rating, service_type, asset_classes, "
                 "expected_revenue, expected_yr1_flar, expected_longterm_flar, "
                 "aksia_owner_id, start_date, end_date, relationship, summary, fund_id")
         .eq("is_deleted", False)
+        .or_("lead_type.eq.advisory,lead_type.is.null")
     )
     if service:
         query = query.eq("service_type", service)

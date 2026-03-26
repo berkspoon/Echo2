@@ -657,6 +657,8 @@ def _apply_filters(entity_type: str, query, filters: dict):
             lt = filters["lead_type"]
             if lt in ("fundraise", "product"):
                 query = query.in_("lead_type", ["fundraise", "product"])
+            elif lt == "advisory":
+                query = query.or_("lead_type.eq.advisory,lead_type.is.null")
             else:
                 query = query.eq("lead_type", lt)
         if filters.get("stage"):
