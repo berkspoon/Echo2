@@ -103,6 +103,7 @@
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-1">Source Entity</label>
                             <select name="linked_source_entity" id="linked_source_entity"
+                                    onchange="updateSourceFieldOptions()"
                                     class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
                                 <option value="">— Select —</option>
                                 <option value="organization" {{ 'selected' if lc.get('source_entity') == 'organization' else '' }}>Organization</option>
@@ -112,17 +113,19 @@
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-1">Source Field</label>
-                            <input type="text" name="linked_source_field" value="{{ lc.get('source_field', '') }}"
-                                   placeholder="e.g. city, country, organization_type"
-                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                            <select name="linked_source_field" id="linked_source_field"
+                                    class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                                <option value="">— Select source entity first —</option>
+                            </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 mb-1">Link Via</label>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Relationship</label>
                             <select name="linked_link_via" id="linked_link_via"
                                     class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
-                                <option value="person_organization_links" {{ 'selected' if lc.get('link_via') == 'person_organization_links' else '' }}>Person → Org (via person_organization_links)</option>
-                                <option value="direct" {{ 'selected' if lc.get('link_via') == 'direct' else '' }}>Direct FK (e.g. leads.organization_id)</option>
+                                <option value="person_organization_links" {{ 'selected' if lc.get('link_via') == 'person_organization_links' else '' }}>Person ↔ Organization (via org links)</option>
+                                <option value="direct" {{ 'selected' if lc.get('link_via') == 'direct' else '' }}>Direct reference (entity has a foreign key to source)</option>
                             </select>
+                            <p class="mt-1 text-xs text-gray-400">Use "Direct reference" for Leads → Organization, or "Person ↔ Organization" for People → Organization.</p>
                         </div>
                     </div>
                 </div>
@@ -305,7 +308,57 @@ function toggleLinkedConfig() {
     const st = document.getElementById('storage_type').value;
     const group = document.getElementById('linked-config-group');
     group.style.display = (st === 'linked') ? '' : 'none';
+    if (st === 'linked') updateSourceFieldOptions();
 }
+
+var _SOURCE_FIELDS = {
+    organization: [
+        {value: 'company_name', label: 'Company Name'},
+        {value: 'city', label: 'City'},
+        {value: 'state', label: 'State'},
+        {value: 'country', label: 'Country'},
+        {value: 'organization_type', label: 'Organization Type'},
+        {value: 'relationship_type', label: 'Relationship Type'},
+        {value: 'aum_mn', label: 'AUM ($M)'},
+        {value: 'rfp_hold', label: 'RFP Hold'},
+        {value: 'phone', label: 'Phone'},
+        {value: 'website', label: 'Website'},
+        {value: 'address', label: 'Address'},
+    ],
+    person: [
+        {value: 'first_name', label: 'First Name'},
+        {value: 'last_name', label: 'Last Name'},
+        {value: 'email', label: 'Email'},
+        {value: 'phone', label: 'Phone'},
+        {value: 'job_title', label: 'Job Title'},
+        {value: 'do_not_contact', label: 'Do Not Contact'},
+        {value: 'coverage_owner', label: 'Coverage Owner'},
+    ],
+    lead: [
+        {value: 'rating', label: 'Stage'},
+        {value: 'service_type', label: 'Service Type'},
+        {value: 'relationship', label: 'Relationship'},
+        {value: 'expected_revenue', label: 'Expected Revenue'},
+        {value: 'expected_yr1_flar', label: 'Expected Yr1 FLAR'},
+        {value: 'summary', label: 'Summary'},
+    ],
+};
+
+function updateSourceFieldOptions() {
+    var entity = document.getElementById('linked_source_entity').value;
+    var sel = document.getElementById('linked_source_field');
+    var savedVal = '{{ lc.get("source_field", "") }}';
+    sel.innerHTML = '<option value="">— Select —</option>';
+    var fields = _SOURCE_FIELDS[entity] || [];
+    fields.forEach(function(f) {
+        var opt = document.createElement('option');
+        opt.value = f.value;
+        opt.textContent = f.label;
+        if (f.value === savedVal) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
 toggleDropdownCategory();
 toggleLinkedConfig();
 </script>

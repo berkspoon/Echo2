@@ -170,7 +170,9 @@ function columnSelector() {
         if (c.visible) cols.push(c.name);
       });
       var colSet = new Set(cols);
-      var url = new URL(window.location);
+      // Use base_url for drill-down grids (window.location is the dashboard, not the drill-down)
+      var baseUrl = '{{ base_url }}';
+      var url = baseUrl.includes('?') ? new URL(baseUrl, window.location.origin) : new URL(window.location);
       url.searchParams.set('visible_columns', cols.join(','));
       url.searchParams.set('page', '1');
       // Remove column filters for columns that are no longer visible
@@ -182,7 +184,7 @@ function columnSelector() {
       });
       keysToRemove.forEach(function(k) { url.searchParams.delete(k); });
       var fullUrl = url.pathname + url.search;
-      history.pushState(null, '', fullUrl);
+      if (!baseUrl.includes('?')) { history.pushState(null, '', fullUrl); }
       htmx.ajax('GET', fullUrl, {target: '#{{ grid_container_id }}'});
       this.open = false;
     }

@@ -768,6 +768,15 @@ async def filter_editor(
     grid_ctx["dist_list"] = dist_list
     grid_ctx["is_filter_editor"] = True
 
+    # Build merged_filters for the save form (combines filters + col_filters)
+    merged = {}
+    for k, v in (grid_ctx.get("filters") or {}).items():
+        if not k.startswith("_"):
+            merged[k] = v
+    for k, v in (grid_ctx.get("col_filters") or {}).items():
+        merged[k] = v
+    grid_ctx["merged_filters"] = merged
+
     return templates.TemplateResponse("distribution_lists/_filter_editor.html", grid_ctx)
 
 
