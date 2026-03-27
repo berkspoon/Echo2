@@ -12,7 +12,8 @@ from fastapi.templating import Jinja2Templates
 from db.client import get_supabase
 from db.helpers import get_reference_data, log_field_change, audit_changes, batch_resolve_users
 from db.field_service import get_field_definitions, get_field_definitions_grouped, enrich_field_definitions
-from db.view_config_service import get_all_view_configs, get_view_config, save_view_config
+from db.view_config_service import get_all_view_configs, get_view_config, save_view_config, validate_config
+from services.grid_service import _VIRTUAL_COLUMNS
 from dependencies import CurrentUser, get_current_user, require_role
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -1840,26 +1841,53 @@ async def list_view_configs(
 
 _RENDER_TYPES = ["text", "text_right", "link", "badge", "currency_right", "mono"]
 
-# Known data keys available for each dashboard table config
-_AVAILABLE_KEYS = {
+# Computed/formatted keys always available on dashboard tables
+_COMPUTED_KEYS = {
     "cr_hot_prospects_columns": [
-        ("org_name", "Organization"), ("org_country", "Country"), ("org_city", "City"),
-        ("org_type", "Org Type"), ("org_aum_mn", "Org AUM ($M)"),
-        ("stage_label", "Stage"), ("owner_name", "Lead Owner"),
-        ("allocation_fmt", "Allocation ($M)"), ("tickers_str", "Fund(s)"),
+        ("org_name", "Organization"), ("stage_label", "Stage"),
+        ("owner_name", "Lead Owner"), ("allocation_fmt", "Allocation ($M)"),
+        ("tickers_str", "Fund(s)"), ("badge_class", "Badge Class (internal)"),
     ],
     "cr_investor_breakdown_columns": [
-        ("label", "LP Type"), ("count", "Count"), ("target_fmt", "Target ($M)"),
-        ("soft_fmt", "Soft Circle ($M)"), ("hard_fmt", "Hard Circle ($M)"),
-        ("avg_target_fmt", "Avg Target ($M)"),
+        ("label", "LP Type"), ("count", "Count"),
+        ("target_fmt", "Target ($M)"), ("soft_fmt", "Soft Circle ($M)"),
+        ("hard_fmt", "Hard Circle ($M)"), ("avg_target_fmt", "Avg Target ($M)"),
     ],
     "cr_declined_columns": [
-        ("org_name", "Organization"), ("org_country", "Country"), ("org_city", "City"),
-        ("org_type", "Org Type"), ("fund_ticker", "Fund"), ("fund_name", "Fund Name"),
-        ("share_class", "Share Class"), ("decline_reason", "Decline Reason"),
-        ("target_allocation_fmt", "Target Allocation ($M)"),
+        ("org_name", "Organization"), ("fund_ticker", "Fund"),
+        ("fund_name", "Fund Name"), ("share_class", "Share Class"),
+        ("decline_reason", "Decline Reason"), ("target_allocation_fmt", "Target Allocation ($M)"),
     ],
 }
+
+
+def _build_available_keys(view_key: str) -> list[tuple[str, str]]:
+    """Build available data keys for a dashboard table config.
+
+    Combines computed keys with all org/lead field_definitions so admins
+    can add any entity field as a column.
+    """
+    keys = list(_COMPUTED_KEYS.get(view_key, []))
+    seen = {k for k, _ in keys}
+
+    # Add org fields (prefixed with org_)
+    org_fields = get_field_definitions("organization", active_only=True)
+    for fd in org_fields:
+        prefixed = f"org_{fd['field_name']}"
+        if prefixed not in seen:
+            keys.append((prefixed, f"Org: {fd.get('display_name', fd['field_name'])}"))
+            seen.add(prefixed)
+
+    # Add lead fields for prospect-based tables
+    if view_key in ("cr_hot_prospects_columns", "cr_declined_columns"):
+        lead_fields = get_field_definitions("lead", active_only=True)
+        for fd in lead_fields:
+            prefixed = f"lead_{fd['field_name']}"
+            if prefixed not in seen:
+                keys.append((prefixed, f"Lead: {fd.get('display_name', fd['field_name'])}"))
+                seen.add(prefixed)
+
+    return keys
 
 
 @router.get("/views/{view_key:path}/edit")
@@ -1885,6 +1913,11 @@ async def edit_view_config(
         editor_type = "grid_columns"
         entity_type = view_key.replace("grid_defaults.", "")
         available_fields = get_field_definitions(entity_type, active_only=True)
+        # Merge virtual/linked columns (org_city, has_active_leads, etc.)
+        existing_names = {fd["field_name"] for fd in available_fields}
+        for vc in _VIRTUAL_COLUMNS.get(entity_type, []):
+            if vc["field_name"] not in existing_names:
+                available_fields.append(dict(vc))
     elif isinstance(config.get("columns"), list) and config["columns"] and isinstance(config["columns"][0], dict):
         editor_type = "dashboard_columns"
         available_fields = []
@@ -1905,10 +1938,28 @@ async def edit_view_config(
         "config_json": config_json,
         "editor_type": editor_type,
         "render_types": _RENDER_TYPES,
-        "available_keys": _AVAILABLE_KEYS.get(view_key, []),
+        "available_keys": _build_available_keys(view_key) if editor_type == "dashboard_columns" else [],
         "available_fields": available_fields,
         "field_types": [ft["value"] for ft in FIELD_TYPES],
     })
+
+
+@router.post("/views/{view_key:path}/reset")
+async def reset_view_config_route(
+    request: Request,
+    view_key: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Reset a view configuration to its seed default."""
+    require_role(current_user, ["admin"])
+
+    from scripts.seed_view_configurations import SEED_ROWS
+    seed_row = next((r for r in SEED_ROWS if r["view_key"] == view_key), None)
+    if not seed_row:
+        raise HTTPException(status_code=404, detail=f"No seed default for '{view_key}'")
+
+    save_view_config(view_key, seed_row["config"], str(current_user.id))
+    return RedirectResponse(url=f"/admin/views/{view_key}/edit", status_code=303)
 
 
 @router.post("/views/{view_key:path}")
@@ -1929,6 +1980,11 @@ async def save_view_config_route(
         config = json.loads(config_str)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+    # Validate config shape
+    error = validate_config(config)
+    if error:
+        raise HTTPException(status_code=400, detail=f"Invalid config: {error}")
 
     save_view_config(view_key, config, str(current_user.id))
 

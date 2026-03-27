@@ -21,16 +21,23 @@
                 </span>
             </div>
         </div>
-        <a href="/admin/views" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Views</a>
+        <div class="flex items-center gap-3">
+            <a href="/admin/views" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Views</a>
+            <form method="POST" action="/admin/views/{{ view_config.view_key }}/reset" class="inline"
+                  onsubmit="return confirm('Reset this configuration to its original default? This cannot be undone.')">
+                <button type="submit" class="text-sm text-red-500 hover:text-red-700 underline">Reset to Default</button>
+            </form>
+        </div>
     </div>
 
     <!-- Form wraps everything — hidden input holds the final JSON -->
-    <form method="POST" action="/admin/views/{{ view_config.view_key }}" onsubmit="return serializeAndSubmit()">
+    <form method="POST" action="/admin/views/{{ view_config.view_key }}">
         <input type="hidden" name="config_json" id="config-json-hidden">
 
         {# ═══ Dashboard Column Editor ═══ #}
         {% if editor_type == 'dashboard_columns' %}
-        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="columnEditor()">
+        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="columnEditor()"
+             x-effect="$el.closest('form').querySelector('#config-json-hidden').value = serialize()">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-sm font-semibold text-gray-900">Table Columns</h3>
                 <p class="text-xs text-gray-500 mt-1">Add, remove, and reorder columns. Each column maps a data key to a table header with a render style.</p>
@@ -119,7 +126,8 @@
 
         {# ═══ Option List Editor ═══ #}
         {% elif editor_type == 'option_list' %}
-        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="optionEditor()">
+        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="optionEditor()"
+             x-effect="$el.closest('form').querySelector('#config-json-hidden').value = serialize()">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-sm font-semibold text-gray-900">Options</h3>
                 <p class="text-xs text-gray-500 mt-1">Add, remove, and reorder dropdown options. Value is the internal key, label is what users see.</p>
@@ -190,7 +198,8 @@
 
         {# ═══ Grid Default Columns Editor ═══ #}
         {% elif editor_type == 'grid_columns' %}
-        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="gridColumnEditor()">
+        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="gridColumnEditor()"
+             x-effect="$el.closest('form').querySelector('#config-json-hidden').value = serialize()">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-sm font-semibold text-gray-900">Default Grid Columns</h3>
                 <p class="text-xs text-gray-500 mt-1">Check columns to show by default. Drag to reorder. These apply when no screener is active.</p>
@@ -258,7 +267,8 @@
 
         {# ═══ DL Filter Fields Editor ═══ #}
         {% elif editor_type == 'dl_filter' %}
-        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="dlFilterEditor()">
+        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="dlFilterEditor()"
+             x-effect="$el.closest('form').querySelector('#config-json-hidden').value = serialize()">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-sm font-semibold text-gray-900">Distribution List Filter Configuration</h3>
             </div>
@@ -370,7 +380,8 @@
 
         {# ═══ Raw JSON Fallback ═══ #}
         {% else %}
-        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="jsonEditor()">
+        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="jsonEditor()"
+             x-effect="$el.closest('form').querySelector('#config-json-hidden').value = serialize()">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-sm font-semibold text-gray-900">JSON Configuration</h3>
             </div>
@@ -410,17 +421,4 @@
     </form>
 </div>
 
-<script>
-function serializeAndSubmit() {
-    // Find the active Alpine component and call its serialize()
-    var el = document.querySelector('[x-data]');
-    if (!el || !el.__x) return false;
-    var data = el.__x.$data;
-    if (typeof data.serialize !== 'function') return false;
-    var json = data.serialize();
-    if (!json) return false;
-    document.getElementById('config-json-hidden').value = json;
-    return true;
-}
-</script>
 {% endblock %}
