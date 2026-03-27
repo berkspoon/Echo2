@@ -1043,3 +1043,21 @@ CREATE TABLE duplicate_suppressions (
     UNIQUE(entity_type, record_id_a, record_id_b)
 );
 CREATE INDEX idx_dup_supp_entity ON duplicate_suppressions (entity_type);
+
+
+-- =====================================================================
+-- Phase 6: View Configurations (admin-configurable view settings)
+-- =====================================================================
+
+CREATE TABLE view_configurations (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    view_key        TEXT NOT NULL UNIQUE,
+    display_name    TEXT NOT NULL,
+    description     TEXT,
+    category        TEXT NOT NULL DEFAULT 'general',
+    config          JSONB NOT NULL DEFAULT '{}',
+    updated_by      UUID REFERENCES users(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_vc_key ON view_configurations (view_key);

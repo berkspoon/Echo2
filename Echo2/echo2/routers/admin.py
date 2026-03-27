@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from db.client import get_supabase
 from db.helpers import get_reference_data, log_field_change, audit_changes, batch_resolve_users
 from db.field_service import get_field_definitions, get_field_definitions_grouped, enrich_field_definitions
+from db.view_config_service import get_all_view_configs, get_view_config, save_view_config
 from dependencies import CurrentUser, get_current_user, require_role
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -1801,3 +1802,86 @@ async def suppress_duplicate_admin(
 
     # Return empty string to remove the row via hx-swap="outerHTML"
     return HTMLResponse("")
+
+
+# ---------------------------------------------------------------------------
+# View Configurations [Phase 6]
+# ---------------------------------------------------------------------------
+
+_CATEGORY_LABELS = {
+    "distribution_lists": "Distribution Lists",
+    "dashboards": "Dashboards",
+    "grids": "Grids",
+    "general": "General",
+}
+
+
+@router.get("/views")
+async def list_view_configs(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """List all view configurations grouped by category."""
+    require_role(current_user, ["admin"])
+
+    configs = get_all_view_configs()
+    grouped: dict[str, list[dict]] = {}
+    for cfg in configs:
+        cat = cfg.get("category", "general")
+        grouped.setdefault(cat, []).append(cfg)
+
+    return templates.TemplateResponse("admin/views.html", {
+        "request": request,
+        "user": current_user,
+        "grouped_configs": grouped,
+        "category_labels": _CATEGORY_LABELS,
+    })
+
+
+@router.get("/views/{view_key:path}/edit")
+async def edit_view_config(
+    request: Request,
+    view_key: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Edit form for a single view configuration."""
+    require_role(current_user, ["admin"])
+
+    sb = get_supabase()
+    resp = sb.table("view_configurations").select("*").eq("view_key", view_key).maybe_single().execute()
+    if not resp or not resp.data:
+        raise HTTPException(status_code=404, detail=f"View config '{view_key}' not found")
+
+    import json
+    config_json = json.dumps(resp.data["config"], indent=2)
+
+    return templates.TemplateResponse("admin/view_config_form.html", {
+        "request": request,
+        "user": current_user,
+        "view_config": resp.data,
+        "config_json": config_json,
+    })
+
+
+@router.post("/views/{view_key:path}")
+async def save_view_config_route(
+    request: Request,
+    view_key: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Save updated config for a view configuration."""
+    require_role(current_user, ["admin"])
+
+    import json
+
+    form = await request.form()
+    config_str = form.get("config_json", "")
+
+    try:
+        config = json.loads(config_str)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+    save_view_config(view_key, config, str(current_user.id))
+
+    return RedirectResponse(url="/admin/views", status_code=303)

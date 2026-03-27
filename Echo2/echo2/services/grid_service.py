@@ -20,6 +20,7 @@ from db.helpers import (
     get_reference_data,
     is_overdue,
 )
+from db.view_config_service import get_view_config
 
 
 # ── Entity → table mapping ─────────────────────────────────────────────────
@@ -1388,7 +1389,14 @@ def _resolve_visible_columns(
 
 
 def get_default_columns(entity_type: str, field_defs: list[dict]) -> list[str]:
-    """Return default visible column names for an entity."""
+    """Return default visible column names for an entity.
+
+    Checks admin-configurable view_configurations first, then falls back
+    to the hardcoded _DEFAULT_COLUMNS dict.
+    """
+    vc = get_view_config(f"grid_defaults.{entity_type}", default=None)
+    if vc and isinstance(vc, dict) and vc.get("columns"):
+        return list(vc["columns"])
     defaults = _DEFAULT_COLUMNS.get(entity_type)
     if defaults:
         return list(defaults)

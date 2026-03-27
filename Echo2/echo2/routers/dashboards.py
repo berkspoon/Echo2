@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
 from db.helpers import get_reference_data, batch_resolve_users, batch_resolve_orgs, is_overdue
+from db.view_config_service import get_view_config
 from dependencies import CurrentUser, get_current_user, require_role
 
 router = APIRouter(prefix="/dashboards", tags=["dashboards"])
@@ -67,6 +68,24 @@ _TRACTION_SCORES = {
     "closed": 5,
     "declined": 0,
 }
+
+
+def _filter_visible_columns(columns: list[dict], context: dict) -> list[dict]:
+    """Filter column list by visible_when conditions against current context.
+
+    A column is visible if it has no visible_when, or if all conditions match.
+    E.g. {"current_fund_ticker": ""} means show only when no specific fund is selected.
+    """
+    result = []
+    for col in columns:
+        vw = col.get("visible_when")
+        if not vw:
+            result.append(col)
+            continue
+        match = all(context.get(k, "") == v for k, v in vw.items())
+        if match:
+            result.append(col)
+    return result
 
 
 def _compute_traction_score(stage: str) -> int:
@@ -1000,6 +1019,12 @@ async def advisory_pipeline(
         "filter_stage": stage,
         # C2: Dynamic group-by fields
         "groupable_fields": groupable_fields,
+        # Phase 6: admin-configurable metric options
+        "metric_options": get_view_config("advisory_metric_options", default={"options": [
+            {"value": "count", "label": "Lead Count"},
+            {"value": "revenue", "label": "Expected Revenue ($)"},
+            {"value": "flar", "label": "Yr1 FLAR ($)"},
+        ]}).get("options", []),
     }
 
     if request.headers.get("HX-Request"):
@@ -1604,6 +1629,47 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
     sb = get_supabase()
     users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
 
+    # ── View config: column configs + group-by options ─────────────────
+    _hp_default = {"columns": [
+        {"key": "org_name", "label": "Organization", "render_type": "link"},
+        {"key": "stage_label", "label": "Stage", "render_type": "badge"},
+        {"key": "owner_name", "label": "Lead Owner", "render_type": "text"},
+        {"key": "allocation_fmt", "label": "Allocation ($M)", "render_type": "currency_right"},
+    ]}
+    _inv_default = {"columns": [
+        {"key": "label", "label": "LP Type", "render_type": "text"},
+        {"key": "count", "label": "Count", "render_type": "text_right"},
+        {"key": "target_fmt", "label": "Target ($M)", "render_type": "currency_right"},
+        {"key": "soft_fmt", "label": "Soft Circle ($M)", "render_type": "currency_right"},
+        {"key": "hard_fmt", "label": "Hard Circle ($M)", "render_type": "currency_right"},
+    ]}
+    _dec_default = {"columns": [
+        {"key": "org_name", "label": "Organization", "render_type": "text"},
+        {"key": "fund_ticker", "label": "Fund", "render_type": "mono"},
+        {"key": "share_class", "label": "Share Class", "render_type": "text"},
+        {"key": "decline_reason", "label": "Decline Reason", "render_type": "text"},
+    ]}
+    _gb_default = {"options": [
+        {"value": "stage", "label": "Stage"},
+        {"value": "lp_type", "label": "LP Type"},
+        {"value": "country", "label": "Country"},
+        {"value": "fund", "label": "Fund"},
+    ]}
+
+    hp_cols = _filter_visible_columns(
+        get_view_config("cr_hot_prospects_columns", default=_hp_default).get("columns", _hp_default["columns"]),
+        {"current_fund_ticker": fund_ticker or ""},
+    )
+    inv_cols = _filter_visible_columns(
+        get_view_config("cr_investor_breakdown_columns", default=_inv_default).get("columns", _inv_default["columns"]),
+        {"current_fund_ticker": fund_ticker or ""},
+    )
+    dec_cols = _filter_visible_columns(
+        get_view_config("cr_declined_columns", default=_dec_default).get("columns", _dec_default["columns"]),
+        {"current_fund_ticker": fund_ticker or ""},
+    )
+    cr_group_by_options = get_view_config("cr_group_by_options", default=_gb_default).get("options", _gb_default["options"])
+
     context = {
         "request": request,
         "user": current_user,
@@ -1644,6 +1710,11 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
         "hot_prospects": hot_prospects,
         # Active filter
         "active_filter": active_filter,
+        # View config: column configs + options
+        "hot_prospect_columns": hp_cols,
+        "investor_columns": inv_cols,
+        "declined_columns": dec_cols,
+        "cr_group_by_options": cr_group_by_options,
     }
 
     return templates.TemplateResponse("dashboards/capital_raise.html", context)

@@ -373,6 +373,23 @@ ALTER TABLE field_definitions ADD COLUMN IF NOT EXISTS linked_config JSONB;
 -- No CHECK constraint change needed — storage_type is already a free TEXT column.
 
 -- =====================================================================
+-- Phase 6: View Configurations (admin-configurable view settings)
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS view_configurations (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    view_key        TEXT NOT NULL UNIQUE,
+    display_name    TEXT NOT NULL,
+    description     TEXT,
+    category        TEXT NOT NULL DEFAULT 'general',
+    config          JSONB NOT NULL DEFAULT '{}',
+    updated_by      UUID REFERENCES users(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_vc_key ON view_configurations (view_key);
+
+-- =====================================================================
 -- Done! Verify with:
 --   SELECT column_name FROM information_schema.columns WHERE table_name = 'people' AND column_name = 'is_deleted';
 --   SELECT count(*) FROM field_definitions;

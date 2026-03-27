@@ -50,40 +50,40 @@ Mark fixed items with `[x]`.
 ## Power User Feedback — Round 3 (March 13, 2026)
 
 ### Activities
-- [ ] [Activities] When linking an org, show that org's people for quick association; when linking a person, auto-add their primary org (severity: medium)
-- [ ] [Activities] Add "My Activities" view showing user's own activities + activities for orgs/people where user is assigned coverage (severity: high)
+- [x] [Activities] When linking an org, show that org's people for quick association; when linking a person, auto-add their primary org (severity: medium) — **Fixed (Session 12): HTMX org-people endpoint returns quick-add suggestion buttons; addPerson() auto-fetches and adds primary org chip**
+- [x] [Activities] Add "My Activities" view showing user's own activities + activities for orgs/people where user is assigned coverage (severity: high) — **Fixed (Session 12): Multi-step coverage query (author + covered people + covered orgs). Toggle tabs in list.html**
 
 ### Tasks
-- [ ] [Tasks] Show suggested assignees (coverage owners) from linked activity's orgs when creating a task from an activity (severity: medium)
-- [ ] [Activities] Make follow-up notes required when follow-up required is checked (severity: medium)
-- [ ] [Dashboard] Show follow-up notes on personal dashboard tasks widget (severity: low)
+- [x] [Tasks] Show suggested assignees (coverage owners) from linked activity's orgs when creating a task from an activity (severity: medium) — **Fixed (Session 12): Task form with ?linked_type=activity looks up coverage owners, shown as clickable chips**
+- [x] [Activities] Make follow-up notes required when follow-up required is checked (severity: medium) — **Fixed (Session 12): Server-side validation in create/update + client-side required attribute toggle**
+- [x] [Dashboard] Show follow-up notes on personal dashboard tasks widget (severity: low) — **Fixed (Session 12): Tasks widget includes notes+source, shows truncated follow-up notes for activity_follow_up tasks**
 
 ### Distribution Lists
-- [ ] [Distribution Lists] Add filters (country, client type, relationship type, fund) to member search on add-members page (severity: medium)
+- [x] [Distribution Lists] Add filters (country, client type, relationship type, fund) to member search on add-members page (severity: medium) — **Fixed (Session 12): search-people endpoint accepts country, rel_type, fund params. Filter dropdowns above search in _tab_members.html**
 
 ### My [Module] Views
-- [ ] [Organizations] Add "My Organizations" view filtered by user's coverage (severity: high)
-- [ ] [People] Add "My People" view filtered by coverage_owner (severity: high)
-- [ ] [Fund Prospects] Add "My Fund Prospects" view filtered by aksia_owner (severity: high)
+- [x] [Organizations] Add "My Organizations" view filtered by user's coverage (severity: high) — **Fixed (Session 12): GET /organizations/my-organizations via coverage on people + leads. Toggle tabs + sidebar link**
+- [x] [People] Add "My People" view filtered by coverage_owner (severity: high) — **Fixed (Session 12): GET /people/my-people filtered by coverage_owner**
+- [x] [Fund Prospects] Add "My Fund Prospects" view filtered by aksia_owner (severity: high) — **Fixed (Session 12): GET /fund-prospects/my-fund-prospects filtered by aksia_owner_id**
 
 ### Dashboard
-- [ ] [Dashboard] Add "My Coverage Overview" widget showing counts of user's orgs/people/leads/fund prospects (severity: medium)
-- [ ] [Dashboard] Add "Missing Info Alerts" widget for covered people/leads missing key fields (severity: medium)
-- [ ] [Dashboard] Add "Stale Contacts" widget for covered people with no activity in 90+ days (severity: medium)
+- [x] [Dashboard] Add "My Coverage Overview" widget showing counts of user's orgs/people/leads/fund prospects (severity: medium) — **Fixed (Session 12): 2x2 coverage grid widget with counts linking to "My" views**
+- [x] [Dashboard] Add "Missing Info Alerts" widget for covered people/leads missing key fields (severity: medium) — **Fixed (Session 12): Top 5 people missing email/phone + leads missing revenue/service_type with edit links**
+- [x] [Dashboard] Add "Stale Contacts" widget for covered people with no activity in 90+ days (severity: medium) — **Fixed (Session 12): Batched activity date lookup, sorted by staleness, primary org resolution**
 
 ## Final Feedback — Round 4 (March 15, 2026)
 
 ### Bugs
-- [ ] [General] Columns button dropdown is always visible on all module list pages — Alpine.js not loaded in base.html (severity: high)
-- [ ] [People] Clicking on a person row navigates to `/persons/{id}` (404) instead of `/people/{id}` — generic onclick in _grid.html generates wrong URL (severity: high)
-- [ ] [Distribution Lists] Distribution list page shows "24 lists" but no rows render — no field_definitions seeded for distribution_list entity type (severity: high)
-- [ ] [General] Required fields (e.g. company_name) should not be togglable off in the column selector. Exceptions: org can toggle relationship_type and organization_type, lead can toggle stage and share_class, task can toggle assigned_to and status (severity: medium)
+- [x] [General] Columns button dropdown is always visible on all module list pages — Alpine.js not loaded in base.html (severity: high) — **Fixed (Session 18): Added Alpine.js CDN to base.html + [x-cloak] CSS**
+- [x] [People] Clicking on a person row navigates to `/persons/{id}` (404) instead of `/people/{id}` — generic onclick in _grid.html generates wrong URL (severity: high) — **Fixed (Session 18): Removed generic onclick that generated wrong URL; entity-specific links now work**
+- [x] [Distribution Lists] Distribution list page shows "24 lists" but no rows render — no field_definitions seeded for distribution_list entity type (severity: high) — **Fixed (Session 18): Added DISTRIBUTION_LIST_FIELDS to seed_field_definitions.py**
+- [x] [General] Required fields (e.g. company_name) should not be togglable off in the column selector. Exceptions: org can toggle relationship_type and organization_type, lead can toggle stage and share_class, task can toggle assigned_to and status (severity: medium) — **Fixed (Session 18): Required fields locked as checked+disabled in _column_selector.html with togglable exceptions**
 
 ### Enhancements
-- [ ] [Dashboards] Add customizable views with x-by-y variable selection (e.g. "pipeline by stage" vs "pipeline by fund") on Advisory Pipeline and Capital Raise dashboards. Clicking into a category should show a drilldown table of associated leads (severity: high)
-- [ ] [Dashboards] Replace pipeline horizontal bars with vertical funnel flow charts (stacked trapezoids narrowing top-to-bottom) (severity: medium)
-- [ ] [General] Redo filter functionality: add filter icon to each column header with sort (A-Z, Z-A) and data-type-appropriate filters (multi-select for dropdowns, contains/not-contains for text, inequality for numbers, before/after for dates). Remove existing filter dropdowns above grid, keep search box only (severity: high)
-- [ ] [General] Rename "Saved Views" to "Screeners". Add ability to name, save, overwrite, duplicate, and delete screeners. Clicking a screener loads its saved columns and filters (severity: high)
+- [x] [Dashboards] Add customizable views with x-by-y variable selection (e.g. "pipeline by stage" vs "pipeline by fund") on Advisory Pipeline and Capital Raise dashboards. Clicking into a category should show a drilldown table of associated leads (severity: high) — **Fixed (Session 18): Group-by dropdowns + drilldown endpoints for both dashboards**
+- [x] [Dashboards] Replace pipeline horizontal bars with vertical funnel flow charts (stacked trapezoids narrowing top-to-bottom) (severity: medium) — **Fixed (Session 18): CSS clip-path trapezoid shapes, reusable _funnel.html partial (later replaced with proportional-width bars in Session 19)**
+- [x] [General] Redo filter functionality: add filter icon to each column header with sort (A-Z, Z-A) and data-type-appropriate filters (multi-select for dropdowns, contains/not-contains for text, inequality for numbers, before/after for dates). Remove existing filter dropdowns above grid, keep search box only (severity: high) — **Fixed (Session 18): Per-column filter icons with type-aware dropdowns. cf_<field>=<op>:<value> URL format. Old filter dropdowns removed**
+- [x] [General] Rename "Saved Views" to "Screeners". Add ability to name, save, overwrite, duplicate, and delete screeners. Clicking a screener loads its saved columns and filters (severity: high) — **Fixed (Session 18): Full screener CRUD — save, overwrite, duplicate, rename, delete. Hover-revealed action buttons**
 
 ## Patrick Feedback — Round 5 (March 16, 2026)
 

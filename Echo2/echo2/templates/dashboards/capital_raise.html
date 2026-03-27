@@ -137,10 +137,9 @@
                             hx-target="#cr-pipeline-chart"
                             hx-vals='{"fund_ticker": "{{ current_fund_ticker or "" }}", "owner": "{{ filter_owner }}", "active_filter": "{{ active_filter }}"}'
                             name="group_by">
-                        <option value="stage" {{ 'selected' if cr_group_by == 'stage' else '' }}>Stage</option>
-                        <option value="lp_type" {{ 'selected' if cr_group_by == 'lp_type' else '' }}>LP Type</option>
-                        <option value="country" {{ 'selected' if cr_group_by == 'country' else '' }}>Country</option>
-                        <option value="fund" {{ 'selected' if cr_group_by == 'fund' else '' }}>Fund</option>
+                        {% for opt in cr_group_by_options %}
+                        <option value="{{ opt.value }}" {{ 'selected' if cr_group_by == opt.value else '' }}>{{ opt.label }}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </div>
@@ -196,25 +195,35 @@
             <table id="hot-prospects-table" class="w-full text-sm">
                 <thead>
                     <tr class="border-b border-gray-200">
-                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Organization</th>
-                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Stage</th>
-                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Lead Owner</th>
-                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Allocation ($M)</th>
+                        {% for col in hot_prospect_columns %}
+                        <th class="{{ 'text-right' if col.render_type in ('currency_right', 'text_right') else 'text-left' }} py-2 text-xs font-medium text-gray-500 uppercase">{{ col.label }}</th>
+                        {% endfor %}
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     {% for hp in hot_prospects %}
                     <tr data-owner="{{ hp.owner_name }}" data-stage="{{ hp.highest_stage }}">
+                        {% for col in hot_prospect_columns %}
+                        {% if col.render_type == 'link' %}
                         <td class="py-2 text-gray-900 font-medium">
-                            <a href="/organizations/{{ hp.org_id }}" class="hover:text-brand-600">{{ hp.org_name }}</a>
+                            <a href="/organizations/{{ hp.org_id }}" class="hover:text-brand-600">{{ hp[col.key] }}</a>
                         </td>
+                        {% elif col.render_type == 'badge' %}
                         <td class="py-2">
                             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ hp.badge_class }}">
-                                {{ hp.stage_label }}
+                                {{ hp[col.key] }}
                             </span>
                         </td>
-                        <td class="py-2 text-gray-600">{{ hp.owner_name }}</td>
-                        <td class="py-2 text-right text-gray-600">${{ hp.allocation_fmt }}</td>
+                        {% elif col.render_type == 'currency_right' %}
+                        <td class="py-2 text-right text-gray-600">${{ hp[col.key] }}</td>
+                        {% elif col.render_type == 'mono' %}
+                        <td class="py-2"><span class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{{ hp[col.key] }}</span></td>
+                        {% elif col.render_type == 'text_right' %}
+                        <td class="py-2 text-right text-gray-600">{{ hp[col.key] }}</td>
+                        {% else %}
+                        <td class="py-2 text-gray-600">{{ hp[col.key] }}</td>
+                        {% endif %}
+                        {% endfor %}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -242,21 +251,22 @@
             <table class="w-full text-sm">
                 <thead>
                     <tr class="border-b border-gray-200">
-                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">LP Type</th>
-                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Count</th>
-                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Target ($M)</th>
-                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Soft Circle ($M)</th>
-                        <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Hard Circle ($M)</th>
+                        {% for col in investor_columns %}
+                        <th class="{{ 'text-right' if col.render_type in ('currency_right', 'text_right') else 'text-left' }} py-2 text-xs font-medium text-gray-500 uppercase">{{ col.label }}</th>
+                        {% endfor %}
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     {% for row in investor_breakdown %}
                     <tr>
-                        <td class="py-2 text-gray-900">{{ row.label }}</td>
-                        <td class="py-2 text-right text-gray-600">{{ row.count }}</td>
-                        <td class="py-2 text-right text-gray-600">${{ row.target_fmt }}</td>
-                        <td class="py-2 text-right text-gray-600">${{ row.soft_fmt }}</td>
-                        <td class="py-2 text-right text-gray-600">${{ row.hard_fmt }}</td>
+                        {% for col in investor_columns %}
+                        {% if col.render_type == 'currency_right' %}
+                        <td class="py-2 text-right text-gray-600">${{ row[col.key] }}</td>
+                        {% elif col.render_type == 'text_right' %}
+                        <td class="py-2 text-right text-gray-600">{{ row[col.key] }}</td>
+                        {% else %}
+                        <td class="py-2 text-gray-900">{{ row[col.key] }}</td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -275,21 +285,24 @@
             <table class="w-full text-sm">
                 <thead>
                     <tr class="border-b border-gray-200">
-                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Organization</th>
-                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Fund</th>
-                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Share Class</th>
-                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Decline Reason</th>
+                        {% for col in declined_columns %}
+                        <th class="{{ 'text-right' if col.render_type in ('currency_right', 'text_right') else 'text-left' }} py-2 text-xs font-medium text-gray-500 uppercase">{{ col.label }}</th>
+                        {% endfor %}
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     {% for row in declined %}
                     <tr>
-                        <td class="py-2 text-gray-900">{{ row.org_name }}</td>
+                        {% for col in declined_columns %}
+                        {% if col.render_type == 'mono' %}
                         <td class="py-2 text-gray-600">
-                            <span class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{{ row.fund_ticker }}</span>
+                            <span class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{{ row[col.key] }}</span>
                         </td>
-                        <td class="py-2 text-gray-600">{{ row.share_class }}</td>
-                        <td class="py-2 text-gray-600">{{ row.decline_reason }}</td>
+                        {% elif col.render_type == 'currency_right' %}
+                        <td class="py-2 text-right text-gray-600">${{ row[col.key] }}</td>
+                        {% else %}
+                        <td class="py-2 text-gray-600">{{ row[col.key] }}</td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>

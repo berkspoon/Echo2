@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}View Configurations — Echo 2.0{% endblock %}
+{% block page_title %}View Configurations{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <p class="text-sm text-gray-500">
+        Configure filters, table columns, dropdown options, and grid defaults without code changes.
+    </p>
+
+    {% for cat_key, configs in grouped_configs.items() %}
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center gap-3">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                {% if cat_key == 'dashboards' %}bg-purple-100 text-purple-800
+                {% elif cat_key == 'grids' %}bg-blue-100 text-blue-800
+                {% elif cat_key == 'distribution_lists' %}bg-green-100 text-green-800
+                {% else %}bg-gray-100 text-gray-800{% endif %}">
+                {{ category_labels.get(cat_key, cat_key | replace('_', ' ') | title) }}
+            </span>
+            <span class="text-xs text-gray-400">{{ configs | length }} config{{ 's' if configs | length != 1 else '' }}</span>
+        </div>
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-100">
+                    <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Name</th>
+                    <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Description</th>
+                    <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">View Key</th>
+                    <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Last Updated</th>
+                    <th class="px-6 py-3"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+                {% for cfg in configs %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-3 font-medium text-gray-900">{{ cfg.display_name }}</td>
+                    <td class="px-6 py-3 text-gray-500">{{ cfg.description or '—' }}</td>
+                    <td class="px-6 py-3">
+                        <code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">{{ cfg.view_key }}</code>
+                    </td>
+                    <td class="px-6 py-3 text-gray-400 text-xs">
+                        {{ cfg.updated_at[:16] | replace('T', ' ') if cfg.updated_at else '—' }}
+                    </td>
+                    <td class="px-6 py-3 text-right">
+                        <a href="/admin/views/{{ cfg.view_key }}/edit"
+                           class="text-brand-600 hover:text-brand-800 text-sm font-medium">
+                            Edit
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+
+    {% if not grouped_configs %}
+    <div class="bg-white shadow rounded-lg p-8 text-center">
+        <p class="text-gray-400">No view configurations found. Run the seed script to populate defaults.</p>
+        <code class="text-xs mt-2 block text-gray-500">python -m scripts.seed_view_configurations</code>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

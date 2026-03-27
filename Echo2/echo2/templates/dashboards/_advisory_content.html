@@ -34,9 +34,9 @@
                     hx-include="[name='service'],[name='asset_class'],[name='owner'],[name='org_type'],[name='from'],[name='to'],[name='active_filter'],[name='stage'],[name='group_by']"
                     name="metric"
                     onchange="var h=document.querySelector('#ap-filter-form input[name=metric]'); if(h) h.value=this.value;">
-                <option value="count" {{ 'selected' if metric == 'count' else '' }}>Lead Count</option>
-                <option value="revenue" {{ 'selected' if metric == 'revenue' else '' }}>Expected Revenue ($)</option>
-                <option value="flar" {{ 'selected' if metric == 'flar' else '' }}>Yr1 FLAR ($)</option>
+                {% for opt in metric_options %}
+                <option value="{{ opt.value }}" {{ 'selected' if metric == opt.value else '' }}>{{ opt.label }}</option>
+                {% endfor %}
             </select>
             <label class="text-xs text-gray-500 ml-2">Group by:</label>
             <select class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"

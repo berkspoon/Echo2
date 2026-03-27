@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ view_config.display_name }} — Echo 2.0{% endblock %}
+{% block page_title %}Edit View Configuration{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl space-y-6">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-semibold text-gray-900">{{ view_config.display_name }}</h2>
+            <p class="text-sm text-gray-500 mt-1">{{ view_config.description or '' }}</p>
+            <div class="flex items-center gap-2 mt-2">
+                <code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">{{ view_config.view_key }}</code>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                    {% if view_config.category == 'dashboards' %}bg-purple-100 text-purple-800
+                    {% elif view_config.category == 'grids' %}bg-blue-100 text-blue-800
+                    {% elif view_config.category == 'distribution_lists' %}bg-green-100 text-green-800
+                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                    {{ view_config.category | replace('_', ' ') | title }}
+                </span>
+            </div>
+        </div>
+        <a href="/admin/views" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Views</a>
+    </div>
+
+    <!-- Help text based on category -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+        {% if view_config.category == 'grids' %}
+        <strong>Grid Defaults</strong> — JSON with a <code>"columns"</code> array of field_name strings. These are the default visible columns when no screener is active.
+        {% elif view_config.category == 'dashboards' and 'columns' in config_json %}
+        <strong>Dashboard Table</strong> — JSON with a <code>"columns"</code> array. Each column has: <code>key</code> (data field), <code>label</code> (header text), <code>render_type</code> (text, link, badge, currency_right, mono, text_right). Optional: <code>visible_when</code> condition dict.
+        {% elif view_config.category == 'dashboards' and 'options' in config_json %}
+        <strong>Option List</strong> — JSON with an <code>"options"</code> array. Each option has: <code>value</code> and <code>label</code>.
+        {% elif view_config.category == 'distribution_lists' %}
+        <strong>DL Filter Fields</strong> — JSON with <code>person_fields</code> (empty=all), <code>org_fields</code> (virtual field defs), and <code>include_field_types</code> (which field types are filterable).
+        {% else %}
+        <strong>JSON Configuration</strong> — Edit the JSON below and click Save.
+        {% endif %}
+    </div>
+
+    <!-- Form -->
+    <form method="POST" action="/admin/views/{{ view_config.view_key }}" onsubmit="return validateJson()">
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="p-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Configuration (JSON)</label>
+                <textarea id="config-editor" name="config_json"
+                          rows="20"
+                          class="w-full font-mono text-sm border border-gray-300 rounded-md p-4 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                          spellcheck="false">{{ config_json }}</textarea>
+                <p id="json-error" class="mt-2 text-sm text-red-600 hidden"></p>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                <button type="button" onclick="formatJson()" class="text-sm text-gray-600 hover:text-gray-800 underline">
+                    Format JSON
+                </button>
+                <div class="flex items-center gap-3">
+                    <a href="/admin/views" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Cancel</a>
+                    <button type="submit"
+                            class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                        Save Configuration
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+
+</div>
+
+<script>
+function validateJson() {
+    var editor = document.getElementById('config-editor');
+    var errorEl = document.getElementById('json-error');
+    try {
+        JSON.parse(editor.value);
+        errorEl.classList.add('hidden');
+        return true;
+    } catch (e) {
+        errorEl.textContent = 'Invalid JSON: ' + e.message;
+        errorEl.classList.remove('hidden');
+        return false;
+    }
+}
+
+function formatJson() {
+    var editor = document.getElementById('config-editor');
+    var errorEl = document.getElementById('json-error');
+    try {
+        var parsed = JSON.parse(editor.value);
+        editor.value = JSON.stringify(parsed, null, 2);
+        errorEl.classList.add('hidden');
+    } catch (e) {
+        errorEl.textContent = 'Cannot format — invalid JSON: ' + e.message;
+        errorEl.classList.remove('hidden');
+    }
+}
+</script>
+{% endblock %}

@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from db.client import get_supabase
 from db.field_service import get_field_definitions, enrich_field_definitions
 from db.helpers import get_reference_data, log_field_change, audit_changes, get_user_name
+from db.view_config_service import get_view_config
 from dependencies import CurrentUser, get_current_user, require_role
 from services.grid_service import build_grid_context
 
@@ -43,6 +44,7 @@ _OPERATORS_BY_TYPE = {
     "date":         [("eq", "On"), ("gt", "After"), ("lt", "Before"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
     "boolean":      [("eq", "Is")],
     "text_list":    [("contains", "Contains"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "lookup":       [("eq", "Equals"), ("neq", "Not equals"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
 }
 
 # Org virtual field names for identifying org-level filters
@@ -53,33 +55,60 @@ _ORG_VIRTUAL_TO_COLUMN = {"org_city": "city", "org_country": "country",
 
 
 def _build_filter_fields() -> list[dict]:
-    """Build the list of available filter fields (person fields + org virtual fields)."""
+    """Build the list of available filter fields (person fields + org virtual fields).
+
+    Reads admin-configurable view config for field whitelists and org virtual fields.
+    Falls back to hardcoded defaults if no DB row exists.
+    """
+    dl_config = get_view_config("dl_filter_fields", default={
+        "person_fields": [],
+        "org_fields": [
+            {"field_name": f["field_name"], "display_name": f["display_name"],
+             "field_type": f["field_type"], "dropdown_category": f.get("dropdown_category")}
+            for f in _ORG_FILTER_FIELDS
+        ],
+        "include_field_types": list(_OPERATORS_BY_TYPE.keys()),
+    })
+
     person_fields = get_field_definitions("person", active_only=True)
-    # Only include filterable field types
-    filterable_types = set(_OPERATORS_BY_TYPE.keys())
+    filterable_types = set(dl_config.get("include_field_types", _OPERATORS_BY_TYPE.keys()))
+
+    # Person field whitelist (empty = all)
+    person_whitelist = set(dl_config.get("person_fields", []))
+
     result = []
     for fd in person_fields:
         if fd["field_type"] not in filterable_types:
             continue
         if fd.get("storage_type") == "linked":
-            continue  # Skip linked/calculated fields
-        result.append({
+            continue
+        if person_whitelist and fd["field_name"] not in person_whitelist:
+            continue
+        entry = {
             "field_name": fd["field_name"],
             "display_name": fd.get("display_name", fd["field_name"].replace("_", " ").title()),
             "field_type": fd["field_type"],
             "options": [],
-        })
+        }
+        # For lookup fields, load active users as options
+        if fd["field_type"] == "lookup":
+            sb = get_supabase()
+            users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
+            entry["options"] = [{"value": str(u["id"]), "label": u["display_name"]} for u in (users_resp.data or [])]
+        result.append(entry)
+
     # Enrich dropdown options
     for fd in result:
-        if fd["field_type"] in ("dropdown", "multi_select"):
-            # Find original field_def to get dropdown_category
+        if fd["field_type"] in ("dropdown", "multi_select") and not fd["options"]:
             orig = next((f for f in person_fields if f["field_name"] == fd["field_name"]), None)
             cat = (orig or {}).get("dropdown_category") or fd["field_name"]
             ref = get_reference_data(cat)
             if ref:
                 fd["options"] = [{"value": r["value"], "label": r["label"]} for r in ref]
-    # Add org virtual fields
-    for org_f in _ORG_FILTER_FIELDS:
+
+    # Add org virtual fields from config
+    org_fields = dl_config.get("org_fields", [])
+    for org_f in org_fields:
         entry = {
             "field_name": org_f["field_name"],
             "display_name": org_f["display_name"],
