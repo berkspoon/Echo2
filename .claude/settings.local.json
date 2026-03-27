@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 \"y:/VibeCode/Echo2/echo2/scripts/../../../write_plan.py\")",
+      "Bash(python3 -c \":*)"
+    ]
+  }
+}

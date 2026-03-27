@@ -12,13 +12,17 @@
     </div>
 
     <!-- Fund Selector Tabs -->
+    {% set _qs_parts = [] %}
+    {% if filter_owner %}{% set _ = _qs_parts.append('owner=' + filter_owner) %}{% endif %}
+    {% if active_filter and active_filter != 'active' %}{% set _ = _qs_parts.append('active_filter=' + active_filter) %}{% endif %}
+    {% set _qs = '?' + '&'.join(_qs_parts) if _qs_parts else '' %}
     <div class="flex flex-wrap gap-2">
-        <a href="/dashboards/capital-raise{{ '?owner=' + filter_owner if filter_owner else '' }}"
+        <a href="/dashboards/capital-raise{{ _qs }}"
            class="px-4 py-2 text-sm font-medium rounded-md transition-colors {{ 'bg-brand-500 text-white' if not current_fund_ticker else 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50' }}">
             All Funds
         </a>
         {% for fund in funds %}
-        <a href="/dashboards/capital-raise/{{ fund.ticker }}{{ '?owner=' + filter_owner if filter_owner else '' }}"
+        <a href="/dashboards/capital-raise/{{ fund.ticker }}{{ _qs }}"
            class="px-4 py-2 text-sm font-medium rounded-md transition-colors {{ 'bg-brand-500 text-white' if current_fund_ticker == fund.ticker else 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50' }}">
             {{ fund.ticker }}
             <span class="text-xs opacity-75">{{ fund.fund_name }}</span>
@@ -26,14 +30,14 @@
         {% endfor %}
     </div>
 
-    <!-- Owner Filter Bar -->
+    <!-- Filter Bar -->
     <div class="bg-white rounded-lg shadow p-4">
         <div class="flex flex-wrap items-end gap-4">
             <div class="w-52">
                 <label class="block text-xs font-medium text-gray-600 mb-1">Pipeline Owner</label>
                 <select name="owner"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        onchange="var base = '{{ '/dashboards/capital-raise/' + current_fund_ticker if current_fund_ticker else '/dashboards/capital-raise' }}'; window.location = base + '?owner=' + this.value;">
+                        onchange="crNavigate({owner: this.value})">
                     <option value="">All Owners</option>
                     <option value="{{ user.id }}" {{ 'selected' if filter_owner == user.id|string else '' }}>My Pipeline</option>
                     {% for u in users %}
@@ -43,8 +47,27 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="w-44">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                <select name="active_filter"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="crNavigate({active_filter: this.value})">
+                    <option value="active" {{ 'selected' if active_filter == 'active' else '' }}>Active Only</option>
+                    <option value="all" {{ 'selected' if active_filter == 'all' else '' }}>All Leads</option>
+                    <option value="inactive" {{ 'selected' if active_filter == 'inactive' else '' }}>Closed + Declined</option>
+                </select>
+            </div>
         </div>
     </div>
+    <script>
+    function crNavigate(overrides) {
+        var base = '{{ '/dashboards/capital-raise/' + current_fund_ticker if current_fund_ticker else '/dashboards/capital-raise' }}';
+        var params = {owner: '{{ filter_owner }}', active_filter: '{{ active_filter }}'};
+        Object.assign(params, overrides);
+        var qs = Object.entries(params).filter(function(e){return e[1];}).map(function(e){return e[0]+'='+encodeURIComponent(e[1]);}).join('&');
+        window.location = base + (qs ? '?' + qs : '');
+    }
+    </script>
 
     <!-- 1. Allocation Progress -->
     <div class="bg-white rounded-lg shadow p-6">
@@ -112,7 +135,7 @@
                             hx-get="/dashboards/capital-raise/chart"
                             hx-trigger="change"
                             hx-target="#cr-pipeline-chart"
-                            hx-vals='{"fund_ticker": "{{ current_fund_ticker or "" }}", "owner": "{{ filter_owner }}"}'
+                            hx-vals='{"fund_ticker": "{{ current_fund_ticker or "" }}", "owner": "{{ filter_owner }}", "active_filter": "{{ active_filter }}"}'
                             name="group_by">
                         <option value="stage" {{ 'selected' if cr_group_by == 'stage' else '' }}>Stage</option>
                         <option value="lp_type" {{ 'selected' if cr_group_by == 'lp_type' else '' }}>LP Type</option>
@@ -144,19 +167,44 @@
             Hot Prospects
             <span class="text-xs font-normal text-gray-400 ml-2">Organizations with advanced pipeline traction</span>
         </h3>
+        <!-- Client-side filters -->
+        <div class="flex gap-3 mb-3">
+            <select id="hp-owner-filter" onchange="filterHotProspects()"
+                    class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                <option value="">All Owners</option>
+                {% set seen_owners = [] %}
+                {% for hp in hot_prospects %}
+                {% if hp.owner_name not in seen_owners %}
+                {% set _ = seen_owners.append(hp.owner_name) %}
+                <option value="{{ hp.owner_name }}">{{ hp.owner_name }}</option>
+                {% endif %}
+                {% endfor %}
+            </select>
+            <select id="hp-stage-filter" onchange="filterHotProspects()"
+                    class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                <option value="">All Stages</option>
+                {% set seen_stages = [] %}
+                {% for hp in hot_prospects %}
+                {% if hp.highest_stage not in seen_stages %}
+                {% set _ = seen_stages.append(hp.highest_stage) %}
+                <option value="{{ hp.highest_stage }}">{{ hp.stage_label }}</option>
+                {% endif %}
+                {% endfor %}
+            </select>
+        </div>
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table id="hot-prospects-table" class="w-full text-sm">
                 <thead>
                     <tr class="border-b border-gray-200">
                         <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Organization</th>
                         <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Stage</th>
-                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Fund(s)</th>
+                        <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Lead Owner</th>
                         <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase">Allocation ($M)</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     {% for hp in hot_prospects %}
-                    <tr>
+                    <tr data-owner="{{ hp.owner_name }}" data-stage="{{ hp.highest_stage }}">
                         <td class="py-2 text-gray-900 font-medium">
                             <a href="/organizations/{{ hp.org_id }}" class="hover:text-brand-600">{{ hp.org_name }}</a>
                         </td>
@@ -165,9 +213,7 @@
                                 {{ hp.stage_label }}
                             </span>
                         </td>
-                        <td class="py-2 text-gray-600">
-                            <span class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{{ hp.tickers_str }}</span>
-                        </td>
+                        <td class="py-2 text-gray-600">{{ hp.owner_name }}</td>
                         <td class="py-2 text-right text-gray-600">${{ hp.allocation_fmt }}</td>
                     </tr>
                     {% endfor %}
@@ -175,6 +221,17 @@
             </table>
         </div>
     </div>
+    <script>
+    function filterHotProspects() {
+        var owner = document.getElementById('hp-owner-filter').value;
+        var stage = document.getElementById('hp-stage-filter').value;
+        document.querySelectorAll('#hot-prospects-table tbody tr').forEach(function(row) {
+            var matchOwner = !owner || row.dataset.owner === owner;
+            var matchStage = !stage || row.dataset.stage === stage;
+            row.style.display = (matchOwner && matchStage) ? '' : 'none';
+        });
+    }
+    </script>
     {% endif %}
 
     <!-- 4. Investor Breakdown by Org Type -->

@@ -1,52 +1,307 @@
-{# Filter editor — embedded people grid for defining dynamic distribution list criteria #}
-{# feedback: [padelsbach] DL creation via people grid filtering #}
+{# Filter Builder — define criteria for dynamic distribution list membership #}
 
 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
   <div class="flex items-center justify-between mb-4">
     <div>
-      <h4 class="text-sm font-semibold text-gray-900">Filter Criteria</h4>
+      <h4 class="text-sm font-semibold text-gray-900">Filter Builder</h4>
       <p class="text-xs text-gray-500 mt-0.5">
-        Use the grid filters below to define who should be on this list. People matching these filters are automatically included.
+        Define criteria to automatically include people on this list. All conditions must match (AND logic).
       </p>
     </div>
-    <div id="dl-filter-save-status" class="inline"></div>
+    <div id="dl-filter-preview" class="text-sm">
+      <span class="text-gray-400">Add filters to see matching count</span>
+    </div>
   </div>
 
-  <div class="text-xs text-gray-400 mb-3">
-    Showing {{ pagination.total }} matching people (DNC excluded)
+  <!-- Filter Rows Container -->
+  <div id="filter-rows" class="space-y-2 mb-4">
+    <!-- Rows will be added by JS -->
   </div>
 
-  {# Render the full people grid — its merged_filters will be available after include #}
-  {% include "components/_grid.html" %}
+  <!-- Add Filter Button -->
+  <button type="button" onclick="addFilterRow()"
+          class="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-600 bg-brand-50 hover:bg-brand-100 rounded-md transition-colors">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+    Add Filter
+  </button>
 
-  {# Save button — uses merged_filters computed inside _grid.html #}
-  {% set ns = namespace(has_cf=false) %}
-  {% if merged_filters %}
-    {% for k in merged_filters %}
-      {% if k.startswith('cf_') %}{% set ns.has_cf = true %}{% endif %}
-    {% endfor %}
-  {% endif %}
-  {% set has_active_filters = ns.has_cf or (merged_filters and merged_filters.get('q')) %}
+  <!-- Save / Status -->
   <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
     <div>
       <p class="text-xs text-gray-400">
         Saving will set this list to <strong>dynamic</strong> mode. Members are resolved from filters at send time.
       </p>
-      {% if not has_active_filters %}
-      <p class="text-xs text-amber-600 mt-1">
-        Apply at least one column filter before saving. Without filters, all contacts would be included.
-      </p>
-      {% endif %}
+      <div id="dl-filter-save-status" class="mt-1"></div>
     </div>
-    <form hx-post="/distribution-lists/{{ list_id }}/save-filters"
-          hx-target="#dl-filter-save-status"
-          hx-swap="innerHTML">
-      <input type="hidden" name="filters" value='{{ merged_filters | tojson }}'>
-      <button type="submit"
-              class="px-4 py-2 text-sm font-medium text-white rounded-md shadow-sm
-                     {% if has_active_filters %}bg-brand-500 hover:bg-brand-600{% else %}bg-gray-300 cursor-not-allowed{% endif %}">
-        Save Filters
-      </button>
-    </form>
+    <button type="button" onclick="saveFilters()" id="save-filters-btn"
+            class="px-4 py-2 text-sm font-medium text-white rounded-md shadow-sm bg-gray-300 cursor-not-allowed"
+            disabled>
+      Save Filters
+    </button>
   </div>
 </div>
+
+<script>
+(function() {
+  // Filter field metadata from server
+  var filterFields = {{ filter_fields | tojson }};
+  var operatorsByType = {{ operators_by_type | tojson }};
+  var listId = '{{ list_id }}';
+
+  // Build field lookup
+  var fieldMap = {};
+  filterFields.forEach(function(f) { fieldMap[f.field_name] = f; });
+
+  var previewTimer = null;
+
+  // Expose globally for onclick handlers
+  window.addFilterRow = function(preset) {
+    var container = document.getElementById('filter-rows');
+    var row = document.createElement('div');
+    row.className = 'filter-row flex items-center gap-2 bg-gray-50 rounded-lg p-2';
+
+    // Field select
+    var fieldSel = document.createElement('select');
+    fieldSel.className = 'filter-field w-48 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500';
+    fieldSel.innerHTML = '<option value="">Select field...</option>';
+    filterFields.forEach(function(f) {
+      var opt = document.createElement('option');
+      opt.value = f.field_name;
+      opt.textContent = f.display_name;
+      if (preset && preset.field === f.field_name) opt.selected = true;
+      fieldSel.appendChild(opt);
+    });
+    fieldSel.onchange = function() { onFieldChange(row, fieldSel.value); };
+
+    // Operator select
+    var opSel = document.createElement('select');
+    opSel.className = 'filter-operator w-40 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500';
+    opSel.innerHTML = '<option value="">Select operator...</option>';
+    opSel.onchange = function() { onOperatorChange(row); };
+
+    // Value container
+    var valContainer = document.createElement('div');
+    valContainer.className = 'filter-value-container flex-1';
+
+    // Remove button
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'text-gray-400 hover:text-red-500 transition-colors p-1';
+    removeBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+    removeBtn.onclick = function() { row.remove(); updatePreview(); updateSaveButton(); };
+
+    row.appendChild(fieldSel);
+    row.appendChild(opSel);
+    row.appendChild(valContainer);
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+
+    // Pre-populate if restoring
+    if (preset && preset.field) {
+      onFieldChange(row, preset.field, preset);
+    }
+    updateSaveButton();
+  };
+
+  function onFieldChange(row, fieldName, preset) {
+    var opSel = row.querySelector('.filter-operator');
+    var valContainer = row.querySelector('.filter-value-container');
+    opSel.innerHTML = '<option value="">Select operator...</option>';
+    valContainer.innerHTML = '';
+
+    if (!fieldName) { updateSaveButton(); return; }
+    var field = fieldMap[fieldName];
+    if (!field) return;
+
+    var ops = operatorsByType[field.field_type] || operatorsByType['text'];
+    ops.forEach(function(op) {
+      var opt = document.createElement('option');
+      opt.value = op[0];
+      opt.textContent = op[1];
+      if (preset && preset.operator === op[0]) opt.selected = true;
+      opSel.appendChild(opt);
+    });
+
+    if (preset && preset.operator) {
+      onOperatorChange(row, preset);
+    }
+    updateSaveButton();
+  }
+
+  function onOperatorChange(row, preset) {
+    var fieldName = row.querySelector('.filter-field').value;
+    var operator = row.querySelector('.filter-operator').value;
+    var valContainer = row.querySelector('.filter-value-container');
+    valContainer.innerHTML = '';
+
+    if (!operator || operator === 'is_empty' || operator === 'is_not_empty') {
+      updatePreview();
+      updateSaveButton();
+      return;
+    }
+
+    var field = fieldMap[fieldName];
+    if (!field) return;
+
+    var presetValue = preset ? preset.value : null;
+
+    if (field.field_type === 'boolean') {
+      var sel = document.createElement('select');
+      sel.className = 'filter-value w-32 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500';
+      sel.innerHTML = '<option value="true"' + (presetValue === 'true' || presetValue === true ? ' selected' : '') + '>Yes</option>' +
+                      '<option value="false"' + (presetValue === 'false' || presetValue === false ? ' selected' : '') + '>No</option>';
+      sel.onchange = function() { updatePreview(); };
+      valContainer.appendChild(sel);
+    } else if ((field.field_type === 'dropdown' || field.field_type === 'multi_select') && field.options && field.options.length > 0 &&
+               (operator === 'in' || operator === 'not_in')) {
+      // Multi-select checkboxes
+      var wrapper = document.createElement('div');
+      wrapper.className = 'flex flex-wrap gap-1 max-h-32 overflow-y-auto p-1';
+      var selectedVals = Array.isArray(presetValue) ? presetValue : (presetValue ? [presetValue] : []);
+      field.options.forEach(function(opt) {
+        var label = document.createElement('label');
+        label.className = 'inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded border cursor-pointer hover:bg-gray-100';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = opt.value;
+        cb.className = 'filter-multi-value rounded text-brand-500 focus:ring-brand-500';
+        if (selectedVals.indexOf(opt.value) >= 0) cb.checked = true;
+        cb.onchange = function() { updatePreview(); };
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(opt.label));
+        wrapper.appendChild(label);
+      });
+      valContainer.appendChild(wrapper);
+    } else if ((field.field_type === 'dropdown' || field.field_type === 'multi_select') && field.options && field.options.length > 0) {
+      // Single-select dropdown
+      var sel = document.createElement('select');
+      sel.className = 'filter-value w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500';
+      sel.innerHTML = '<option value="">Select...</option>';
+      field.options.forEach(function(opt) {
+        var o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.label;
+        if (presetValue === opt.value) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.onchange = function() { updatePreview(); };
+      valContainer.appendChild(sel);
+    } else if (field.field_type === 'number' || field.field_type === 'currency') {
+      var inp = document.createElement('input');
+      inp.type = 'number';
+      inp.step = 'any';
+      inp.className = 'filter-value w-40 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500';
+      inp.placeholder = 'Value...';
+      if (presetValue != null) inp.value = presetValue;
+      inp.oninput = function() { updatePreview(); };
+      valContainer.appendChild(inp);
+    } else if (field.field_type === 'date') {
+      var inp = document.createElement('input');
+      inp.type = 'date';
+      inp.className = 'filter-value w-44 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500';
+      if (presetValue) inp.value = presetValue;
+      inp.onchange = function() { updatePreview(); };
+      valContainer.appendChild(inp);
+    } else {
+      // Text input
+      var inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'filter-value w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500';
+      inp.placeholder = 'Value...';
+      if (presetValue) inp.value = presetValue;
+      inp.oninput = function() { updatePreview(); };
+      valContainer.appendChild(inp);
+    }
+
+    updatePreview();
+    updateSaveButton();
+  }
+
+  function getFilterCriteria() {
+    var rows = document.querySelectorAll('#filter-rows .filter-row');
+    var filters = [];
+    rows.forEach(function(row) {
+      var field = row.querySelector('.filter-field').value;
+      var operator = row.querySelector('.filter-operator').value;
+      if (!field || !operator) return;
+
+      var value = null;
+      if (operator === 'is_empty' || operator === 'is_not_empty') {
+        value = null;
+      } else {
+        // Check for multi-select checkboxes
+        var multiCbs = row.querySelectorAll('.filter-multi-value:checked');
+        if (multiCbs.length > 0) {
+          value = [];
+          multiCbs.forEach(function(cb) { value.push(cb.value); });
+        } else {
+          var valInput = row.querySelector('.filter-value');
+          if (valInput) value = valInput.value;
+        }
+      }
+
+      if (operator !== 'is_empty' && operator !== 'is_not_empty' && (value === null || value === '' || (Array.isArray(value) && value.length === 0))) return;
+
+      filters.push({field: field, operator: operator, value: value});
+    });
+    return filters;
+  }
+
+  function updatePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(function() {
+      var filters = getFilterCriteria();
+      var el = document.getElementById('dl-filter-preview');
+      if (filters.length === 0) {
+        el.innerHTML = '<span class="text-gray-400">Add filters to see matching count</span>';
+        return;
+      }
+      el.innerHTML = '<span class="text-gray-400">Counting...</span>';
+      fetch('/distribution-lists/' + listId + '/preview-filter-count', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({filters: filters})
+      }).then(function(r) { return r.text(); }).then(function(html) {
+        el.innerHTML = html;
+      }).catch(function() {
+        el.innerHTML = '<span class="text-red-500">Error</span>';
+      });
+    }, 500);
+  }
+
+  function updateSaveButton() {
+    var btn = document.getElementById('save-filters-btn');
+    var filters = getFilterCriteria();
+    if (filters.length > 0) {
+      btn.disabled = false;
+      btn.className = 'px-4 py-2 text-sm font-medium text-white rounded-md shadow-sm bg-brand-500 hover:bg-brand-600';
+    } else {
+      btn.disabled = true;
+      btn.className = 'px-4 py-2 text-sm font-medium text-white rounded-md shadow-sm bg-gray-300 cursor-not-allowed';
+    }
+  }
+
+  window.saveFilters = function() {
+    var filters = getFilterCriteria();
+    if (filters.length === 0) return;
+    var statusEl = document.getElementById('dl-filter-save-status');
+    statusEl.innerHTML = '<span class="text-gray-400 text-sm">Saving...</span>';
+    fetch('/distribution-lists/' + listId + '/save-filters', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({filters: filters})
+    }).then(function(r) { return r.text(); }).then(function(html) {
+      statusEl.innerHTML = html;
+    }).catch(function() {
+      statusEl.innerHTML = '<div class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">Error saving filters.</div>';
+    });
+  };
+
+  // Pre-populate existing filters on load
+  var existingFilters = {{ existing_filters | tojson }};
+  if (existingFilters && existingFilters.length > 0) {
+    existingFilters.forEach(function(f) { addFilterRow(f); });
+    updatePreview();
+  }
+})();
+</script>

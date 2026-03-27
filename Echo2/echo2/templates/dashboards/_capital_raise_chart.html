@@ -4,7 +4,7 @@
 <div class="space-y-3">
     {% for item in fp_pipeline %}
     <div class="flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-md p-1 -m-1 transition-colors"
-         hx-get="/dashboards/capital-raise/drilldown?dimension={{ cr_group_by }}&value={{ item.key }}&fund_ticker={{ current_fund_ticker }}&owner={{ filter_owner|default('', true) }}"
+         hx-get="/dashboards/capital-raise/drilldown?dimension={{ cr_group_by }}&value={{ item.key }}&fund_ticker={{ current_fund_ticker }}&owner={{ filter_owner|default('', true) }}&active_filter={{ active_filter|default('active', true) }}"
          hx-target="#cr-drilldown-panel"
          hx-swap="innerHTML">
         <div class="w-36 text-sm text-gray-600 truncate">{{ item.label }}</div>

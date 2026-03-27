@@ -10,12 +10,104 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
+from db.field_service import get_field_definitions, enrich_field_definitions
 from db.helpers import get_reference_data, log_field_change, audit_changes, get_user_name
 from dependencies import CurrentUser, get_current_user, require_role
 from services.grid_service import build_grid_context
 
 router = APIRouter(prefix="/distribution-lists", tags=["distribution_lists"])
 templates = Jinja2Templates(directory="templates")
+
+
+# ---------------------------------------------------------------------------
+# Filter Builder constants
+# ---------------------------------------------------------------------------
+
+_ORG_FILTER_FIELDS = [
+    {"field_name": "org_city", "display_name": "Org City", "field_type": "text", "dropdown_category": None, "dropdown_options": None},
+    {"field_name": "org_country", "display_name": "Org Country", "field_type": "dropdown", "dropdown_category": "country", "dropdown_options": None},
+    {"field_name": "org_type", "display_name": "Org Type", "field_type": "dropdown", "dropdown_category": "organization_type", "dropdown_options": None},
+    {"field_name": "org_aum_mn", "display_name": "Org AUM ($M)", "field_type": "number", "dropdown_category": None, "dropdown_options": None},
+]
+
+_OPERATORS_BY_TYPE = {
+    "text":         [("contains", "Contains"), ("not_contains", "Does not contain"), ("eq", "Equals"), ("neq", "Not equals"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "email":        [("contains", "Contains"), ("not_contains", "Does not contain"), ("eq", "Equals"), ("neq", "Not equals"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "phone":        [("contains", "Contains"), ("eq", "Equals"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "url":          [("contains", "Contains"), ("eq", "Equals"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "textarea":     [("contains", "Contains"), ("not_contains", "Does not contain"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "dropdown":     [("eq", "Equals"), ("neq", "Not equals"), ("in", "Is any of"), ("not_in", "Is none of"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "multi_select": [("in", "Contains any of"), ("not_in", "Contains none of"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "number":       [("eq", "Equals"), ("neq", "Not equals"), ("gt", "Greater than"), ("gte", "At least"), ("lt", "Less than"), ("lte", "At most"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "currency":     [("eq", "Equals"), ("neq", "Not equals"), ("gt", "Greater than"), ("gte", "At least"), ("lt", "Less than"), ("lte", "At most"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "date":         [("eq", "On"), ("gt", "After"), ("lt", "Before"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+    "boolean":      [("eq", "Is")],
+    "text_list":    [("contains", "Contains"), ("is_empty", "Is empty"), ("is_not_empty", "Is not empty")],
+}
+
+# Org virtual field names for identifying org-level filters
+_ORG_VIRTUAL_FIELD_NAMES = {"org_city", "org_country", "org_type", "org_aum_mn"}
+# Mapping from virtual field name to real org column
+_ORG_VIRTUAL_TO_COLUMN = {"org_city": "city", "org_country": "country",
+                           "org_type": "organization_type", "org_aum_mn": "aum_mn"}
+
+
+def _build_filter_fields() -> list[dict]:
+    """Build the list of available filter fields (person fields + org virtual fields)."""
+    person_fields = get_field_definitions("person", active_only=True)
+    # Only include filterable field types
+    filterable_types = set(_OPERATORS_BY_TYPE.keys())
+    result = []
+    for fd in person_fields:
+        if fd["field_type"] not in filterable_types:
+            continue
+        if fd.get("storage_type") == "linked":
+            continue  # Skip linked/calculated fields
+        result.append({
+            "field_name": fd["field_name"],
+            "display_name": fd.get("display_name", fd["field_name"].replace("_", " ").title()),
+            "field_type": fd["field_type"],
+            "options": [],
+        })
+    # Enrich dropdown options
+    for fd in result:
+        if fd["field_type"] in ("dropdown", "multi_select"):
+            # Find original field_def to get dropdown_category
+            orig = next((f for f in person_fields if f["field_name"] == fd["field_name"]), None)
+            cat = (orig or {}).get("dropdown_category") or fd["field_name"]
+            ref = get_reference_data(cat)
+            if ref:
+                fd["options"] = [{"value": r["value"], "label": r["label"]} for r in ref]
+    # Add org virtual fields
+    for org_f in _ORG_FILTER_FIELDS:
+        entry = {
+            "field_name": org_f["field_name"],
+            "display_name": org_f["display_name"],
+            "field_type": org_f["field_type"],
+            "options": [],
+        }
+        if org_f.get("dropdown_category"):
+            ref = get_reference_data(org_f["dropdown_category"])
+            if ref:
+                entry["options"] = [{"value": r["value"], "label": r["label"]} for r in ref]
+        result.append(entry)
+    return result
+
+
+def _convert_old_to_new_format(old: dict) -> dict:
+    """Convert old cf_field=op:value format to new {filters: [...]} format."""
+    filters = []
+    for key, val in old.items():
+        if key == "q" or key.startswith("_"):
+            continue
+        field = key.replace("cf_", "")
+        if not isinstance(val, str) or ":" not in val:
+            continue
+        op, v = val.split(":", 1)
+        if op == "in":
+            v = [x.strip() for x in v.split(",") if x.strip()]
+        filters.append({"field": field, "operator": op, "value": v})
+    return {"filters": filters}
 
 
 # ---------------------------------------------------------------------------
@@ -150,19 +242,26 @@ def _get_member_count(list_id: str) -> int:
 def _resolve_dynamic_members(filter_criteria: dict) -> list[str]:
     """Resolve person IDs matching filter criteria for a dynamic distribution list.
 
-    Handles both people-level and org-level (virtual) column filters.
-    feedback: [padelsbach] dynamic distribution lists auto-resolve membership
+    Supports two formats:
+    - New: {"filters": [{"field": "country", "operator": "in", "value": ["US","GB"]}, ...]}
+    - Old: {"cf_country": "in:US,GB", "q": "search text", ...}
     """
-    # Guard: require at least one meaningful filter (cf_* or q search)
+    # Detect new vs old format
+    if "filters" in filter_criteria:
+        return _resolve_dynamic_members_new(filter_criteria.get("filters", []))
+    return _resolve_dynamic_members_old(filter_criteria)
+
+
+def _resolve_dynamic_members_old(filter_criteria: dict) -> list[str]:
+    """Legacy resolver for old cf_field=op:value format."""
     has_meaningful = any(k.startswith("cf_") for k in filter_criteria) or filter_criteria.get("q")
     if not has_meaningful:
         return []
 
     sb = get_supabase()
 
-    # Separate org-level filters from people-level filters
-    _ORG_VIRTUAL_FIELDS = {"org_city": "city", "org_country": "country",
-                           "org_type": "organization_type", "org_aum_mn": "aum_mn"}
+    _OLD_ORG_VIRTUAL = {"org_city": "city", "org_country": "country",
+                        "org_type": "organization_type", "org_aum_mn": "aum_mn"}
     org_filters = {}
     people_filters = {}
     for key, val in filter_criteria.items():
@@ -170,21 +269,20 @@ def _resolve_dynamic_members(filter_criteria: dict) -> list[str]:
             people_filters[key] = val
             continue
         field_name = key[3:]
-        if field_name in _ORG_VIRTUAL_FIELDS:
+        if field_name in _OLD_ORG_VIRTUAL:
             org_filters[field_name] = val
         elif field_name == "has_active_leads":
             org_filters[field_name] = val
         else:
             people_filters[key] = val
 
-    # Pre-filter by org-level criteria → get allowed person IDs
     allowed_person_ids: set[str] | None = None
     if org_filters:
         org_query = sb.table("organizations").select("id").eq("is_deleted", False)
         for field_name, val in org_filters.items():
             if field_name == "has_active_leads":
-                continue  # handled below
-            real_col = _ORG_VIRTUAL_FIELDS[field_name]
+                continue
+            real_col = _OLD_ORG_VIRTUAL[field_name]
             if ":" not in val:
                 continue
             op, operand = val.split(":", 1)
@@ -210,35 +308,24 @@ def _resolve_dynamic_members(filter_criteria: dict) -> list[str]:
             )
             allowed_person_ids = {str(p["person_id"]) for p in (pol_resp.data or [])}
         else:
-            return []  # No orgs match → no people
+            return []
 
-    query = (
-        sb.table("people")
-        .select("id")
-        .eq("is_deleted", False)
-        .eq("do_not_contact", False)  # Always exclude DNC
-    )
-
-    # Constrain to people at matching orgs (if org filters were applied)
+    query = sb.table("people").select("id").eq("is_deleted", False).eq("do_not_contact", False)
     if allowed_person_ids is not None:
         if not allowed_person_ids:
             return []
         query = query.in_("id", list(allowed_person_ids))
 
-    # Apply text search
     q = people_filters.get("q", "")
     if q:
         query = query.or_(f"first_name.ilike.%{q}%,last_name.ilike.%{q}%,email.ilike.%{q}%")
-
-    # Apply entity-specific filters
     if people_filters.get("ac"):
         query = query.contains("asset_classes_of_interest", [people_filters["ac"]])
 
-    # Apply people-level column filters (cf_* keys)
     for key, val in people_filters.items():
         if not key.startswith("cf_"):
             continue
-        field_name = key[3:]  # strip cf_ prefix
+        field_name = key[3:]
         if ":" not in val:
             continue
         op, operand = val.split(":", 1)
@@ -255,6 +342,113 @@ def _resolve_dynamic_members(filter_criteria: dict) -> list[str]:
 
     resp = query.limit(5000).execute()
     return [str(r["id"]) for r in (resp.data or [])]
+
+
+def _apply_filter_to_query(query, field_name: str, operator: str, value):
+    """Apply a single filter criterion to a Supabase query builder."""
+    if operator == "contains":
+        return query.ilike(field_name, f"%{value}%")
+    elif operator == "not_contains":
+        return query.not_.ilike(field_name, f"%{value}%")
+    elif operator == "eq":
+        if isinstance(value, str) and value.lower() in ("true", "false"):
+            return query.eq(field_name, value.lower() == "true")
+        return query.eq(field_name, value)
+    elif operator == "neq":
+        return query.neq(field_name, value)
+    elif operator == "in":
+        vals = value if isinstance(value, list) else [v.strip() for v in str(value).split(",") if v.strip()]
+        if vals:
+            return query.in_(field_name, vals)
+    elif operator == "not_in":
+        vals = value if isinstance(value, list) else [v.strip() for v in str(value).split(",") if v.strip()]
+        if vals:
+            # Supabase doesn't have a clean not_in, filter in Python later
+            pass  # handled post-query
+    elif operator == "gt":
+        return query.gt(field_name, value)
+    elif operator == "gte":
+        return query.gte(field_name, value)
+    elif operator == "lt":
+        return query.lt(field_name, value)
+    elif operator == "lte":
+        return query.lte(field_name, value)
+    elif operator == "is_empty":
+        return query.is_(field_name, "null")
+    elif operator == "is_not_empty":
+        return query.not_.is_(field_name, "null")
+    return query
+
+
+def _resolve_dynamic_members_new(filters: list[dict]) -> list[str]:
+    """New format resolver: array of {field, operator, value} filter objects."""
+    if not filters:
+        return []
+
+    sb = get_supabase()
+
+    # Separate org-level vs person-level filters
+    org_filters = [f for f in filters if f.get("field") in _ORG_VIRTUAL_FIELD_NAMES]
+    person_filters = [f for f in filters if f.get("field") not in _ORG_VIRTUAL_FIELD_NAMES]
+
+    # Pre-filter by org-level criteria → get allowed person IDs
+    allowed_person_ids: set[str] | None = None
+    if org_filters:
+        org_query = sb.table("organizations").select("id").eq("is_deleted", False)
+        for f in org_filters:
+            real_col = _ORG_VIRTUAL_TO_COLUMN.get(f["field"], f["field"])
+            org_query = _apply_filter_to_query(org_query, real_col, f["operator"], f.get("value", ""))
+        org_resp = org_query.limit(5000).execute()
+        matching_org_ids = [str(o["id"]) for o in (org_resp.data or [])]
+        if matching_org_ids:
+            pol_resp = (
+                sb.table("person_organization_links")
+                .select("person_id")
+                .in_("link_type", ["primary", "secondary"])
+                .in_("organization_id", matching_org_ids)
+                .execute()
+            )
+            allowed_person_ids = {str(p["person_id"]) for p in (pol_resp.data or [])}
+        else:
+            return []
+
+    query = sb.table("people").select("id").eq("is_deleted", False).eq("do_not_contact", False)
+
+    if allowed_person_ids is not None:
+        if not allowed_person_ids:
+            return []
+        query = query.in_("id", list(allowed_person_ids))
+
+    # Track not_in filters for post-query filtering
+    not_in_filters = []
+    for f in person_filters:
+        if f["operator"] == "not_in":
+            not_in_filters.append(f)
+            continue
+        query = _apply_filter_to_query(query, f["field"], f["operator"], f.get("value", ""))
+
+    resp = query.limit(5000).execute()
+    person_ids = [str(r["id"]) for r in (resp.data or [])]
+
+    # Post-query filter for not_in (Supabase doesn't have clean not_in)
+    if not_in_filters and person_ids:
+        for f in not_in_filters:
+            vals = f.get("value", [])
+            if not isinstance(vals, list):
+                vals = [v.strip() for v in str(vals).split(",") if v.strip()]
+            # Re-query to get the field values for these people
+            check_resp = sb.table("people").select(f"id, {f['field']}").in_("id", person_ids).limit(5000).execute()
+            excluded = set()
+            for row in (check_resp.data or []):
+                row_val = row.get(f["field"])
+                if isinstance(row_val, list):
+                    if any(v in vals for v in row_val):
+                        excluded.add(str(row["id"]))
+                elif str(row_val or "") in vals:
+                    excluded.add(str(row["id"]))
+            person_ids = [pid for pid in person_ids if pid not in excluded]
+
+    return person_ids
 
 
 def _build_send_preview(list_id: str) -> dict:
@@ -736,7 +930,7 @@ async def filter_editor(
     list_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """HTMX partial: embedded people grid for defining dynamic list filter criteria."""
+    """HTMX partial: filter-builder form for defining dynamic list filter criteria."""
     sb = get_supabase()
     dist_list = (
         sb.table("distribution_lists")
@@ -753,60 +947,45 @@ async def filter_editor(
     if not _can_edit_list(dist_list, current_user):
         return HTMLResponse('<p class="text-sm text-red-600">Permission denied.</p>')
 
-    # Pre-apply existing filter criteria as query params
-    extra_filters = {"dnc": "no"}  # Always exclude DNC
-    for k, v in (dist_list.get("filter_criteria") or {}).items():
-        extra_filters[k] = v
+    # Load filter fields for the builder
+    filter_fields = _build_filter_fields()
 
-    grid_ctx = build_grid_context(
-        entity_type="person",
-        request=request,
-        user=current_user,
-        base_url=f"/distribution-lists/{list_id}/filter-grid",
-        extra_filters=extra_filters,
-        grid_container_id_override="dl-filter-grid-container",
-    )
+    # Parse existing filter_criteria into new format (handle old format too)
+    existing_criteria = dist_list.get("filter_criteria") or {}
+    if existing_criteria and "filters" not in existing_criteria:
+        existing_criteria = _convert_old_to_new_format(existing_criteria)
+    existing_filters = existing_criteria.get("filters", [])
 
-    grid_ctx["request"] = request
-    grid_ctx["user"] = current_user
-    grid_ctx["list_id"] = str(list_id)
-    grid_ctx["dist_list"] = dist_list
-    grid_ctx["is_filter_editor"] = True
-
-    # Build merged_filters for the save form (combines filters + col_filters)
-    merged = {}
-    for k, v in (grid_ctx.get("filters") or {}).items():
-        if not k.startswith("_"):
-            merged[k] = v
-    for k, v in (grid_ctx.get("col_filters") or {}).items():
-        merged[k] = v
-    grid_ctx["merged_filters"] = merged
-
-    return templates.TemplateResponse("distribution_lists/_filter_editor.html", grid_ctx)
+    context = {
+        "request": request,
+        "user": current_user,
+        "list_id": str(list_id),
+        "dist_list": dist_list,
+        "filter_fields": filter_fields,
+        "existing_filters": existing_filters,
+        "operators_by_type": _OPERATORS_BY_TYPE,
+    }
+    return templates.TemplateResponse("distribution_lists/_filter_editor.html", context)
 
 
-@router.get("/{list_id}/filter-grid", response_class=HTMLResponse)
-async def filter_grid(
+@router.post("/{list_id}/preview-filter-count", response_class=HTMLResponse)
+async def preview_filter_count(
     request: Request,
     list_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """HTMX partial: handles pagination/sort/filter for the embedded people grid."""
-    grid_ctx = build_grid_context(
-        entity_type="person",
-        request=request,
-        user=current_user,
-        base_url=f"/distribution-lists/{list_id}/filter-grid",
-        extra_filters={"dnc": "no"},
-        grid_container_id_override="dl-filter-grid-container",
+    """Return the count of people matching the given filter criteria."""
+    body = await request.json()
+    filters = body.get("filters", [])
+    if not filters:
+        return HTMLResponse('<span class="text-gray-400">Add filters to see matching count</span>')
+    try:
+        count = len(_resolve_dynamic_members({"filters": filters}))
+    except Exception:
+        return HTMLResponse('<span class="text-red-500">Error evaluating filters</span>')
+    return HTMLResponse(
+        f'<span class="text-brand-600 font-semibold">{count} people match</span>'
     )
-
-    grid_ctx["request"] = request
-    grid_ctx["user"] = current_user
-    grid_ctx["list_id"] = str(list_id)
-    grid_ctx["is_filter_editor"] = True
-
-    return templates.TemplateResponse("components/_grid.html", grid_ctx)
 
 
 @router.post("/{list_id}/save-filters", response_class=HTMLResponse)
@@ -815,7 +994,7 @@ async def save_list_filters(
     list_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Save the current grid filter state as the distribution list's filter_criteria."""
+    """Save filter criteria for a dynamic distribution list."""
     sb = get_supabase()
     dist_list = (
         sb.table("distribution_lists")
@@ -831,32 +1010,24 @@ async def save_list_filters(
     if not _can_edit_list(dist_list, current_user):
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    form = await request.form()
-    filters_str = form.get("filters", "{}")
-    try:
-        filter_criteria = json.loads(filters_str)
-    except json.JSONDecodeError:
-        filter_criteria = {}
+    body = await request.json()
+    filters = body.get("filters", [])
 
-    # Strip internal keys
-    filter_criteria = {k: v for k, v in filter_criteria.items() if not k.startswith("_")}
-
-    # Require at least one meaningful filter (cf_* column filter or q search text)
-    has_filters = any(k.startswith("cf_") for k in filter_criteria) or filter_criteria.get("q")
-    if not has_filters:
+    if not filters:
         return HTMLResponse(
             '<div class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">'
-            'At least one filter is required. Use the column filter icons in the grid '
-            'to define who should be on this list before saving.'
+            'At least one filter is required to save.'
             '</div>'
         )
+
+    filter_criteria = {"filters": filters}
 
     # Resolve count before saving so user can see impact
     member_count = len(_resolve_dynamic_members(filter_criteria))
 
     sb.table("distribution_lists").update({
         "filter_criteria": filter_criteria,
-        "list_mode": "dynamic",  # Saving filters makes it dynamic
+        "list_mode": "dynamic",
     }).eq("id", str(list_id)).execute()
 
     return HTMLResponse(

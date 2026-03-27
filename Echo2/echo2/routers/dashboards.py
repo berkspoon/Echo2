@@ -22,6 +22,7 @@ LEAD_LOST_STAGES = {"lost_dropped_out", "lost_selected_other", "lost_nobody_hire
 LEAD_ALL_STAGES = LEAD_STAGE_ORDER + ["won"] + list(LEAD_LOST_STAGES)
 
 # Fund prospect stage ordering (mirrored from fund_prospects.py)
+FP_INACTIVE_STAGES = {"closed", "declined"}
 FP_STAGE_ORDER = [
     "target_identified", "intro_scheduled", "initial_meeting_complete",
     "ddq_materials_sent", "due_diligence", "ic_review",
@@ -563,6 +564,44 @@ async def widget_stale_contacts(
 # ADVISORY PIPELINE — shared data loader
 # ---------------------------------------------------------------------------
 
+def _resolve_drilldown_value(dimension: str, value: str, stage_scope: str = "advisory") -> str:
+    """Resolve a drilldown value key to its human-readable label."""
+    if dimension == "owner":
+        resolved = batch_resolve_users([value])
+        return resolved.get(value, "Unknown")
+    if dimension == "fund":
+        sb = get_supabase()
+        fr = sb.table("funds").select("ticker, fund_name").eq("id", value).maybe_single().execute()
+        if fr and fr.data:
+            return fr.data.get("ticker") or fr.data.get("fund_name", value)
+        return value
+    if dimension == "stage":
+        all_stages = get_reference_data("lead_stage")
+        if stage_scope == "fundraise":
+            stage_labels = {s["value"]: s["label"] for s in all_stages if s.get("parent_value") == "fundraise"}
+        else:
+            stage_labels = {s["value"]: s["label"] for s in all_stages}
+        return stage_labels.get(value, value.replace("_", " ").title())
+    if dimension == "service_type":
+        labels = {s["value"]: s["label"] for s in get_reference_data("service_type")}
+        return labels.get(value, value.replace("_", " ").title())
+    if dimension == "asset_class":
+        labels = {a["value"]: a["label"] for a in get_reference_data("asset_class")}
+        return labels.get(value, value.replace("_", " ").title())
+    if dimension == "lp_type":
+        labels = {o["value"]: o["label"] for o in get_reference_data("organization_type")}
+        return labels.get(value, value.replace("_", " ").title())
+    if dimension == "country":
+        labels = {c["value"]: c["label"] for c in get_reference_data("country")}
+        return labels.get(value, value.replace("_", " ").title())
+    # Generic field — try reference_data by field name
+    ref = get_reference_data(dimension)
+    if ref:
+        ref_map = {r["value"]: r["label"] for r in ref}
+        return ref_map.get(value, value.replace("_", " ").title())
+    return value.replace("_", " ").title()
+
+
 def _get_groupable_fields(entity_type: str = "lead") -> list[dict]:
     """Return fields suitable for group-by in pipeline dashboards."""
     from db.field_service import get_field_definitions
@@ -1085,7 +1124,7 @@ async def advisory_pipeline_drilldown(
 
     # Add drilldown metadata
     grid_ctx["drilldown_dimension"] = dim_labels.get(dimension, dimension.replace("_", " ").title())
-    grid_ctx["drilldown_value"] = value.replace("_", " ").title()
+    grid_ctx["drilldown_value"] = _resolve_drilldown_value(dimension, value, stage_scope="advisory")
     grid_ctx["is_drilldown"] = True
     grid_ctx["hide_column_filters"] = True
     grid_ctx["request"] = request
@@ -1296,9 +1335,10 @@ async def capital_raise_all(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     owner: str = Query(""),
+    active_filter: str = Query("active", alias="active_filter"),
 ):
     """Capital Raise Dashboard — all funds."""
-    return await _render_capital_raise(request, current_user, fund_ticker=None, owner=owner or None)
+    return await _render_capital_raise(request, current_user, fund_ticker=None, owner=owner or None, active_filter=active_filter)
 
 
 # Static paths must come before {fund_ticker} dynamic path
@@ -1309,12 +1349,18 @@ async def capital_raise_chart(
     group_by: str = Query("stage"),
     fund_ticker: str = Query("", alias="fund_ticker"),
     owner: str = Query(""),
+    active_filter: str = Query("active", alias="active_filter"),
 ):
     """HTMX partial: capital raise chart grouped by selected dimension."""
     prospects, funds, funds_by_id, current_fund = _load_capital_raise_prospects(
         fund_ticker if fund_ticker else None,
         owner=owner or None,
     )
+    # Apply active filter
+    if active_filter == "active":
+        prospects = [fp for fp in prospects if fp.get("stage") not in FP_INACTIVE_STAGES]
+    elif active_filter == "inactive":
+        prospects = [fp for fp in prospects if fp.get("stage") in FP_INACTIVE_STAGES]
     bars = _group_capital_raise_prospects(prospects, group_by)
 
     context = {
@@ -1323,6 +1369,7 @@ async def capital_raise_chart(
         "cr_group_by": group_by,
         "current_fund_ticker": fund_ticker or "",
         "filter_owner": owner,
+        "active_filter": active_filter,
     }
     return templates.TemplateResponse("dashboards/_capital_raise_chart.html", context)
 
@@ -1335,6 +1382,7 @@ async def capital_raise_drilldown(
     value: str = Query(""),
     fund_ticker: str = Query("", alias="fund_ticker"),
     owner: str = Query(""),
+    active_filter: str = Query("active", alias="active_filter"),
 ):
     """HTMX partial: drill-down table for a specific bar in capital raise chart."""
     # Build extra_filters from dashboard context
@@ -1345,6 +1393,11 @@ async def capital_raise_drilldown(
         fund_ticker if fund_ticker else None,
         owner=owner or None,
     )
+    # Apply active filter
+    if active_filter == "active":
+        prospects = [fp for fp in prospects if fp.get("stage") not in FP_INACTIVE_STAGES]
+    elif active_filter == "inactive":
+        prospects = [fp for fp in prospects if fp.get("stage") in FP_INACTIVE_STAGES]
 
     # Filter to matching prospects based on dimension+value
     matching_prospects = []
@@ -1375,7 +1428,7 @@ async def capital_raise_drilldown(
     extra_filters["_lead_ids"] = lead_ids if lead_ids else ["00000000-0000-0000-0000-000000000000"]
 
     # Build drilldown base URL for HTMX reloads (preserves all dashboard context)
-    drilldown_params = f"dimension={dimension}&value={value}&fund_ticker={fund_ticker}&owner={owner}"
+    drilldown_params = f"dimension={dimension}&value={value}&fund_ticker={fund_ticker}&owner={owner}&active_filter={active_filter}"
     drilldown_base_url = f"/dashboards/capital-raise/drilldown?{drilldown_params}"
 
     from services.grid_service import build_grid_context
@@ -1391,7 +1444,7 @@ async def capital_raise_drilldown(
     # Add drilldown metadata
     dim_labels = {"stage": "Stage", "lp_type": "LP Type", "fund": "Fund", "country": "Country"}
     grid_ctx["drilldown_dimension"] = dim_labels.get(dimension, dimension.replace("_", " ").title())
-    grid_ctx["drilldown_value"] = value.replace("_", " ").title()
+    grid_ctx["drilldown_value"] = _resolve_drilldown_value(dimension, value, stage_scope="fundraise")
     grid_ctx["is_drilldown"] = True
     grid_ctx["hide_column_filters"] = True
     grid_ctx["request"] = request
@@ -1410,14 +1463,21 @@ async def capital_raise_fund(
     fund_ticker: str,
     current_user: CurrentUser = Depends(get_current_user),
     owner: str = Query(""),
+    active_filter: str = Query("active", alias="active_filter"),
 ):
     """Capital Raise Dashboard — specific fund."""
-    return await _render_capital_raise(request, current_user, fund_ticker=fund_ticker, owner=owner or None)
+    return await _render_capital_raise(request, current_user, fund_ticker=fund_ticker, owner=owner or None, active_filter=active_filter)
 
 
-async def _render_capital_raise(request: Request, current_user: CurrentUser, fund_ticker: Optional[str], owner: Optional[str] = None):
+async def _render_capital_raise(request: Request, current_user: CurrentUser, fund_ticker: Optional[str], owner: Optional[str] = None, active_filter: str = "active"):
     """Shared renderer for capital raise dashboard."""
     prospects, funds, funds_by_id, current_fund = _load_capital_raise_prospects(fund_ticker, owner=owner)
+
+    # Apply active filter
+    if active_filter == "active":
+        prospects = [fp for fp in prospects if fp.get("stage") not in FP_INACTIVE_STAGES]
+    elif active_filter == "inactive":
+        prospects = [fp for fp in prospects if fp.get("stage") in FP_INACTIVE_STAGES]
 
     # Batch resolve orgs
     org_ids = list({str(fp["organization_id"]) for fp in prospects if fp.get("organization_id")})
@@ -1510,8 +1570,6 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
         org_id = str(fp.get("organization_id", ""))
         org_data = org_map.get(org_id, {})
         org_name = org_data.get("company_name", "Unknown") if isinstance(org_data, dict) else "Unknown"
-        fund_data = funds_by_id.get(str(fp.get("fund_id", "")), {})
-        ticker = fund_data.get("ticker", "?")
         alloc = _safe_float(fp.get("target_allocation_mn"))
         if org_id not in hot_orgs:
             hot_orgs[org_id] = {
@@ -1519,22 +1577,26 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
                 "org_id": org_id,
                 "max_score": score,
                 "highest_stage": fp.get("stage", ""),
-                "tickers": set(),
+                "owner_id": str(fp.get("aksia_owner_id") or ""),
                 "total_allocation": 0.0,
             }
         entry = hot_orgs[org_id]
         if score > entry["max_score"]:
             entry["max_score"] = score
             entry["highest_stage"] = fp.get("stage", "")
-        entry["tickers"].add(ticker)
+            entry["owner_id"] = str(fp.get("aksia_owner_id") or "")
         entry["total_allocation"] += alloc
+
+    # Resolve owner names for hot prospects
+    hp_owner_ids = list({hp["owner_id"] for hp in hot_orgs.values() if hp["owner_id"]})
+    hp_owner_names = batch_resolve_users(hp_owner_ids) if hp_owner_ids else {}
 
     hot_prospects = sorted(hot_orgs.values(), key=lambda x: (-x["max_score"], -x["total_allocation"]))
     for hp in hot_prospects:
-        hp["tickers_str"] = ", ".join(sorted(hp["tickers"]))
         hp["allocation_fmt"] = _fmt_mn(hp["total_allocation"])
         hp["stage_label"] = stage_labels.get(hp["highest_stage"], hp["highest_stage"].replace("_", " ").title())
         hp["badge_class"] = "bg-green-100 text-green-800" if hp["max_score"] >= 5 else "bg-amber-100 text-amber-800"
+        hp["owner_name"] = hp_owner_names.get(hp["owner_id"], "Unassigned") if hp["owner_id"] else "Unassigned"
 
     last_refreshed = datetime.now().strftime("%b %d, %Y %I:%M %p")
 
@@ -1580,6 +1642,8 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
         "total_prospects": len(prospects),
         # Hot Prospects
         "hot_prospects": hot_prospects,
+        # Active filter
+        "active_filter": active_filter,
     }
 
     return templates.TemplateResponse("dashboards/capital_raise.html", context)
