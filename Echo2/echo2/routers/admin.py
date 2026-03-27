@@ -1838,6 +1838,30 @@ async def list_view_configs(
     })
 
 
+_RENDER_TYPES = ["text", "text_right", "link", "badge", "currency_right", "mono"]
+
+# Known data keys available for each dashboard table config
+_AVAILABLE_KEYS = {
+    "cr_hot_prospects_columns": [
+        ("org_name", "Organization"), ("org_country", "Country"), ("org_city", "City"),
+        ("org_type", "Org Type"), ("org_aum_mn", "Org AUM ($M)"),
+        ("stage_label", "Stage"), ("owner_name", "Lead Owner"),
+        ("allocation_fmt", "Allocation ($M)"), ("tickers_str", "Fund(s)"),
+    ],
+    "cr_investor_breakdown_columns": [
+        ("label", "LP Type"), ("count", "Count"), ("target_fmt", "Target ($M)"),
+        ("soft_fmt", "Soft Circle ($M)"), ("hard_fmt", "Hard Circle ($M)"),
+        ("avg_target_fmt", "Avg Target ($M)"),
+    ],
+    "cr_declined_columns": [
+        ("org_name", "Organization"), ("org_country", "Country"), ("org_city", "City"),
+        ("org_type", "Org Type"), ("fund_ticker", "Fund"), ("fund_name", "Fund Name"),
+        ("share_class", "Share Class"), ("decline_reason", "Decline Reason"),
+        ("target_allocation_fmt", "Target Allocation ($M)"),
+    ],
+}
+
+
 @router.get("/views/{view_key:path}/edit")
 async def edit_view_config(
     request: Request,
@@ -1853,13 +1877,37 @@ async def edit_view_config(
         raise HTTPException(status_code=404, detail=f"View config '{view_key}' not found")
 
     import json
-    config_json = json.dumps(resp.data["config"], indent=2)
+    config = resp.data["config"]
+    config_json = json.dumps(config, indent=2)
+
+    # Determine editor type from config shape
+    if view_key.startswith("grid_defaults."):
+        editor_type = "grid_columns"
+        entity_type = view_key.replace("grid_defaults.", "")
+        available_fields = get_field_definitions(entity_type, active_only=True)
+    elif isinstance(config.get("columns"), list) and config["columns"] and isinstance(config["columns"][0], dict):
+        editor_type = "dashboard_columns"
+        available_fields = []
+    elif isinstance(config.get("options"), list):
+        editor_type = "option_list"
+        available_fields = []
+    elif "person_fields" in config or "org_fields" in config:
+        editor_type = "dl_filter"
+        available_fields = get_field_definitions("person", active_only=True)
+    else:
+        editor_type = "json"
+        available_fields = []
 
     return templates.TemplateResponse("admin/view_config_form.html", {
         "request": request,
         "user": current_user,
         "view_config": resp.data,
         "config_json": config_json,
+        "editor_type": editor_type,
+        "render_types": _RENDER_TYPES,
+        "available_keys": _AVAILABLE_KEYS.get(view_key, []),
+        "available_fields": available_fields,
+        "field_types": [ft["value"] for ft in FIELD_TYPES],
     })
 
 

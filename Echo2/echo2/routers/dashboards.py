@@ -1564,14 +1564,18 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
             "org_type": k,
             "label": org_type_labels.get(k, k.replace("_", " ").title()),
             "count": v["count"],
+            "target": v["target"],
+            "soft": v["soft"],
+            "hard": v["hard"],
             "target_fmt": _fmt_mn(v["target"]),
             "soft_fmt": _fmt_mn(v["soft"]),
             "hard_fmt": _fmt_mn(v["hard"]),
+            "avg_target_fmt": _fmt_mn(v["target"] / v["count"]) if v["count"] else "—",
         }
         for k, v in sorted(investor_groups.items(), key=lambda x: x[1]["target"], reverse=True)
     ]
 
-    # Declined Prospects
+    # Declined Prospects — include all possible fields for admin-configured columns
     declined = []
     for fp in prospects:
         if fp.get("stage") != "declined":
@@ -1581,12 +1585,18 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
         fund_data = funds_by_id.get(str(fp.get("fund_id", "")), {})
         declined.append({
             "org_name": org_name,
+            "org_country": (org_data.get("country", "") or "").replace("_", " ").title() if isinstance(org_data, dict) else "",
+            "org_city": org_data.get("city", "") if isinstance(org_data, dict) else "",
+            "org_type": (org_data.get("organization_type", "") or "").replace("_", " ").title() if isinstance(org_data, dict) else "",
             "fund_ticker": fund_data.get("ticker", "?"),
+            "fund_name": fund_data.get("name", ""),
             "share_class": (fp.get("share_class") or "").replace("_", " ").title(),
             "decline_reason": decline_labels.get(fp.get("decline_reason", ""), fp.get("decline_reason", "—")),
+            "target_allocation_fmt": _fmt_mn(_safe_float(fp.get("target_allocation_mn"))),
         })
 
     # Hot Prospects — orgs with traction score >= 3, grouped by org
+    # Include all possible fields so admin-configured columns just work
     hot_orgs: dict[str, dict] = {}
     for fp in prospects:
         score = _compute_traction_score(fp.get("stage", ""))
@@ -1594,16 +1604,29 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
             continue
         org_id = str(fp.get("organization_id", ""))
         org_data = org_map.get(org_id, {})
-        org_name = org_data.get("company_name", "Unknown") if isinstance(org_data, dict) else "Unknown"
+        if isinstance(org_data, dict):
+            org_name = org_data.get("company_name", "Unknown")
+            org_country = (org_data.get("country", "") or "").replace("_", " ").title()
+            org_city = org_data.get("city", "") or ""
+            org_type = (org_data.get("organization_type", "") or "").replace("_", " ").title()
+            org_aum = org_data.get("aum_mn")
+        else:
+            org_name, org_country, org_city, org_type, org_aum = "Unknown", "", "", "", None
         alloc = _safe_float(fp.get("target_allocation_mn"))
+        fund_data = funds_by_id.get(str(fp.get("fund_id", "")), {})
         if org_id not in hot_orgs:
             hot_orgs[org_id] = {
                 "org_name": org_name,
                 "org_id": org_id,
+                "org_country": org_country,
+                "org_city": org_city,
+                "org_type": org_type,
+                "org_aum_mn": _fmt_mn(float(org_aum)) if org_aum else "—",
                 "max_score": score,
                 "highest_stage": fp.get("stage", ""),
                 "owner_id": str(fp.get("aksia_owner_id") or ""),
                 "total_allocation": 0.0,
+                "tickers": set(),
             }
         entry = hot_orgs[org_id]
         if score > entry["max_score"]:
@@ -1611,6 +1634,9 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
             entry["highest_stage"] = fp.get("stage", "")
             entry["owner_id"] = str(fp.get("aksia_owner_id") or "")
         entry["total_allocation"] += alloc
+        ticker = fund_data.get("ticker")
+        if ticker:
+            entry["tickers"].add(ticker)
 
     # Resolve owner names for hot prospects
     hp_owner_ids = list({hp["owner_id"] for hp in hot_orgs.values() if hp["owner_id"]})
@@ -1622,6 +1648,8 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
         hp["stage_label"] = stage_labels.get(hp["highest_stage"], hp["highest_stage"].replace("_", " ").title())
         hp["badge_class"] = "bg-green-100 text-green-800" if hp["max_score"] >= 5 else "bg-amber-100 text-amber-800"
         hp["owner_name"] = hp_owner_names.get(hp["owner_id"], "Unassigned") if hp["owner_id"] else "Unassigned"
+        hp["tickers_str"] = ", ".join(sorted(hp["tickers"])) if hp["tickers"] else "—"
+        del hp["tickers"]  # not serializable in template
 
     last_refreshed = datetime.now().strftime("%b %d, %Y %I:%M %p")
 

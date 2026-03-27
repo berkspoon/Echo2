@@ -24,75 +24,403 @@
         <a href="/admin/views" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Views</a>
     </div>
 
-    <!-- Help text based on category -->
-    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-        {% if view_config.category == 'grids' %}
-        <strong>Grid Defaults</strong> — JSON with a <code>"columns"</code> array of field_name strings. These are the default visible columns when no screener is active.
-        {% elif view_config.category == 'dashboards' and 'columns' in config_json %}
-        <strong>Dashboard Table</strong> — JSON with a <code>"columns"</code> array. Each column has: <code>key</code> (data field), <code>label</code> (header text), <code>render_type</code> (text, link, badge, currency_right, mono, text_right). Optional: <code>visible_when</code> condition dict.
-        {% elif view_config.category == 'dashboards' and 'options' in config_json %}
-        <strong>Option List</strong> — JSON with an <code>"options"</code> array. Each option has: <code>value</code> and <code>label</code>.
-        {% elif view_config.category == 'distribution_lists' %}
-        <strong>DL Filter Fields</strong> — JSON with <code>person_fields</code> (empty=all), <code>org_fields</code> (virtual field defs), and <code>include_field_types</code> (which field types are filterable).
-        {% else %}
-        <strong>JSON Configuration</strong> — Edit the JSON below and click Save.
-        {% endif %}
-    </div>
+    <!-- Form wraps everything — hidden input holds the final JSON -->
+    <form method="POST" action="/admin/views/{{ view_config.view_key }}" onsubmit="return serializeAndSubmit()">
+        <input type="hidden" name="config_json" id="config-json-hidden">
 
-    <!-- Form -->
-    <form method="POST" action="/admin/views/{{ view_config.view_key }}" onsubmit="return validateJson()">
-        <div class="bg-white shadow rounded-lg overflow-hidden">
-            <div class="p-6">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Configuration (JSON)</label>
-                <textarea id="config-editor" name="config_json"
-                          rows="20"
-                          class="w-full font-mono text-sm border border-gray-300 rounded-md p-4 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                          spellcheck="false">{{ config_json }}</textarea>
-                <p id="json-error" class="mt-2 text-sm text-red-600 hidden"></p>
+        {# ═══ Dashboard Column Editor ═══ #}
+        {% if editor_type == 'dashboard_columns' %}
+        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="columnEditor()">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900">Table Columns</h3>
+                <p class="text-xs text-gray-500 mt-1">Add, remove, and reorder columns. Each column maps a data key to a table header with a render style.</p>
             </div>
-            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                <button type="button" onclick="formatJson()" class="text-sm text-gray-600 hover:text-gray-800 underline">
-                    Format JSON
+            <div class="p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200">
+                            <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase w-8"></th>
+                            <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Data Key</th>
+                            <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Header Label</th>
+                            <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Render Type</th>
+                            <th class="py-2 w-24"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(col, idx) in columns" :key="idx">
+                            <tr class="border-b border-gray-50">
+                                <td class="py-2 pr-2">
+                                    <div class="flex flex-col gap-0.5">
+                                        <button type="button" @click="moveUp(idx)" :disabled="idx === 0"
+                                                class="text-gray-400 hover:text-gray-600 disabled:opacity-25 text-xs leading-none">&uarr;</button>
+                                        <button type="button" @click="moveDown(idx)" :disabled="idx === columns.length - 1"
+                                                class="text-gray-400 hover:text-gray-600 disabled:opacity-25 text-xs leading-none">&darr;</button>
+                                    </div>
+                                </td>
+                                <td class="py-2 pr-2">
+                                    {% if available_keys %}
+                                    <select x-model="col.key" class="w-full rounded border-gray-300 text-sm px-2 py-1.5"
+                                            @change="if(!col.label) col.label = $event.target.options[$event.target.selectedIndex].text">
+                                        <option value="">— select —</option>
+                                        {% for key, label in available_keys %}
+                                        <option value="{{ key }}">{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    {% else %}
+                                    <input type="text" x-model="col.key" placeholder="field_key"
+                                           class="w-full rounded border-gray-300 text-sm px-2 py-1.5">
+                                    {% endif %}
+                                </td>
+                                <td class="py-2 pr-2">
+                                    <input type="text" x-model="col.label" placeholder="Column Header"
+                                           class="w-full rounded border-gray-300 text-sm px-2 py-1.5">
+                                </td>
+                                <td class="py-2 pr-2">
+                                    <select x-model="col.render_type" class="w-full rounded border-gray-300 text-sm px-2 py-1.5">
+                                        {% for rt in render_types %}
+                                        <option value="{{ rt }}">{{ rt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td class="py-2 text-right">
+                                    <button type="button" @click="removeCol(idx)"
+                                            class="text-red-400 hover:text-red-600 text-xs font-medium px-2 py-1">Remove</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <button type="button" @click="addCol()"
+                        class="mt-3 inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-600 border border-brand-300 rounded-md hover:bg-brand-50">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Add Column
                 </button>
-                <div class="flex items-center gap-3">
-                    <a href="/admin/views" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Cancel</a>
-                    <button type="submit"
-                            class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
-                        Save Configuration
-                    </button>
-                </div>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end gap-3">
+                <a href="/admin/views" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Cancel</a>
+                <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                    Save Configuration
+                </button>
             </div>
         </div>
-    </form>
 
+        <script>
+        function columnEditor() {
+            return {
+                columns: {{ view_config.config.columns | tojson }},
+                addCol() { this.columns.push({key: '', label: '', render_type: 'text'}); },
+                removeCol(i) { this.columns.splice(i, 1); },
+                moveUp(i) { if (i > 0) { let t = this.columns[i]; this.columns.splice(i, 1); this.columns.splice(i-1, 0, t); }},
+                moveDown(i) { if (i < this.columns.length-1) { let t = this.columns[i]; this.columns.splice(i, 1); this.columns.splice(i+1, 0, t); }},
+                serialize() { return JSON.stringify({columns: this.columns}); }
+            };
+        }
+        </script>
+
+        {# ═══ Option List Editor ═══ #}
+        {% elif editor_type == 'option_list' %}
+        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="optionEditor()">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900">Options</h3>
+                <p class="text-xs text-gray-500 mt-1">Add, remove, and reorder dropdown options. Value is the internal key, label is what users see.</p>
+            </div>
+            <div class="p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200">
+                            <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase w-8"></th>
+                            <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Value</th>
+                            <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Display Label</th>
+                            <th class="py-2 w-24"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(opt, idx) in options" :key="idx">
+                            <tr class="border-b border-gray-50">
+                                <td class="py-2 pr-2">
+                                    <div class="flex flex-col gap-0.5">
+                                        <button type="button" @click="moveUp(idx)" :disabled="idx === 0"
+                                                class="text-gray-400 hover:text-gray-600 disabled:opacity-25 text-xs leading-none">&uarr;</button>
+                                        <button type="button" @click="moveDown(idx)" :disabled="idx === options.length - 1"
+                                                class="text-gray-400 hover:text-gray-600 disabled:opacity-25 text-xs leading-none">&darr;</button>
+                                    </div>
+                                </td>
+                                <td class="py-2 pr-2">
+                                    <input type="text" x-model="opt.value" placeholder="internal_value"
+                                           class="w-full rounded border-gray-300 text-sm px-2 py-1.5 font-mono">
+                                </td>
+                                <td class="py-2 pr-2">
+                                    <input type="text" x-model="opt.label" placeholder="Display Label"
+                                           class="w-full rounded border-gray-300 text-sm px-2 py-1.5">
+                                </td>
+                                <td class="py-2 text-right">
+                                    <button type="button" @click="removeOpt(idx)"
+                                            class="text-red-400 hover:text-red-600 text-xs font-medium px-2 py-1">Remove</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <button type="button" @click="addOpt()"
+                        class="mt-3 inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-600 border border-brand-300 rounded-md hover:bg-brand-50">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Add Option
+                </button>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end gap-3">
+                <a href="/admin/views" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Cancel</a>
+                <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                    Save Configuration
+                </button>
+            </div>
+        </div>
+
+        <script>
+        function optionEditor() {
+            return {
+                options: {{ view_config.config.options | tojson }},
+                addOpt() { this.options.push({value: '', label: ''}); },
+                removeOpt(i) { this.options.splice(i, 1); },
+                moveUp(i) { if (i > 0) { let t = this.options[i]; this.options.splice(i, 1); this.options.splice(i-1, 0, t); }},
+                moveDown(i) { if (i < this.options.length-1) { let t = this.options[i]; this.options.splice(i, 1); this.options.splice(i+1, 0, t); }},
+                serialize() { return JSON.stringify({options: this.options}); }
+            };
+        }
+        </script>
+
+        {# ═══ Grid Default Columns Editor ═══ #}
+        {% elif editor_type == 'grid_columns' %}
+        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="gridColumnEditor()">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900">Default Grid Columns</h3>
+                <p class="text-xs text-gray-500 mt-1">Check columns to show by default. Drag to reorder. These apply when no screener is active.</p>
+            </div>
+            <div class="p-6">
+                <!-- Selected (visible) columns with reorder -->
+                <div class="mb-4">
+                    <h4 class="text-xs font-medium text-gray-500 uppercase mb-2">Visible Columns (in order)</h4>
+                    <template x-for="(col, idx) in selected" :key="col">
+                        <div class="flex items-center gap-2 py-1.5 px-3 mb-1 bg-brand-50 border border-brand-200 rounded-md">
+                            <div class="flex flex-col gap-0.5">
+                                <button type="button" @click="moveUp(idx)" :disabled="idx === 0"
+                                        class="text-gray-400 hover:text-gray-600 disabled:opacity-25 text-xs leading-none">&uarr;</button>
+                                <button type="button" @click="moveDown(idx)" :disabled="idx === selected.length - 1"
+                                        class="text-gray-400 hover:text-gray-600 disabled:opacity-25 text-xs leading-none">&darr;</button>
+                            </div>
+                            <span class="text-sm text-gray-900 flex-1" x-text="fieldLabel(col)"></span>
+                            <code class="text-xs text-gray-400 font-mono" x-text="col"></code>
+                            <button type="button" @click="deselect(col)" class="text-red-400 hover:text-red-600 text-xs ml-2">&times;</button>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Available (unselected) columns -->
+                <div>
+                    <h4 class="text-xs font-medium text-gray-500 uppercase mb-2">Available Columns</h4>
+                    <div class="grid grid-cols-2 gap-1">
+                        <template x-for="field in availableFields" :key="field.field_name">
+                            <div x-show="!selected.includes(field.field_name)"
+                                 class="flex items-center gap-2 py-1.5 px-3 bg-gray-50 border border-gray-200 rounded-md cursor-pointer hover:bg-gray-100"
+                                 @click="selectField(field.field_name)">
+                                <svg class="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                <span class="text-sm text-gray-700" x-text="field.display_name || field.field_name"></span>
+                                <code class="text-xs text-gray-400 font-mono" x-text="field.field_name"></code>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end gap-3">
+                <a href="/admin/views" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Cancel</a>
+                <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                    Save Configuration
+                </button>
+            </div>
+        </div>
+
+        <script>
+        function gridColumnEditor() {
+            var allFields = {{ available_fields | tojson }};
+            var fieldMap = {};
+            allFields.forEach(function(f) { fieldMap[f.field_name] = f.display_name || f.field_name.replace(/_/g, ' '); });
+            return {
+                selected: {{ view_config.config.columns | tojson }},
+                availableFields: allFields,
+                fieldLabel(name) { return fieldMap[name] || name.replace(/_/g, ' '); },
+                selectField(name) { if (!this.selected.includes(name)) this.selected.push(name); },
+                deselect(name) { this.selected = this.selected.filter(c => c !== name); },
+                moveUp(i) { if (i > 0) { let t = this.selected[i]; this.selected.splice(i, 1); this.selected.splice(i-1, 0, t); }},
+                moveDown(i) { if (i < this.selected.length-1) { let t = this.selected[i]; this.selected.splice(i, 1); this.selected.splice(i+1, 0, t); }},
+                serialize() { return JSON.stringify({columns: this.selected}); }
+            };
+        }
+        </script>
+
+        {# ═══ DL Filter Fields Editor ═══ #}
+        {% elif editor_type == 'dl_filter' %}
+        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="dlFilterEditor()">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900">Distribution List Filter Configuration</h3>
+            </div>
+            <div class="p-6 space-y-6">
+                <!-- Person field whitelist -->
+                <div>
+                    <h4 class="text-sm font-medium text-gray-700 mb-2">Person Fields</h4>
+                    <p class="text-xs text-gray-500 mb-3">Leave empty to show all active person fields, or select specific fields to whitelist.</p>
+                    <div class="grid grid-cols-3 gap-1">
+                        {% for fd in available_fields %}
+                        <label class="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 text-sm cursor-pointer">
+                            <input type="checkbox" :checked="personFields.includes('{{ fd.field_name }}')"
+                                   @change="togglePerson('{{ fd.field_name }}', $event.target.checked)"
+                                   class="rounded border-gray-300 text-brand-500">
+                            {{ fd.display_name or fd.field_name }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Org virtual fields -->
+                <div>
+                    <h4 class="text-sm font-medium text-gray-700 mb-2">Organization Virtual Fields</h4>
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-200">
+                                <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Field Name</th>
+                                <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Display Name</th>
+                                <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Type</th>
+                                <th class="text-left py-2 text-xs font-medium text-gray-500 uppercase">Dropdown Category</th>
+                                <th class="py-2 w-20"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="(f, idx) in orgFields" :key="idx">
+                                <tr class="border-b border-gray-50">
+                                    <td class="py-2 pr-2"><input type="text" x-model="f.field_name" class="w-full rounded border-gray-300 text-sm px-2 py-1 font-mono"></td>
+                                    <td class="py-2 pr-2"><input type="text" x-model="f.display_name" class="w-full rounded border-gray-300 text-sm px-2 py-1"></td>
+                                    <td class="py-2 pr-2">
+                                        <select x-model="f.field_type" class="w-full rounded border-gray-300 text-sm px-2 py-1">
+                                            {% for ft in field_types %}<option value="{{ ft }}">{{ ft }}</option>{% endfor %}
+                                        </select>
+                                    </td>
+                                    <td class="py-2 pr-2"><input type="text" x-model="f.dropdown_category" placeholder="null" class="w-full rounded border-gray-300 text-sm px-2 py-1 font-mono"></td>
+                                    <td class="py-2 text-right">
+                                        <button type="button" @click="orgFields.splice(idx, 1)" class="text-red-400 hover:text-red-600 text-xs">Remove</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                    <button type="button" @click="orgFields.push({field_name:'', display_name:'', field_type:'text', dropdown_category:null})"
+                            class="mt-2 inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-600 border border-brand-300 rounded-md hover:bg-brand-50">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        Add Org Field
+                    </button>
+                </div>
+
+                <!-- Filterable field types -->
+                <div>
+                    <h4 class="text-sm font-medium text-gray-700 mb-2">Filterable Field Types</h4>
+                    <p class="text-xs text-gray-500 mb-3">Which field types appear in the filter builder. Add "lookup" to enable coverage owner filtering.</p>
+                    <div class="flex flex-wrap gap-2">
+                        {% for ft in field_types %}
+                        <label class="flex items-center gap-1.5 py-1 px-2.5 rounded border text-sm cursor-pointer"
+                               :class="fieldTypes.includes('{{ ft }}') ? 'bg-brand-50 border-brand-300 text-brand-700' : 'bg-white border-gray-200 text-gray-600'">
+                            <input type="checkbox" :checked="fieldTypes.includes('{{ ft }}')"
+                                   @change="toggleFieldType('{{ ft }}', $event.target.checked)"
+                                   class="rounded border-gray-300 text-brand-500">
+                            {{ ft }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end gap-3">
+                <a href="/admin/views" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Cancel</a>
+                <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                    Save Configuration
+                </button>
+            </div>
+        </div>
+
+        <script>
+        function dlFilterEditor() {
+            var cfg = {{ view_config.config | tojson }};
+            return {
+                personFields: cfg.person_fields || [],
+                orgFields: cfg.org_fields || [],
+                fieldTypes: cfg.include_field_types || [],
+                togglePerson(name, checked) {
+                    if (checked && !this.personFields.includes(name)) this.personFields.push(name);
+                    if (!checked) this.personFields = this.personFields.filter(f => f !== name);
+                },
+                toggleFieldType(ft, checked) {
+                    if (checked && !this.fieldTypes.includes(ft)) this.fieldTypes.push(ft);
+                    if (!checked) this.fieldTypes = this.fieldTypes.filter(f => f !== ft);
+                },
+                serialize() {
+                    return JSON.stringify({
+                        person_fields: this.personFields,
+                        org_fields: this.orgFields,
+                        include_field_types: this.fieldTypes,
+                    });
+                }
+            };
+        }
+        </script>
+
+        {# ═══ Raw JSON Fallback ═══ #}
+        {% else %}
+        <div class="bg-white shadow rounded-lg overflow-hidden" x-data="jsonEditor()">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900">JSON Configuration</h3>
+            </div>
+            <div class="p-6">
+                <textarea x-ref="editor" x-model="raw" rows="20"
+                          class="w-full font-mono text-sm border border-gray-300 rounded-md p-4 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                          spellcheck="false"></textarea>
+                <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
+                <button type="button" @click="formatJson()" class="mt-2 text-sm text-gray-600 hover:text-gray-800 underline">Format JSON</button>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end gap-3">
+                <a href="/admin/views" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Cancel</a>
+                <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                    Save Configuration
+                </button>
+            </div>
+        </div>
+
+        <script>
+        function jsonEditor() {
+            return {
+                raw: {{ config_json | tojson }},
+                error: '',
+                formatJson() {
+                    try { this.raw = JSON.stringify(JSON.parse(this.raw), null, 2); this.error = ''; }
+                    catch(e) { this.error = 'Invalid JSON: ' + e.message; }
+                },
+                serialize() {
+                    try { JSON.parse(this.raw); this.error = ''; return this.raw; }
+                    catch(e) { this.error = 'Invalid JSON: ' + e.message; return null; }
+                }
+            };
+        }
+        </script>
+        {% endif %}
+
+    </form>
 </div>
 
 <script>
-function validateJson() {
-    var editor = document.getElementById('config-editor');
-    var errorEl = document.getElementById('json-error');
-    try {
-        JSON.parse(editor.value);
-        errorEl.classList.add('hidden');
-        return true;
-    } catch (e) {
-        errorEl.textContent = 'Invalid JSON: ' + e.message;
-        errorEl.classList.remove('hidden');
-        return false;
-    }
-}
-
-function formatJson() {
-    var editor = document.getElementById('config-editor');
-    var errorEl = document.getElementById('json-error');
-    try {
-        var parsed = JSON.parse(editor.value);
-        editor.value = JSON.stringify(parsed, null, 2);
-        errorEl.classList.add('hidden');
-    } catch (e) {
-        errorEl.textContent = 'Cannot format — invalid JSON: ' + e.message;
-        errorEl.classList.remove('hidden');
-    }
+function serializeAndSubmit() {
+    // Find the active Alpine component and call its serialize()
+    var el = document.querySelector('[x-data]');
+    if (!el || !el.__x) return false;
+    var data = el.__x.$data;
+    if (typeof data.serialize !== 'function') return false;
+    var json = data.serialize();
+    if (!json) return false;
+    document.getElementById('config-json-hidden').value = json;
+    return true;
 }
 </script>
 {% endblock %}
