@@ -1,6 +1,26 @@
 <!-- Person distribution lists tab partial -->
 <div id="dl-membership-table">
 
+{% if not person.do_not_contact %}
+<div class="flex items-center justify-between mb-4">
+    <h3 class="text-sm font-medium text-gray-500">Distribution Lists</h3>
+    <div x-data="{ open: false }" class="relative">
+        <button @click="open = !open" type="button"
+                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600">
+            + Add to List
+            <svg class="ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="open" @click.away="open = false" x-cloak
+             class="absolute right-0 mt-1 w-72 bg-white border border-gray-200 rounded-md shadow-lg z-20 max-h-60 overflow-auto"
+             hx-get="/people/{{ person.id }}/available-dls"
+             hx-trigger="intersect once"
+             hx-swap="innerHTML">
+            <p class="p-3 text-sm text-gray-400">Loading lists...</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% if person.do_not_contact %}
 <div class="rounded-md bg-red-50 border border-red-200 p-4">
     <div class="flex">

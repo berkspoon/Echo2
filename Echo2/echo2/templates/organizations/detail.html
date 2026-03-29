@@ -37,34 +37,12 @@
                     {% endif %}
                     <p class="text-sm text-gray-500 mt-1">{{ org.organization_type | replace('_', ' ') | title }}</p>
                 </div>
-                <div class="flex gap-2 flex-wrap">
-                    <a href="/people/new?org={{ org.id }}"
-                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
-                        + Person
-                    </a>
-                    <a href="/activities/new?org={{ org.id }}"
-                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
-                        + Activity
-                    </a>
-                    <a href="/leads/new?org={{ org.id }}"
-                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
-                        + Lead
-                    </a>
-                    <a href="/leads/new?org={{ org.id }}&type=fundraise"
-                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
-                        + Fundraise Lead
-                    </a>
+                <div class="flex gap-2">
                     <a href="/organizations/{{ org.id }}/edit"
                        class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm">
                         <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                         Edit
                     </a>
-                    {% if user.role == 'admin' %}
-                    <button hx-post="/organizations/{{ org.id }}/archive" hx-confirm="Are you sure you want to archive this organization?"
-                            class="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 shadow-sm">
-                        Archive
-                    </button>
-                    {% endif %}
                 </div>
             </div>
 
@@ -256,7 +234,8 @@
                 {% if active_tab == tab_id %}text-brand-500 border-brand-500{% else %}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{% endif %}"
                 hx-get="/organizations/{{ org.id }}?tab={{ tab_id }}"
                 hx-target="#org-tab-content"
-                hx-push-url="false">
+                hx-push-url="false"
+                onclick="this.parentElement.querySelectorAll('button').forEach(b=>{b.classList.remove('text-brand-500','border-brand-500');b.classList.add('text-gray-500','border-transparent')});this.classList.remove('text-gray-500','border-transparent');this.classList.add('text-brand-500','border-brand-500')">
                 {{ tab_label }}
                 {% if tab_count is not none %}<span class="ml-1 text-xs text-gray-400">({{ tab_count }})</span>{% endif %}
             </button>
@@ -266,6 +245,15 @@
             {% include "organizations/_tab_" + active_tab + ".html" %}
         </div>
     </div>
+
+    {% if user.role == 'admin' %}
+    <div class="text-right mt-4">
+        <button hx-post="/organizations/{{ org.id }}/archive" hx-confirm="Are you sure you want to archive this organization?"
+                class="text-xs text-red-400 hover:text-red-600">
+            Archive this organization
+        </button>
+    </div>
+    {% endif %}
 
 </div>
 {% endblock %}

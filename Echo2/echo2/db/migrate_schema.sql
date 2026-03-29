@@ -431,7 +431,7 @@ INSERT INTO reference_data (category, value, label, parent_value, display_order)
     ('lead_stage', 'legal_docs', 'Legal / Docs', 'fundraise', 8),
     ('lead_stage', 'closed', 'Closed', 'fundraise', 9),
     ('lead_stage', 'declined', 'Declined', 'fundraise', 10)
-ON CONFLICT (category, value) DO NOTHING;
+ON CONFLICT (category, value) DO UPDATE SET parent_value = EXCLUDED.parent_value, label = EXCLUDED.label;
 
 -- Add asset_class and product_funds to organizations (for client orgs)
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS asset_class TEXT[];

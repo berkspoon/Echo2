@@ -450,6 +450,113 @@ async def suppress_duplicate(
 
 
 # ---------------------------------------------------------------------------
+# DISTRIBUTION LIST — GET /people/{person_id}/available-dls
+# (Must be before /{person_id} catch-all)
+# ---------------------------------------------------------------------------
+
+@router.get("/{person_id}/available-dls", response_class=HTMLResponse)
+async def available_dls(
+    request: Request,
+    person_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """HTMX: return distribution lists the person can be added to."""
+    sb = get_supabase()
+
+    # Get DLs the person is already a member of
+    existing = (
+        sb.table("distribution_list_members")
+        .select("distribution_list_id")
+        .eq("person_id", str(person_id))
+        .execute()
+    )
+    existing_ids = {str(r["distribution_list_id"]) for r in (existing.data or [])}
+
+    # Get all active DLs
+    dls_resp = (
+        sb.table("distribution_lists")
+        .select("id, list_name, list_type, brand, is_official, owner_id")
+        .eq("is_deleted", False)
+        .order("list_name")
+        .execute()
+    )
+
+    available = []
+    for dl in (dls_resp.data or []):
+        if str(dl["id"]) in existing_ids:
+            continue
+        # Show official DLs and user's own DLs
+        if dl.get("is_official") or str(dl.get("owner_id", "")) == str(current_user.id):
+            available.append(dl)
+
+    if not available:
+        return HTMLResponse('<div class="px-4 py-3 text-sm text-gray-400">No available lists</div>')
+
+    html_parts = []
+    for dl in available:
+        safe_name = dl["list_name"].replace("'", "&#39;").replace('"', "&quot;")
+        badge = "Official" if dl.get("is_official") else "My List"
+        badge_class = "text-brand-600" if dl.get("is_official") else "text-gray-400"
+        html_parts.append(
+            f'<button type="button" '
+            f'hx-post="/people/{person_id}/add-to-dl" '
+            f'hx-vals=\'{{"dl_id": "{dl["id"]}"}}\' '
+            f'hx-confirm="Add to {safe_name}?" '
+            f'class="w-full text-left px-4 py-2 hover:bg-brand-50 text-sm border-b border-gray-100">'
+            f'<div class="font-medium text-gray-900">{dl["list_name"]}</div>'
+            f'<div class="text-xs {badge_class}">{badge}'
+            f'{" — " + (dl.get("brand") or "") if dl.get("brand") else ""}</div>'
+            f'</button>'
+        )
+    return HTMLResponse("\n".join(html_parts))
+
+
+@router.post("/{person_id}/add-to-dl", response_class=HTMLResponse)
+async def add_to_dl(
+    request: Request,
+    person_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Add a person to a distribution list."""
+    require_role(current_user, ["admin", "standard_user", "rfp_team"])
+    sb = get_supabase()
+    form = await request.form()
+    dl_id = (form.get("dl_id") or "").strip()
+
+    if not dl_id:
+        return HTMLResponse('<div class="text-sm text-red-600 p-2">No list specified.</div>')
+
+    # Check person is not DNC
+    person = sb.table("people").select("do_not_contact").eq("id", str(person_id)).maybe_single().execute()
+    if person.data and person.data.get("do_not_contact"):
+        return HTMLResponse('<div class="text-sm text-red-600 p-2">Cannot add — person is Do Not Contact.</div>')
+
+    # Check not already a member
+    existing = (
+        sb.table("distribution_list_members")
+        .select("id")
+        .eq("distribution_list_id", dl_id)
+        .eq("person_id", str(person_id))
+        .maybe_single()
+        .execute()
+    )
+    if existing.data:
+        return HTMLResponse('<div class="text-sm text-yellow-600 p-2">Already a member of this list.</div>')
+
+    # Insert membership
+    sb.table("distribution_list_members").insert({
+        "distribution_list_id": dl_id,
+        "person_id": str(person_id),
+        "is_manual": True,
+    }).execute()
+
+    return HTMLResponse(
+        content="",
+        headers={"HX-Redirect": f"/people/{person_id}?tab=distribution_lists"}
+    )
+
+
+# ---------------------------------------------------------------------------
 # DETAIL — GET /people/{person_id}
 # ---------------------------------------------------------------------------
 
@@ -871,109 +978,3 @@ async def archive_person(
     if request.headers.get("HX-Request"):
         return HTMLResponse('<p class="text-sm text-green-600">Person archived.</p>')
     return RedirectResponse(url="/people", status_code=303)
-
-
-# ---------------------------------------------------------------------------
-# DISTRIBUTION LIST — GET /people/{person_id}/available-dls
-# ---------------------------------------------------------------------------
-
-@router.get("/{person_id}/available-dls", response_class=HTMLResponse)
-async def available_dls(
-    request: Request,
-    person_id: UUID,
-    current_user: CurrentUser = Depends(get_current_user),
-):
-    """HTMX: return distribution lists the person can be added to."""
-    sb = get_supabase()
-
-    # Get DLs the person is already a member of
-    existing = (
-        sb.table("distribution_list_members")
-        .select("distribution_list_id")
-        .eq("person_id", str(person_id))
-        .execute()
-    )
-    existing_ids = {str(r["distribution_list_id"]) for r in (existing.data or [])}
-
-    # Get all active DLs
-    dls_resp = (
-        sb.table("distribution_lists")
-        .select("id, list_name, list_type, brand, is_official, owner_id")
-        .eq("is_deleted", False)
-        .order("list_name")
-        .execute()
-    )
-
-    available = []
-    for dl in (dls_resp.data or []):
-        if str(dl["id"]) in existing_ids:
-            continue
-        # Show official DLs and user's own DLs
-        if dl.get("is_official") or str(dl.get("owner_id", "")) == str(current_user.id):
-            available.append(dl)
-
-    if not available:
-        return HTMLResponse('<div class="px-4 py-3 text-sm text-gray-400">No available lists</div>')
-
-    html_parts = []
-    for dl in available:
-        safe_name = dl["list_name"].replace("'", "&#39;").replace('"', "&quot;")
-        badge = "Official" if dl.get("is_official") else "My List"
-        badge_class = "text-brand-600" if dl.get("is_official") else "text-gray-400"
-        html_parts.append(
-            f'<button type="button" '
-            f'hx-post="/people/{person_id}/add-to-dl" '
-            f'hx-vals=\'{{"dl_id": "{dl["id"]}"}}\' '
-            f'hx-confirm="Add to {safe_name}?" '
-            f'class="w-full text-left px-4 py-2 hover:bg-brand-50 text-sm border-b border-gray-100">'
-            f'<div class="font-medium text-gray-900">{dl["list_name"]}</div>'
-            f'<div class="text-xs {badge_class}">{badge}'
-            f'{" — " + (dl.get("brand") or "") if dl.get("brand") else ""}</div>'
-            f'</button>'
-        )
-    return HTMLResponse("\n".join(html_parts))
-
-
-@router.post("/{person_id}/add-to-dl", response_class=HTMLResponse)
-async def add_to_dl(
-    request: Request,
-    person_id: UUID,
-    current_user: CurrentUser = Depends(get_current_user),
-):
-    """Add a person to a distribution list."""
-    require_role(current_user, ["admin", "standard_user", "rfp_team"])
-    sb = get_supabase()
-    form = await request.form()
-    dl_id = (form.get("dl_id") or "").strip()
-
-    if not dl_id:
-        return HTMLResponse('<div class="text-sm text-red-600 p-2">No list specified.</div>')
-
-    # Check person is not DNC
-    person = sb.table("people").select("do_not_contact").eq("id", str(person_id)).maybe_single().execute()
-    if person.data and person.data.get("do_not_contact"):
-        return HTMLResponse('<div class="text-sm text-red-600 p-2">Cannot add — person is Do Not Contact.</div>')
-
-    # Check not already a member
-    existing = (
-        sb.table("distribution_list_members")
-        .select("id")
-        .eq("distribution_list_id", dl_id)
-        .eq("person_id", str(person_id))
-        .maybe_single()
-        .execute()
-    )
-    if existing.data:
-        return HTMLResponse('<div class="text-sm text-yellow-600 p-2">Already a member of this list.</div>')
-
-    # Insert membership
-    sb.table("distribution_list_members").insert({
-        "distribution_list_id": dl_id,
-        "person_id": str(person_id),
-        "is_manual": True,
-    }).execute()
-
-    return HTMLResponse(
-        content="",
-        headers={"HX-Redirect": f"/people/{person_id}?tab=distribution_lists"}
-    )

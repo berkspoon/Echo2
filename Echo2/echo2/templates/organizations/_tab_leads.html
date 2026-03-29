@@ -1,4 +1,11 @@
 <!-- Leads tab partial -->
+<div class="flex items-center justify-between mb-4">
+    <h3 class="text-sm font-medium text-gray-500">Leads</h3>
+    <a href="/leads/new?org={{ org.id }}"
+       class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600">
+        + New Lead
+    </a>
+</div>
 {% if leads %}
 <table class="min-w-full divide-y divide-gray-200">
     <thead class="bg-gray-50">

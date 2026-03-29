@@ -43,38 +43,12 @@
                     {% endif %}
                     {% endfor %}
                 </div>
-                <div class="flex gap-2 flex-wrap">
-                    <a href="/activities/new?person={{ person.id }}"
-                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
-                        + Activity
-                    </a>
-                    {% if not person.do_not_contact %}
-                    <div x-data="{ open: false }" class="relative">
-                        <button @click="open = !open" type="button"
-                                class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
-                            Add to DL
-                            <svg class="ml-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                        </button>
-                        <div x-show="open" @click.away="open = false" x-cloak
-                             class="absolute right-0 mt-1 w-72 bg-white border border-gray-200 rounded-md shadow-lg z-20 max-h-60 overflow-auto"
-                             hx-get="/people/{{ person.id }}/available-dls"
-                             hx-trigger="intersect once"
-                             hx-swap="innerHTML">
-                            <p class="p-3 text-sm text-gray-400">Loading lists...</p>
-                        </div>
-                    </div>
-                    {% endif %}
+                <div class="flex gap-2">
                     <a href="/people/{{ person.id }}/edit"
                        class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm">
                         <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                         Edit
                     </a>
-                    {% if user.role == 'admin' %}
-                    <button hx-post="/people/{{ person.id }}/archive" hx-confirm="Are you sure you want to archive this person?"
-                            class="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 shadow-sm">
-                        Archive
-                    </button>
-                    {% endif %}
                 </div>
             </div>
 
@@ -142,7 +116,8 @@
                 {% if active_tab == tab_id %}text-brand-500 border-brand-500{% else %}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{% endif %}"
                 hx-get="/people/{{ person.id }}?tab={{ tab_id }}"
                 hx-target="#person-tab-content"
-                hx-push-url="false">
+                hx-push-url="false"
+                onclick="this.parentElement.querySelectorAll('button').forEach(b=>{b.classList.remove('text-brand-500','border-brand-500');b.classList.add('text-gray-500','border-transparent')});this.classList.remove('text-gray-500','border-transparent');this.classList.add('text-brand-500','border-brand-500')">
                 {{ tab_label }}
                 {% if tab_count is not none %}<span class="ml-1 text-xs text-gray-400">({{ tab_count }})</span>{% endif %}
             </button>
@@ -152,6 +127,15 @@
             {% include "people/_tab_" + active_tab + ".html" %}
         </div>
     </div>
+
+    {% if user.role == 'admin' %}
+    <div class="text-right mt-4">
+        <button hx-post="/people/{{ person.id }}/archive" hx-confirm="Are you sure you want to archive this person?"
+                class="text-xs text-red-400 hover:text-red-600">
+            Archive this person
+        </button>
+    </div>
+    {% endif %}
 
 </div>
 {% endblock %}
