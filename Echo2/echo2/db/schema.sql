@@ -429,6 +429,21 @@ CREATE INDEX idx_apl_activity ON activity_people_links (activity_id);
 CREATE INDEX idx_apl_person ON activity_people_links (person_id);
 
 -- =============================================================================
+-- ACTIVITY <-> LEAD LINKS
+-- =============================================================================
+
+CREATE TABLE activity_lead_links (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    lead_id     UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(activity_id, lead_id)
+);
+
+CREATE INDEX idx_all_activity ON activity_lead_links (activity_id);
+CREATE INDEX idx_all_lead ON activity_lead_links (lead_id);
+
+-- =============================================================================
 -- LEADS (Advisory Pipeline)
 -- =============================================================================
 

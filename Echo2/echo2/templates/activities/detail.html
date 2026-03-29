@@ -137,6 +137,34 @@
         </div>
     </div>
 
+    <!-- Linked Leads -->
+    {% if linked_leads %}
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+                Linked Leads
+                <span class="ml-1 text-xs text-gray-400 font-normal">({{ linked_leads | length }})</span>
+            </h3>
+        </div>
+        <div class="p-6">
+            <ul class="space-y-2">
+                {% for lead in linked_leads %}
+                <li class="flex items-center gap-2">
+                    <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    <a href="/leads/{{ lead.id }}" class="text-sm text-brand-600 hover:underline font-medium">{{ lead.org_name }}</a>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                        {{ lead.stage_label }}
+                    </span>
+                    {% if lead.lead_type %}
+                    <span class="text-xs text-gray-400">{{ lead.lead_type | title }}</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Fund Tags -->
     {% if fund_names %}
     <div class="bg-white rounded-lg shadow">

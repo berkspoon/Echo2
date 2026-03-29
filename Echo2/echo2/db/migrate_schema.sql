@@ -390,8 +390,24 @@ CREATE TABLE IF NOT EXISTS view_configurations (
 CREATE INDEX IF NOT EXISTS idx_vc_key ON view_configurations (view_key);
 
 -- =====================================================================
+-- Activity <-> Lead Links
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS activity_lead_links (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    lead_id     UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(activity_id, lead_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_all_activity ON activity_lead_links (activity_id);
+CREATE INDEX IF NOT EXISTS idx_all_lead ON activity_lead_links (lead_id);
+
+-- =====================================================================
 -- Done! Verify with:
 --   SELECT column_name FROM information_schema.columns WHERE table_name = 'people' AND column_name = 'is_deleted';
 --   SELECT count(*) FROM field_definitions;
 --   SELECT column_name FROM information_schema.columns WHERE table_name = 'field_definitions' AND column_name = 'linked_config';
+--   SELECT count(*) FROM information_schema.tables WHERE table_name = 'activity_lead_links';
 -- =====================================================================

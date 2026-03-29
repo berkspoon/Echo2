@@ -51,6 +51,18 @@ def _sync_activity_person_links(activity_id: str, person_ids: list[str]) -> None
             }).execute()
 
 
+def _sync_activity_lead_links(activity_id: str, lead_ids: list[str]) -> None:
+    """Replace all lead links for an activity with the given list."""
+    sb = get_supabase()
+    sb.table("activity_lead_links").delete().eq("activity_id", activity_id).execute()
+    for lead_id in lead_ids:
+        if lead_id:
+            sb.table("activity_lead_links").insert({
+                "activity_id": activity_id,
+                "lead_id": lead_id,
+            }).execute()
+
+
 def _create_follow_up_task(activity: dict, changed_by: UUID, assignee_id: str = None) -> None:
     """Auto-generate a task when follow_up_required is enabled.
 
@@ -133,9 +145,6 @@ async def search_orgs(
     )
     orgs = resp.data or []
 
-    if not orgs:
-        return HTMLResponse('<div class="px-4 py-2 text-sm text-gray-400">No organizations found</div>')
-
     html_parts = []
     for org in orgs:
         location = ", ".join(filter(None, [org.get("city"), org.get("country")]))
@@ -149,6 +158,17 @@ async def search_orgs(
             f'{" — " + location if location else ""}</div>'
             f'</button>'
         )
+
+    # Always add "Add New Organization" option at bottom
+    safe_q = q.replace("'", "&#39;").replace('"', "&quot;")
+    html_parts.append(
+        f'<button type="button" '
+        f'class="w-full text-left px-4 py-2 hover:bg-green-50 text-sm border-t border-gray-100" '
+        f"onclick=\"showInlineOrgForm('{safe_q}')\">"
+        f'<div class="font-medium text-green-700">+ Add New Organization</div>'
+        f'<div class="text-xs text-gray-400">Create &ldquo;{q}&rdquo; as a new organization</div>'
+        f'</button>'
+    )
     return HTMLResponse("\n".join(html_parts))
 
 
@@ -178,9 +198,6 @@ async def search_people(
     )
     people = resp.data or []
 
-    if not people:
-        return HTMLResponse('<div class="px-4 py-2 text-sm text-gray-400">No people found</div>')
-
     html_parts = []
     for p in people:
         safe_name = f"{p['first_name']} {p['last_name']}".replace("'", "&#39;").replace('"', "&quot;")
@@ -193,6 +210,17 @@ async def search_people(
             f'{" — " + p["email"] if p.get("email") else ""}</div>'
             f'</button>'
         )
+
+    # Always add "Add New Contact" option at bottom
+    safe_q = q.replace("'", "&#39;").replace('"', "&quot;")
+    html_parts.append(
+        f'<button type="button" '
+        f'class="w-full text-left px-4 py-2 hover:bg-green-50 text-sm border-t border-gray-100" '
+        f"onclick=\"showInlinePersonForm('{safe_q}')\">"
+        f'<div class="font-medium text-green-700">+ Add New Contact</div>'
+        f'<div class="text-xs text-gray-400">Create &ldquo;{q}&rdquo; as a new person</div>'
+        f'</button>'
+    )
     return HTMLResponse("\n".join(html_parts))
 
 
@@ -331,6 +359,169 @@ async def get_subtypes(
     for st in subtypes:
         html += f'<option value="{st["value"]}">{st["label"]}</option>'
     return HTMLResponse(html)
+
+
+# ---------------------------------------------------------------------------
+# QUICK-CREATE ORG — POST /activities/quick-create-org
+# ---------------------------------------------------------------------------
+
+@router.post("/quick-create-org", response_class=HTMLResponse)
+async def quick_create_org(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Create a new organization inline from the activity form."""
+    require_role(current_user, ["admin", "standard_user", "rfp_team"])
+
+    form = await request.form()
+    company_name = (form.get("inline_company_name") or "").strip()
+    relationship_type = (form.get("inline_relationship_type") or "").strip()
+    organization_type = (form.get("inline_organization_type") or "").strip()
+
+    if not company_name or not relationship_type or not organization_type:
+        return HTMLResponse(
+            '<div class="text-sm text-red-600 p-2">All fields are required.</div>'
+        )
+
+    sb = get_supabase()
+    resp = sb.table("organizations").insert({
+        "company_name": company_name,
+        "relationship_type": relationship_type,
+        "organization_type": organization_type,
+        "created_by": str(current_user.id),
+    }).execute()
+
+    if resp.data:
+        org = resp.data[0]
+        log_field_change("organization", str(org["id"]), "_created", None, "quick-created from activity form", current_user.id)
+        safe_name = company_name.replace("'", "\\'").replace('"', '\\"')
+        return HTMLResponse(
+            f'<script>addOrg("{org["id"]}", "{safe_name}"); hideInlineOrgForm();</script>'
+            f'<div class="text-sm text-green-600 p-2">Created &ldquo;{company_name}&rdquo;</div>'
+        )
+
+    return HTMLResponse('<div class="text-sm text-red-600 p-2">Failed to create organization.</div>')
+
+
+# ---------------------------------------------------------------------------
+# QUICK-CREATE PERSON — POST /activities/quick-create-person
+# ---------------------------------------------------------------------------
+
+@router.post("/quick-create-person", response_class=HTMLResponse)
+async def quick_create_person(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Create a new person inline from the activity form."""
+    require_role(current_user, ["admin", "standard_user", "rfp_team"])
+
+    form = await request.form()
+    first_name = (form.get("inline_first_name") or "").strip()
+    last_name = (form.get("inline_last_name") or "").strip()
+    primary_org_id = (form.get("inline_primary_organization_id") or "").strip()
+
+    if not first_name or not last_name or not primary_org_id:
+        return HTMLResponse(
+            '<div class="text-sm text-red-600 p-2">First name, last name, and primary organization are required.</div>'
+        )
+
+    sb = get_supabase()
+    resp = sb.table("people").insert({
+        "first_name": first_name,
+        "last_name": last_name,
+        "coverage_owner": str(current_user.id),
+        "created_by": str(current_user.id),
+    }).execute()
+
+    if resp.data:
+        person = resp.data[0]
+        # Create primary org link
+        sb.table("person_organization_links").insert({
+            "person_id": str(person["id"]),
+            "organization_id": primary_org_id,
+            "link_type": "primary",
+        }).execute()
+        log_field_change("person", str(person["id"]), "_created", None, "quick-created from activity form", current_user.id)
+        display_name = f"{first_name} {last_name}".replace("'", "\\'").replace('"', '\\"')
+        return HTMLResponse(
+            f'<script>addPerson("{person["id"]}", "{display_name}"); hideInlinePersonForm();</script>'
+            f'<div class="text-sm text-green-600 p-2">Created &ldquo;{first_name} {last_name}&rdquo;</div>'
+        )
+
+    return HTMLResponse('<div class="text-sm text-red-600 p-2">Failed to create person.</div>')
+
+
+# ---------------------------------------------------------------------------
+# LEADS FOR ORG (HTMX) — GET /activities/leads-for-org
+# ---------------------------------------------------------------------------
+
+INACTIVE_LEAD_STAGES = [
+    "won", "lost_dropped_out", "lost_selected_other", "lost_nobody_hired",
+    "closed", "declined",
+]
+
+@router.get("/leads-for-org", response_class=HTMLResponse)
+async def leads_for_org(
+    request: Request,
+    org_id: str = Query(""),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """HTMX endpoint: return open leads for a given org as checkboxes."""
+    if not org_id:
+        return HTMLResponse("")
+
+    sb = get_supabase()
+
+    # Get org name
+    org_resp = sb.table("organizations").select("company_name").eq("id", org_id).maybe_single().execute()
+    org_name = org_resp.data["company_name"] if org_resp.data else "Organization"
+
+    # Get open (non-terminal) leads for this org
+    leads_resp = (
+        sb.table("leads")
+        .select("id, rating, lead_type, service_type, summary, aksia_owner_id")
+        .eq("organization_id", org_id)
+        .eq("is_deleted", False)
+        .execute()
+    )
+    leads = [l for l in (leads_resp.data or []) if l.get("rating") not in INACTIVE_LEAD_STAGES]
+
+    if not leads:
+        return HTMLResponse("")
+
+    # Resolve owner names
+    owner_ids = list({l["aksia_owner_id"] for l in leads if l.get("aksia_owner_id")})
+    owner_map = {}
+    if owner_ids:
+        owners_resp = sb.table("users").select("id, display_name").in_("id", owner_ids).execute()
+        owner_map = {str(u["id"]): u["display_name"] for u in (owners_resp.data or [])}
+
+    # Stage labels
+    stage_labels = {r["value"]: r["label"] for r in get_reference_data("lead_stage")}
+
+    html_parts = [
+        f'<div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">'
+        f'Open Leads at {org_name}</div>'
+    ]
+    for lead in leads:
+        stage = stage_labels.get(lead.get("rating"), (lead.get("rating") or "").replace("_", " ").title())
+        owner = owner_map.get(str(lead.get("aksia_owner_id", "")), "")
+        lead_type = (lead.get("lead_type") or "advisory").title()
+        summary = lead.get("summary") or lead.get("service_type") or ""
+        if summary:
+            summary = summary[:60].replace("_", " ").title()
+        subtitle = " | ".join(filter(None, [lead_type, stage, owner]))
+        html_parts.append(
+            f'<label class="flex items-center gap-2 px-3 py-2 rounded-md bg-purple-50 hover:bg-purple-100 mb-1 cursor-pointer">'
+            f'<input type="checkbox" name="linked_lead_ids" value="{lead["id"]}" '
+            f'class="h-4 w-4 rounded border-gray-300 text-purple-500 focus:ring-purple-500">'
+            f'<div>'
+            f'<span class="text-sm font-medium text-gray-900">{summary or org_name}</span>'
+            f'<div class="text-xs text-gray-500">{subtitle}</div>'
+            f'</div>'
+            f'</label>'
+        )
+    return HTMLResponse("\n".join(html_parts))
 
 
 # ---------------------------------------------------------------------------
@@ -487,10 +678,13 @@ async def new_activity_form(
         "activity": None,
         "pre_orgs": pre_orgs,
         "pre_people": pre_people,
+        "pre_leads": [],
         "activity_types": get_reference_data("activity_type"),
         "activity_subtypes": [],
         "users": users_list,
         "funds": funds_resp.data or [],
+        "relationship_types": get_reference_data("relationship_type"),
+        "organization_types": get_reference_data("organization_type"),
         "record": form_ctx["record"],
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
@@ -558,6 +752,34 @@ async def get_activity(
         r["person"] for r in (people_links_resp.data or []) if r.get("person")
     ]
 
+    # Linked leads
+    lead_links_resp = (
+        sb.table("activity_lead_links")
+        .select("lead_id")
+        .eq("activity_id", str(activity_id))
+        .execute()
+    )
+    linked_leads = []
+    lead_ids = [r["lead_id"] for r in (lead_links_resp.data or [])]
+    if lead_ids:
+        leads_resp = (
+            sb.table("leads")
+            .select("id, rating, lead_type, organization_id, summary, service_type")
+            .in_("id", lead_ids)
+            .eq("is_deleted", False)
+            .execute()
+        )
+        stage_labels = {r["value"]: r["label"] for r in get_reference_data("lead_stage")}
+        org_ids_for_leads = list({l["organization_id"] for l in (leads_resp.data or []) if l.get("organization_id")})
+        org_map = {}
+        if org_ids_for_leads:
+            orgs_resp = sb.table("organizations").select("id, company_name").in_("id", org_ids_for_leads).execute()
+            org_map = {str(o["id"]): o["company_name"] for o in (orgs_resp.data or [])}
+        for lead in (leads_resp.data or []):
+            lead["org_name"] = org_map.get(str(lead.get("organization_id", "")), "")
+            lead["stage_label"] = stage_labels.get(lead.get("rating"), (lead.get("rating") or "").replace("_", " ").title())
+            linked_leads.append(lead)
+
     # Fund tag names
     fund_names = []
     if activity.get("fund_tags"):
@@ -585,6 +807,7 @@ async def get_activity(
         "author_name": author_name,
         "linked_orgs": linked_orgs,
         "linked_people": linked_people,
+        "linked_leads": linked_leads,
         "fund_names": fund_names,
         "related_tasks": related_tasks,
     }
@@ -611,11 +834,13 @@ async def create_activity(
     field_defs = enrich_field_definitions(field_defs)
     activity_data = parse_form_data("activity", form, field_defs)
 
-    # Linked orgs and people from form (entity-specific, not in field_defs)
+    # Linked orgs, people, and leads from form (entity-specific, not in field_defs)
     org_ids = form.getlist("linked_org_ids") if hasattr(form, "getlist") else []
     org_ids = [oid for oid in org_ids if oid]
     person_ids = form.getlist("linked_person_ids") if hasattr(form, "getlist") else []
     person_ids = [pid for pid in person_ids if pid]
+    lead_ids = form.getlist("linked_lead_ids") if hasattr(form, "getlist") else []
+    lead_ids = [lid for lid in lead_ids if lid]
 
     # Dynamic validation from field_defs
     errors = validate_form_data("activity", activity_data, field_defs)
@@ -656,11 +881,14 @@ async def create_activity(
             "activity": activity_data,
             "pre_orgs": pre_orgs,
             "pre_people": pre_people,
+            "pre_leads": [],
             "errors": errors,
             "activity_types": get_reference_data("activity_type"),
             "activity_subtypes": subtypes,
             "users": users_list,
             "funds": funds_resp.data or [],
+            "relationship_types": get_reference_data("relationship_type"),
+            "organization_types": get_reference_data("organization_type"),
             "record": form_ctx["record"],
             "sections": form_ctx["sections"],
             "field_defs": form_ctx["field_defs"],
@@ -685,9 +913,10 @@ async def create_activity(
         if eav_data:
             save_custom_values("activity", str(activity_id), eav_data, field_defs)
 
-        # Create org and person links
+        # Create org, person, and lead links
         _sync_activity_org_links(str(activity_id), org_ids)
         _sync_activity_person_links(str(activity_id), person_ids)
+        _sync_activity_lead_links(str(activity_id), lead_ids)
 
         # Audit log
         log_field_change("activity", str(activity_id), "_created", None, "record created", current_user.id)
@@ -753,6 +982,40 @@ async def edit_activity_form(
             p["display_name"] = f"{p['first_name']} {p['last_name']}"
             pre_people.append(p)
 
+    # Linked leads
+    lead_links_resp = (
+        sb.table("activity_lead_links")
+        .select("lead_id")
+        .eq("activity_id", str(activity_id))
+        .execute()
+    )
+    pre_lead_ids = [r["lead_id"] for r in (lead_links_resp.data or [])]
+    pre_leads = []
+    if pre_lead_ids:
+        leads_resp = (
+            sb.table("leads")
+            .select("id, rating, lead_type, organization_id, summary, service_type, aksia_owner_id")
+            .in_("id", pre_lead_ids)
+            .eq("is_deleted", False)
+            .execute()
+        )
+        stage_labels = {r["value"]: r["label"] for r in get_reference_data("lead_stage")}
+        org_ids_for_leads = list({l["organization_id"] for l in (leads_resp.data or []) if l.get("organization_id")})
+        org_map = {}
+        if org_ids_for_leads:
+            orgs_resp = sb.table("organizations").select("id, company_name").in_("id", org_ids_for_leads).execute()
+            org_map = {str(o["id"]): o["company_name"] for o in (orgs_resp.data or [])}
+        owner_ids = list({l["aksia_owner_id"] for l in (leads_resp.data or []) if l.get("aksia_owner_id")})
+        owner_map = {}
+        if owner_ids:
+            owners_resp = sb.table("users").select("id, display_name").in_("id", owner_ids).execute()
+            owner_map = {str(u["id"]): u["display_name"] for u in (owners_resp.data or [])}
+        for lead in (leads_resp.data or []):
+            lead["org_name"] = org_map.get(str(lead.get("organization_id", "")), "")
+            lead["stage_label"] = stage_labels.get(lead.get("rating"), (lead.get("rating") or "").replace("_", " ").title())
+            lead["owner_name"] = owner_map.get(str(lead.get("aksia_owner_id", "")), "")
+            pre_leads.append(lead)
+
     users_resp = sb.table("users").select("id, display_name").eq("is_active", True).order("display_name").execute()
     users_list = users_resp.data or []
     funds_resp = sb.table("funds").select("id, fund_name, ticker").eq("is_active", True).order("fund_name").execute()
@@ -768,10 +1031,13 @@ async def edit_activity_form(
         "activity": activity,
         "pre_orgs": pre_orgs,
         "pre_people": pre_people,
+        "pre_leads": pre_leads,
         "activity_types": get_reference_data("activity_type"),
         "activity_subtypes": subtypes,
         "users": users_list,
         "funds": funds_resp.data or [],
+        "relationship_types": get_reference_data("relationship_type"),
+        "organization_types": get_reference_data("organization_type"),
         "record": form_ctx["record"],
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
@@ -814,11 +1080,13 @@ async def update_activity(
     field_defs = enrich_field_definitions(field_defs)
     activity_data = parse_form_data("activity", form, field_defs)
 
-    # Linked orgs and people (entity-specific, not in field_defs)
+    # Linked orgs, people, and leads (entity-specific, not in field_defs)
     org_ids = form.getlist("linked_org_ids") if hasattr(form, "getlist") else []
     org_ids = [oid for oid in org_ids if oid]
     person_ids = form.getlist("linked_person_ids") if hasattr(form, "getlist") else []
     person_ids = [pid for pid in person_ids if pid]
+    lead_ids = form.getlist("linked_lead_ids") if hasattr(form, "getlist") else []
+    lead_ids = [lid for lid in lead_ids if lid]
 
     # Dynamic validation from field_defs
     errors = validate_form_data("activity", activity_data, field_defs, record=old_activity)
@@ -857,11 +1125,14 @@ async def update_activity(
             "activity": {**old_activity, **activity_data},
             "pre_orgs": pre_orgs,
             "pre_people": pre_people,
+            "pre_leads": [],
             "errors": errors,
             "activity_types": get_reference_data("activity_type"),
             "activity_subtypes": subtypes,
             "users": users_list,
             "funds": funds_resp.data or [],
+            "relationship_types": get_reference_data("relationship_type"),
+            "organization_types": get_reference_data("organization_type"),
             "record": form_ctx["record"],
             "sections": form_ctx["sections"],
             "field_defs": form_ctx["field_defs"],
@@ -880,6 +1151,7 @@ async def update_activity(
     # Sync links
     _sync_activity_org_links(str(activity_id), org_ids)
     _sync_activity_person_links(str(activity_id), person_ids)
+    _sync_activity_lead_links(str(activity_id), lead_ids)
 
     # Follow-up task: if follow_up was just toggled ON, create task
     was_follow_up = old_activity.get("follow_up_required", False)

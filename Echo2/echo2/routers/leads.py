@@ -702,6 +702,26 @@ async def get_lead(
     )
     related_tasks = tasks_resp.data or []
 
+    # Linked activities (via activity_lead_links)
+    activity_links_resp = (
+        sb.table("activity_lead_links")
+        .select("activity_id")
+        .eq("lead_id", str(lead_id))
+        .execute()
+    )
+    linked_activities = []
+    act_ids = [r["activity_id"] for r in (activity_links_resp.data or [])]
+    if act_ids:
+        acts_resp = (
+            sb.table("activities")
+            .select("id, title, effective_date, activity_type, subtype, details")
+            .in_("id", act_ids)
+            .eq("is_deleted", False)
+            .order("effective_date", desc=True)
+            .execute()
+        )
+        linked_activities = acts_resp.data or []
+
     # Reference data for labels — scoped stages
     all_stages = get_reference_data("lead_stage")
     if lead_type in ("fundraise", "product"):
@@ -730,6 +750,7 @@ async def get_lead(
         "fund_info": fund_info,
         "contract": contract,
         "related_tasks": related_tasks,
+        "linked_activities": linked_activities,
         "stage_labels": stage_labels,
         "decline_labels": decline_labels,
         "ac_labels": ac_labels,

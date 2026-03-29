@@ -107,6 +107,66 @@
                    autocomplete="off">
             <div id="org-search-results" class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"></div>
         </div>
+
+        <!-- Inline quick-create org form (hidden by default) -->
+        <div id="inline-org-form" class="hidden mt-4 border-l-4 border-green-400 bg-green-50 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-semibold text-green-800">Quick-Create Organization</h4>
+                <button type="button" onclick="hideInlineOrgForm()" class="text-gray-400 hover:text-gray-600 text-xs">Cancel</button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Company Name <span class="text-red-500">*</span></label>
+                    <input type="text" id="inline_company_name" name="inline_company_name"
+                           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Relationship Type <span class="text-red-500">*</span></label>
+                    <select id="inline_relationship_type" name="inline_relationship_type"
+                            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500">
+                        <option value="">-- Select --</option>
+                        {% for rt in relationship_types %}
+                        <option value="{{ rt.value }}">{{ rt.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Organization Type <span class="text-red-500">*</span></label>
+                    <select id="inline_organization_type" name="inline_organization_type"
+                            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500">
+                        <option value="">-- Select --</option>
+                        {% for ot in organization_types %}
+                        <option value="{{ ot.value }}">{{ ot.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div id="inline-org-form-result" class="mt-2"></div>
+            <button type="button" onclick="submitInlineOrg()"
+                    class="mt-3 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 shadow-sm">
+                Create &amp; Link
+            </button>
+        </div>
+    </div>
+
+    <!-- Associated Leads (auto-populated from linked orgs) -->
+    <div class="bg-white rounded-lg shadow p-6" id="lead-association-section">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Associated Leads</h3>
+        <div id="lead-suggestions">
+            {% for lead in pre_leads %}
+            <label class="flex items-center gap-2 px-3 py-2 rounded-md bg-purple-50 hover:bg-purple-100 mb-1 cursor-pointer">
+                <input type="checkbox" name="linked_lead_ids" value="{{ lead.id }}" checked
+                       class="h-4 w-4 rounded border-gray-300 text-purple-500 focus:ring-purple-500">
+                <div>
+                    <span class="text-sm font-medium text-gray-900">{{ lead.org_name }} — {{ lead.summary or lead.service_type or '' }}</span>
+                    <div class="text-xs text-gray-500">{{ (lead.lead_type or 'advisory') | title }} | {{ lead.stage_label }} | {{ lead.owner_name }}</div>
+                </div>
+            </label>
+            {% endfor %}
+        </div>
+        <p class="text-xs text-gray-400 mt-2" id="lead-association-hint">
+            Open leads for linked organizations will appear here automatically.
+        </p>
     </div>
 
     <!-- Linked People (multi-select autocomplete) -->
@@ -141,6 +201,38 @@
 
         <!-- Quick-add suggestions from linked orgs -->
         <div id="org-people-suggestions" class="mt-3"></div>
+
+        <!-- Inline quick-create person form (hidden by default) -->
+        <div id="inline-person-form" class="hidden mt-4 border-l-4 border-green-400 bg-green-50 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-semibold text-green-800">Quick-Create Contact</h4>
+                <button type="button" onclick="hideInlinePersonForm()" class="text-gray-400 hover:text-gray-600 text-xs">Cancel</button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">First Name <span class="text-red-500">*</span></label>
+                    <input type="text" id="inline_first_name" name="inline_first_name"
+                           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Last Name <span class="text-red-500">*</span></label>
+                    <input type="text" id="inline_last_name" name="inline_last_name"
+                           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Primary Organization <span class="text-red-500">*</span></label>
+                    <select id="inline_primary_organization_id" name="inline_primary_organization_id"
+                            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500">
+                        <option value="">-- Select from linked orgs --</option>
+                    </select>
+                </div>
+            </div>
+            <div id="inline-person-form-result" class="mt-2"></div>
+            <button type="button" onclick="submitInlinePerson()"
+                    class="mt-3 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 shadow-sm">
+                Create &amp; Link
+            </button>
+        </div>
     </div>
 
     <!-- Activity Details -->
@@ -268,13 +360,13 @@
 <script>
 /* --- Org multi-select autocomplete --- */
 function addOrg(orgId, orgName) {
-    // Check if already selected
     if (document.querySelector(`.org-chip[data-org-id="${orgId}"]`)) return;
 
     const container = document.getElementById('selected-orgs');
     const chip = document.createElement('div');
     chip.className = 'org-chip inline-flex items-center gap-1 bg-brand-50 rounded-md px-3 py-1.5';
     chip.dataset.orgId = orgId;
+    chip.dataset.orgName = orgName;
     chip.innerHTML = `
         <input type="hidden" name="linked_org_ids" value="${orgId}">
         <span class="text-sm font-medium text-brand-700">${orgName}</span>
@@ -284,17 +376,17 @@ function addOrg(orgId, orgName) {
     `;
     container.appendChild(chip);
 
-    // Clear search
     document.getElementById('org-search-input').value = '';
     document.getElementById('org-search-results').innerHTML = '';
 
-    // Load people at this org as quick-add suggestions
     loadOrgPeopleSuggestions();
+    loadLeadSuggestions();
 }
 
 function removeOrg(btn) {
     btn.closest('.org-chip').remove();
     loadOrgPeopleSuggestions();
+    loadLeadSuggestions();
 }
 
 function loadOrgPeopleSuggestions() {
@@ -304,10 +396,25 @@ function loadOrgPeopleSuggestions() {
         suggestionsDiv.innerHTML = '';
         return;
     }
-    // Load suggestions for the most recently added org (last chip)
     const lastOrg = orgChips[orgChips.length - 1];
     const orgId = lastOrg.dataset.orgId;
     htmx.ajax('GET', '/activities/org-people?org_id=' + orgId, {target: '#org-people-suggestions', swap: 'innerHTML'});
+}
+
+function loadLeadSuggestions() {
+    const orgChips = document.querySelectorAll('.org-chip');
+    const suggestionsDiv = document.getElementById('lead-suggestions');
+    if (orgChips.length === 0) {
+        suggestionsDiv.innerHTML = '';
+        return;
+    }
+    suggestionsDiv.innerHTML = '';
+    orgChips.forEach(chip => {
+        htmx.ajax('GET', '/activities/leads-for-org?org_id=' + chip.dataset.orgId, {
+            target: '#lead-suggestions',
+            swap: 'beforeend'
+        });
+    });
 }
 
 /* --- Person multi-select autocomplete --- */
@@ -330,7 +437,6 @@ function addPerson(personId, personName) {
     document.getElementById('person-search-input').value = '';
     document.getElementById('person-search-results').innerHTML = '';
 
-    // Auto-add primary org for this person
     fetch('/activities/person-primary-org?person_id=' + personId)
         .then(r => r.json())
         .then(data => {
@@ -345,10 +451,124 @@ function removePerson(btn) {
     btn.closest('.person-chip').remove();
 }
 
+/* --- Inline org quick-create --- */
+function showInlineOrgForm(searchText) {
+    document.getElementById('org-search-results').innerHTML = '';
+    document.getElementById('org-search-input').value = '';
+    const form = document.getElementById('inline-org-form');
+    form.classList.remove('hidden');
+    document.getElementById('inline_company_name').value = searchText || '';
+    document.getElementById('inline-org-form-result').innerHTML = '';
+    document.getElementById('inline_company_name').focus();
+}
+
+function hideInlineOrgForm() {
+    document.getElementById('inline-org-form').classList.add('hidden');
+    document.getElementById('inline_company_name').value = '';
+    document.getElementById('inline_relationship_type').value = '';
+    document.getElementById('inline_organization_type').value = '';
+    document.getElementById('inline-org-form-result').innerHTML = '';
+}
+
+function submitInlineOrg() {
+    const name = document.getElementById('inline_company_name').value.trim();
+    const rel = document.getElementById('inline_relationship_type').value;
+    const orgType = document.getElementById('inline_organization_type').value;
+    if (!name || !rel || !orgType) {
+        document.getElementById('inline-org-form-result').innerHTML =
+            '<div class="text-sm text-red-600">All fields are required.</div>';
+        return;
+    }
+    const formData = new FormData();
+    formData.append('inline_company_name', name);
+    formData.append('inline_relationship_type', rel);
+    formData.append('inline_organization_type', orgType);
+    fetch('/activities/quick-create-org', { method: 'POST', body: formData })
+        .then(r => r.text())
+        .then(html => {
+            document.getElementById('inline-org-form-result').innerHTML = html;
+            // The response contains a <script> tag that calls addOrg() and hideInlineOrgForm()
+            const scripts = document.getElementById('inline-org-form-result').querySelectorAll('script');
+            scripts.forEach(s => eval(s.textContent));
+        })
+        .catch(() => {
+            document.getElementById('inline-org-form-result').innerHTML =
+                '<div class="text-sm text-red-600">Error creating organization.</div>';
+        });
+}
+
+/* --- Inline person quick-create --- */
+function showInlinePersonForm(searchText) {
+    document.getElementById('person-search-results').innerHTML = '';
+    document.getElementById('person-search-input').value = '';
+    const form = document.getElementById('inline-person-form');
+    form.classList.remove('hidden');
+    // Parse search text into first/last name
+    const parts = (searchText || '').trim().split(/\s+/);
+    if (parts.length >= 2) {
+        document.getElementById('inline_first_name').value = parts[0];
+        document.getElementById('inline_last_name').value = parts.slice(1).join(' ');
+    } else if (parts.length === 1) {
+        document.getElementById('inline_first_name').value = '';
+        document.getElementById('inline_last_name').value = parts[0];
+    }
+    // Populate org dropdown from current chips
+    populatePersonOrgDropdown();
+    document.getElementById('inline-person-form-result').innerHTML = '';
+    document.getElementById('inline_first_name').focus();
+}
+
+function hideInlinePersonForm() {
+    document.getElementById('inline-person-form').classList.add('hidden');
+    document.getElementById('inline_first_name').value = '';
+    document.getElementById('inline_last_name').value = '';
+    document.getElementById('inline-person-form-result').innerHTML = '';
+}
+
+function populatePersonOrgDropdown() {
+    const select = document.getElementById('inline_primary_organization_id');
+    select.innerHTML = '<option value="">-- Select from linked orgs --</option>';
+    document.querySelectorAll('.org-chip').forEach(chip => {
+        const opt = document.createElement('option');
+        opt.value = chip.dataset.orgId;
+        opt.textContent = chip.dataset.orgName || chip.querySelector('span').textContent;
+        select.appendChild(opt);
+    });
+    // Auto-select if only one org
+    if (select.options.length === 2) {
+        select.selectedIndex = 1;
+    }
+}
+
+function submitInlinePerson() {
+    const first = document.getElementById('inline_first_name').value.trim();
+    const last = document.getElementById('inline_last_name').value.trim();
+    const orgId = document.getElementById('inline_primary_organization_id').value;
+    if (!first || !last || !orgId) {
+        document.getElementById('inline-person-form-result').innerHTML =
+            '<div class="text-sm text-red-600">First name, last name, and organization are required.</div>';
+        return;
+    }
+    const formData = new FormData();
+    formData.append('inline_first_name', first);
+    formData.append('inline_last_name', last);
+    formData.append('inline_primary_organization_id', orgId);
+    fetch('/activities/quick-create-person', { method: 'POST', body: formData })
+        .then(r => r.text())
+        .then(html => {
+            document.getElementById('inline-person-form-result').innerHTML = html;
+            const scripts = document.getElementById('inline-person-form-result').querySelectorAll('script');
+            scripts.forEach(s => eval(s.textContent));
+        })
+        .catch(() => {
+            document.getElementById('inline-person-form-result').innerHTML =
+                '<div class="text-sm text-red-600">Error creating contact.</div>';
+        });
+}
+
 /* --- Subtype visibility --- */
 function toggleSubtypeField(typeValue) {
     const field = document.getElementById('subtype-field');
-    // Show subtypes for types that have them (meeting, conference, webinar)
     const typesWithSubtypes = ['meeting'];
     if (typesWithSubtypes.includes(typeValue)) {
         field.classList.remove('hidden');

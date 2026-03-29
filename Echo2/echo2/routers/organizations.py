@@ -413,6 +413,39 @@ async def get_organization(
     )
     activities = activities_resp.data or []
 
+    # Enrich activities with linked leads (batch)
+    act_ids = []
+    for item in activities:
+        act = item.get("activity") or item
+        if act.get("id"):
+            act_ids.append(str(act["id"]))
+    if act_ids:
+        from db.helpers import get_reference_data as _get_ref
+        all_lead_links = (
+            sb.table("activity_lead_links")
+            .select("activity_id, lead_id")
+            .in_("activity_id", act_ids)
+            .execute()
+        ).data or []
+        lead_ids_set = list({r["lead_id"] for r in all_lead_links})
+        leads_map = {}
+        if lead_ids_set:
+            leads_detail = (
+                sb.table("leads")
+                .select("id, rating, lead_type")
+                .in_("id", lead_ids_set)
+                .eq("is_deleted", False)
+                .execute()
+            )
+            stage_labels = {r["value"]: r["label"] for r in _get_ref("lead_stage")}
+            leads_map = {str(l["id"]): {**l, "stage_label": stage_labels.get(l.get("rating"), (l.get("rating") or "").replace("_", " ").title())} for l in (leads_detail.data or [])}
+        act_lead_map = {}
+        for r in all_lead_links:
+            act_lead_map.setdefault(str(r["activity_id"]), []).append(leads_map.get(str(r["lead_id"])))
+        for item in activities:
+            act = item.get("activity") or item
+            act["_linked_leads"] = [l for l in act_lead_map.get(str(act.get("id")), []) if l]
+
     # Linked leads
     leads_resp = (
         sb.table("leads")

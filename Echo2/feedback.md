@@ -179,4 +179,20 @@ Mark fixed items with `[x]`.
 - [x] [Distribution Lists] Column selector Apply in filter editor navigates away from filter editor — needs redesign toward filter-builder UX (select criteria to include people) rather than grid-distill approach (severity: high) — **Fixed: Complete rewrite to filter-BUILDER UX. Each row: field dropdown + operator dropdown + value input (type-aware). Live preview count via HTMX. New filter format: `{"filters": [...]}` with backward-compat for old `cf_*` format. `_resolve_dynamic_members` handles both formats.**
 - [x] [Dashboards] Capital raise: default to active leads (exclude closed/declined), sort by raise amount, add lead_type sort. Hot prospects: remove Funds column, add Lead Owner, add owner/stage filters (severity: medium) — **Fixed: Active filter (default excludes closed+declined) added to all capital raise endpoints with Status dropdown. Sort by allocation already correct. Hot prospects: removed Fund(s) column, added Lead Owner (resolved via batch_resolve_users), added client-side JS owner/stage filter dropdowns.**
 
+## Phase 6 — Admin-Configurable View Settings (March 27, 2026)
+
+### Implemented
+- [x] [Admin] View Configurations — new `view_configurations` table + admin UI at /admin/views with visual builders (column, option list, grid picker, DL filter editor). 13 seed configs across dashboards, grids, distribution lists.
+- [x] [Dashboards] Capital raise hot prospects, investor breakdown, and declined tables now driven by admin-configurable column configs. All org + lead fields dynamically available.
+- [x] [Dashboards] Capital raise group-by options and advisory metric selector options now admin-configurable.
+- [x] [Grids] Default visible columns per entity now admin-configurable via view configs. Falls back to hardcoded defaults.
+- [x] [Distribution Lists] Filter builder reads org virtual fields and filterable field types from view config. Added `lookup` operator type for coverage owner filtering.
+- [x] [Admin] View config save validates JSON structure, logs changes to audit_log, supports reset-to-defaults.
+- [x] [Admin] View config cache uses 60s TTL for multi-worker safety.
+
+### Bug Fixes
+- [x] [Dashboards] Capital raise 500 error — missing `{% endfor %}` on investor breakdown and declined column loops in capital_raise.html template.
+- [x] [Admin] View config save button not working — Alpine.js v3 doesn't expose `__x`. Replaced with `x-effect` auto-sync to hidden input.
+- [x] [Dashboards] Org fields on dashboard tables showed raw DB values (e.g. `united_states`). Fixed with reference_data label resolution via `_build_label_map()`.
+
 ## Seed Data Issues
