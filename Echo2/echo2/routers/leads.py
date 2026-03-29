@@ -112,6 +112,10 @@ def _build_lead_data_from_form(form: dict) -> dict:
     lead_type = (form.get("lead_type") or "advisory").strip()
     data["lead_type"] = lead_type
 
+    # Title
+    title = (form.get("title") or "").strip()
+    data["title"] = title if title else None
+
     # Organization (single FK)
     org_id = (form.get("organization_id") or "").strip()
     data["organization_id"] = org_id if org_id else None
@@ -243,6 +247,8 @@ def _validate_lead_fields(data: dict, rating: str) -> list[str]:
     lead_type = data.get("lead_type", "advisory")
 
     # Always required
+    if not data.get("title"):
+        errors.append("Title is required.")
     if not data.get("organization_id"):
         errors.append("Organization is required.")
     if not data.get("aksia_owner_id"):
@@ -393,10 +399,12 @@ def _load_form_context(sb, current_user, lead=None, pre_org=None, errors=None):
 
     # Stages scoped by lead_type via parent_value
     all_stages = get_reference_data("lead_stage")
+    all_advisory_stages = [s for s in all_stages if s.get("parent_value") == "advisory"]
+    all_fundraise_stages = [s for s in all_stages if s.get("parent_value") == "fundraise"]
     if lead_type in ("fundraise", "product"):
-        lead_stages = [s for s in all_stages if s.get("parent_value") == "fundraise"]
+        lead_stages = all_fundraise_stages
     else:
-        lead_stages = [s for s in all_stages if s.get("parent_value") == "advisory"]
+        lead_stages = all_advisory_stages
 
     # Funds for fundraise/product lead types
     funds_resp = sb.table("funds").select("id, fund_name, ticker, brand").eq("is_active", True).order("ticker").execute()
@@ -410,6 +418,8 @@ def _load_form_context(sb, current_user, lead=None, pre_org=None, errors=None):
 
     return {
         "lead_stages": lead_stages,
+        "all_advisory_stages": all_advisory_stages,
+        "all_fundraise_stages": all_fundraise_stages,
         "relationship_types": get_reference_data("lead_relationship_type"),
         "service_types": get_reference_data("service_type"),
         "asset_classes": get_reference_data("asset_class"),

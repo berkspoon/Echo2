@@ -45,7 +45,7 @@ _DEFAULT_COLUMNS: dict[str, list[str]] = {
         "first_name", "last_name", "email", "phone", "job_title",
     ],
     "lead": [
-        "organization_id", "lead_type", "rating", "service_type",
+        "title", "organization_id", "lead_type", "rating", "service_type",
         "aksia_owner_id", "expected_revenue", "expected_yr1_flar", "start_date",
     ],
     "activity": [
@@ -68,7 +68,7 @@ _DEFAULT_COLUMNS: dict[str, list[str]] = {
 _BASE_SELECT: dict[str, str] = {
     "organization": "id, company_name, short_name, relationship_type, organization_type, country, city, aum_mn, rfp_hold, website, created_at",
     "person": "id, first_name, last_name, email, phone, job_title, do_not_contact, coverage_owner, asset_classes_of_interest, created_at",
-    "lead": "id, organization_id, lead_type, rating, service_type, relationship, aksia_owner_id, expected_revenue, expected_yr1_flar, start_date, end_date, summary, fund_id, share_class, target_allocation_mn, soft_circle_mn, probability_pct, created_at, is_deleted",
+    "lead": "id, title, organization_id, lead_type, rating, service_type, relationship, aksia_owner_id, expected_revenue, expected_yr1_flar, start_date, end_date, summary, fund_id, share_class, target_allocation_mn, soft_circle_mn, probability_pct, created_at, is_deleted",
     "activity": "id, title, effective_date, activity_type, subtype, author_id, details, follow_up_required, created_at",
     "contract": "id, organization_id, originating_lead_id, start_date, service_type, asset_classes, client_coverage, actual_revenue, created_at",
     "task": "id, title, status, due_date, assigned_to, source, notes, linked_record_type, linked_record_id, created_by, created_at",

@@ -321,7 +321,7 @@ async def widget_tasks(
         .eq("assigned_to", str(current_user.id))
         .in_("status", ["open", "in_progress"])
         .order("due_date", nullsfirst=False)
-        .limit(10)
+        .limit(5)
         .execute()
     )
     tasks = resp.data or []
@@ -344,21 +344,29 @@ async def widget_leads(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """HTMX: open leads for the current user."""
+    """HTMX: open leads for the current user (top 5 by stage priority then date)."""
     sb = get_supabase()
     # Exclude inactive stages
     inactive = list(LEAD_INACTIVE_STAGES)
     resp = (
         sb.table("leads")
-        .select("id, organization_id, rating, service_type, expected_revenue")
+        .select("id, organization_id, rating, service_type, expected_revenue, start_date")
         .eq("is_deleted", False)
         .eq("aksia_owner_id", str(current_user.id))
         .not_.in_("rating", inactive)
-        .order("expected_revenue", desc=True, nullsfirst=False)
-        .limit(10)
+        .order("start_date", nullsfirst=False)
+        .limit(20)
         .execute()
     )
     leads = resp.data or []
+
+    # Sort by stage priority (focus first, then radar, then exploratory) then earliest date
+    _STAGE_PRIORITY = {"focus": 1, "verbal_mandate": 2, "radar": 3, "exploratory": 4}
+    leads.sort(key=lambda l: (
+        _STAGE_PRIORITY.get(l.get("rating", ""), 99),
+        l.get("start_date") or "9999-12-31",
+    ))
+    leads = leads[:5]
 
     # Batch resolve org names
     org_ids = list({str(l["organization_id"]) for l in leads if l.get("organization_id")})
@@ -542,7 +550,7 @@ async def widget_missing_info(
 @router.get("/personal/widgets/stale-contacts", response_class=HTMLResponse)
 async def widget_stale_contacts(
     request: Request,
-    days: int = Query(90),
+    days: int = Query(180),
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """Widget: people under coverage with no activity in X days."""

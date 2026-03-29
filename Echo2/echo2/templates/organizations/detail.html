@@ -37,7 +37,23 @@
                     {% endif %}
                     <p class="text-sm text-gray-500 mt-1">{{ org.organization_type | replace('_', ' ') | title }}</p>
                 </div>
-                <div class="flex gap-2">
+                <div class="flex gap-2 flex-wrap">
+                    <a href="/people/new?org={{ org.id }}"
+                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                        + Person
+                    </a>
+                    <a href="/activities/new?org={{ org.id }}"
+                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                        + Activity
+                    </a>
+                    <a href="/leads/new?org={{ org.id }}"
+                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                        + Lead
+                    </a>
+                    <a href="/leads/new?org={{ org.id }}&type=fundraise"
+                       class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
+                        + Fundraise Lead
+                    </a>
                     <a href="/organizations/{{ org.id }}/edit"
                        class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm">
                         <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
@@ -90,6 +106,18 @@
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Team Email</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ org.team_distribution_email }}</dd>
+                </div>
+                {% endif %}
+                {% if org.relationship_type == 'client' and org.asset_class %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Asset Class</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ org.asset_class | join(', ') | upper }}</dd>
+                </div>
+                {% endif %}
+                {% if org.product_funds %}
+                <div>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Product Funds</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ org.product_funds | join(', ') | upper }}</dd>
                 </div>
                 {% endif %}
                 <div>

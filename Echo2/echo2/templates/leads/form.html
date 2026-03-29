@@ -76,6 +76,15 @@
                 </div>
             </div>
 
+            <!-- Title -->
+            <div class="md:col-span-2">
+                <label for="title" class="block text-sm font-medium text-gray-700">Title <span class="text-red-500">*</span></label>
+                <input type="text" name="title" id="title" required
+                       value="{{ lead.title if lead and lead.title else '' }}"
+                       placeholder="Brief descriptive title for this lead"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
             <!-- Start Date -->
             <div>
                 <label for="start_date" class="block text-sm font-medium text-gray-700">Start Date <span class="text-red-500">*</span></label>
@@ -90,6 +99,7 @@
                 <select name="rating" id="rating" required
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                         onchange="updateStageVisibility(this.value); updateConditionalFields()">
+                    <option value="">— Select —</option>
                     {% for s in lead_stages %}
                     <option value="{{ s.value }}" {{ 'selected' if lead and lead.rating == s.value else '' }}>{{ s.label }}</option>
                     {% endfor %}
@@ -512,6 +522,7 @@
     </div>
 
 </form>
+{% endblock %}
 
 {% block scripts %}
 <script>
@@ -525,6 +536,18 @@ const ADVISORY_STAGE_ORDER = {
 const ADVISORY_INACTIVE = ['won', 'lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired'];
 const ADVISORY_LOST = ['lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired'];
 
+/* --- Stage data for client-side swapping --- */
+const ADVISORY_STAGES = [
+    {% for s in all_advisory_stages %}
+    {value: "{{ s.value }}", label: "{{ s.label }}"},
+    {% endfor %}
+];
+const FUNDRAISE_STAGES = [
+    {% for s in all_fundraise_stages %}
+    {value: "{{ s.value }}", label: "{{ s.label }}"},
+    {% endfor %}
+];
+
 function toggleLeadType(val) {
     const fr = (val === 'fundraise' || val === 'product');
     document.getElementById('section-fundraise').classList.toggle('hidden', !fr);
@@ -533,6 +556,17 @@ function toggleLeadType(val) {
     document.getElementById('section-verbal').classList.toggle('hidden', fr);
     document.getElementById('section-inactive').classList.toggle('hidden', fr);
     document.getElementById('field-relationship').classList.toggle('hidden', fr);
+
+    // Swap stage dropdown options based on lead type
+    const ratingSelect = document.getElementById('rating');
+    const stages = fr ? FUNDRAISE_STAGES : ADVISORY_STAGES;
+    ratingSelect.innerHTML = '<option value="">— Select —</option>';
+    stages.forEach(function(s) {
+        const opt = document.createElement('option');
+        opt.value = s.value;
+        opt.textContent = s.label;
+        ratingSelect.appendChild(opt);
+    });
 
     // Update decline reason visibility for fundraise
     if (fr) {
@@ -624,5 +658,4 @@ document.addEventListener('DOMContentLoaded', function() {
     updateConditionalFields();
 });
 </script>
-{% endblock %}
 {% endblock %}

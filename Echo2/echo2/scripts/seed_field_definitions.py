@@ -23,6 +23,8 @@ ORGANIZATION_FIELDS = [
     {"field_name": "aum_mn", "display_name": "AUM ($M)", "field_type": "currency", "section_name": "Basic Information", "display_order": 5},
     {"field_name": "website", "display_name": "Website", "field_type": "url", "section_name": "Basic Information", "display_order": 6},
     {"field_name": "team_distribution_email", "display_name": "Team Distribution Email", "field_type": "email", "section_name": "Basic Information", "display_order": 7, "visibility_rules": {"when": "relationship_type", "equals": "client"}},
+    {"field_name": "asset_class", "display_name": "Asset Class", "field_type": "multi_select", "dropdown_category": "org_asset_class", "section_name": "Basic Information", "display_order": 7.5, "visibility_rules": {"when": "relationship_type", "equals": "client"}},
+    {"field_name": "product_funds", "display_name": "Product Funds", "field_type": "multi_select", "dropdown_category": "org_product_fund", "section_name": "Basic Information", "display_order": 7.6, "visibility_rules": {"when": "asset_class", "in": ["product"]}},
     # feedback: [padelsbach] text_list field type for aliases/nicknames
     {"field_name": "nicknames", "display_name": "Nicknames / Aliases", "field_type": "text_list", "section_name": "Basic Information", "display_order": 8, "storage_type": "eav", "is_system": False, "grid_default_visible": False},
     # Address
@@ -71,6 +73,7 @@ PERSON_FIELDS = [
 
 LEAD_FIELDS = [
     # Basic Information (all lead types)
+    {"field_name": "title", "display_name": "Title", "field_type": "text", "is_required": True, "section_name": "Basic Information", "display_order": 0},
     {"field_name": "organization_id", "display_name": "Organization", "field_type": "lookup", "is_required": True, "section_name": "Basic Information", "display_order": 1},
     {"field_name": "lead_type", "display_name": "Lead Type", "field_type": "dropdown", "is_required": True, "dropdown_category": "lead_type", "section_name": "Basic Information", "display_order": 2},
     {"field_name": "rating", "display_name": "Stage", "field_type": "dropdown", "is_required": True, "dropdown_category": "lead_stage", "section_name": "Basic Information", "display_order": 3},

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Lead — {{ org_name }} — Echo 2.0{% endblock %}
-{% block page_title %}Lead Detail{% endblock %}
+{% block title %}{{ lead.title or 'Lead' }} — {{ org_name }} — Echo 2.0{% endblock %}
+{% block page_title %}{{ lead.title or 'Lead Detail' }}{% endblock %}
 
 {% set is_fundraise = lead_type in ('fundraise', 'product') %}
 {% set current_stage = stage_order.get(lead.rating, 1) %}
@@ -14,9 +14,7 @@
             <div class="flex items-start justify-between">
                 <div>
                     <div class="flex items-center gap-3">
-                        <h2 class="text-xl font-bold text-gray-900">
-                            <a href="/organizations/{{ lead.organization_id }}" class="text-brand-600 hover:underline">{{ org_name }}</a>
-                        </h2>
+                        <h2 class="text-xl font-bold text-gray-900">{{ lead.title or 'Untitled Lead' }}</h2>
                         <!-- Lead type badge -->
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
                             {% if lead_type == 'advisory' %}bg-blue-100 text-blue-800
@@ -47,6 +45,9 @@
                             {{ stage_labels.get(lead.rating, lead.rating | replace('_', ' ') | title) }}
                         </span>
                     </div>
+                    <p class="mt-1 text-sm text-gray-500">
+                        <a href="/organizations/{{ lead.organization_id }}" class="text-brand-600 hover:underline">{{ org_name }}</a>
+                    </p>
                     {% if lead.summary %}
                     <p class="mt-1 text-sm text-gray-500">{{ lead.summary }}</p>
                     {% endif %}

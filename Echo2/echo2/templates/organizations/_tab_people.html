@@ -9,6 +9,7 @@
             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Link Type</th>
             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Since</th>
             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
         </tr>
     </thead>
     <tbody class="divide-y divide-gray-200">
@@ -35,6 +36,18 @@
             <td class="px-4 py-2 text-sm">
                 {% if p.do_not_contact %}
                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Do Not Contact</span>
+                {% endif %}
+            </td>
+            <td class="px-4 py-2 text-sm text-right">
+                {% if link.link_type != 'former' %}
+                <button hx-post="/organizations/{{ org.id }}/mark-former"
+                        hx-vals='{"person_id": "{{ p.id }}"}'
+                        hx-confirm="Mark {{ p.first_name }} {{ p.last_name }} as former employee at {{ org.company_name }}? The effective date will be set to today."
+                        hx-target="#org-tab-content"
+                        hx-swap="innerHTML"
+                        class="text-yellow-600 hover:text-yellow-800 text-xs font-medium whitespace-nowrap">
+                    Mark as Former
+                </button>
                 {% endif %}
             </td>
         </tr>

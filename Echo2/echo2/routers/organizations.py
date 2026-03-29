@@ -229,6 +229,8 @@ async def new_organization_form(
         "relationship_types": get_reference_data("relationship_type"),
         "organization_types": get_reference_data("organization_type"),
         "countries": get_reference_data("country"),
+        "org_asset_classes": get_reference_data("org_asset_class"),
+        "org_product_funds": get_reference_data("org_product_fund"),
         "record": form_ctx["record"],
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
@@ -449,13 +451,31 @@ async def get_organization(
     # Linked leads
     leads_resp = (
         sb.table("leads")
-        .select("id, start_date, end_date, rating, service_type, asset_classes, relationship, aksia_owner_id, expected_revenue, expected_yr1_flar")
+        .select("id, title, start_date, end_date, rating, service_type, asset_classes, relationship, aksia_owner_id, expected_revenue, expected_yr1_flar")
         .eq("organization_id", str(org_id))
         .eq("is_deleted", False)
-        .order("created_at", desc=True)
+        .order("start_date", desc=True, nullsfirst=False)
         .execute()
     )
     leads = leads_resp.data or []
+
+    # Resolve lead owner names from lead_owners junction table
+    if leads:
+        lead_ids = [str(l["id"]) for l in leads]
+        lo_resp = sb.table("lead_owners").select("lead_id, user_id, is_primary").in_("lead_id", lead_ids).execute()
+        owner_user_ids = list({str(r["user_id"]) for r in (lo_resp.data or [])})
+        if owner_user_ids:
+            users_resp = sb.table("users").select("id, display_name").in_("id", owner_user_ids).execute()
+            user_names = {str(u["id"]): u["display_name"] for u in (users_resp.data or [])}
+        else:
+            user_names = {}
+        lead_owner_map = {}
+        for r in (lo_resp.data or []):
+            lid = str(r["lead_id"])
+            if r.get("is_primary") or lid not in lead_owner_map:
+                lead_owner_map[lid] = user_names.get(str(r["user_id"]), "")
+        for lead in leads:
+            lead["_owner_name"] = lead_owner_map.get(str(lead["id"]), "")
 
     # Linked contracts
     contracts_resp = (
@@ -593,6 +613,19 @@ async def create_organization(
     if not org_data.get("organization_type") and "Organization Type is required." not in errors:
         errors.append("Organization Type is required.")
 
+    # Parse asset_class and product_funds (multi-select checkboxes)
+    asset_class_vals = form.getlist("asset_class")
+    org_data["asset_class"] = asset_class_vals if asset_class_vals else None
+    product_fund_vals = form.getlist("product_funds")
+    org_data["product_funds"] = product_fund_vals if product_fund_vals else None
+
+    # Client-specific validation
+    if org_data.get("relationship_type") == "client":
+        if not asset_class_vals:
+            errors.append("Asset Class is required for client organizations.")
+        if asset_class_vals and "product" in asset_class_vals and not product_fund_vals:
+            errors.append("Product Funds is required when 'Product' is selected as an asset class.")
+
     # RFP Hold — only rfp_team and admin can set it
     if org_data.get("rfp_hold") and current_user.role not in ("admin", "rfp_team"):
         org_data["rfp_hold"] = False
@@ -607,6 +640,8 @@ async def create_organization(
             "relationship_types": get_reference_data("relationship_type"),
             "organization_types": get_reference_data("organization_type"),
             "countries": get_reference_data("country"),
+            "org_asset_classes": get_reference_data("org_asset_class"),
+            "org_product_funds": get_reference_data("org_product_fund"),
             "record": form_ctx["record"],
             "sections": form_ctx["sections"],
             "field_defs": form_ctx["field_defs"],
@@ -626,6 +661,8 @@ async def create_organization(
                 "relationship_types": get_reference_data("relationship_type"),
                 "organization_types": get_reference_data("organization_type"),
                 "countries": get_reference_data("country"),
+                "org_asset_classes": get_reference_data("org_asset_class"),
+                "org_product_funds": get_reference_data("org_product_fund"),
                 "record": form_ctx["record"],
                 "sections": form_ctx["sections"],
                 "field_defs": form_ctx["field_defs"],
@@ -686,6 +723,8 @@ async def edit_organization_form(
         "relationship_types": get_reference_data("relationship_type"),
         "organization_types": get_reference_data("organization_type"),
         "countries": get_reference_data("country"),
+        "org_asset_classes": get_reference_data("org_asset_class"),
+        "org_product_funds": get_reference_data("org_product_fund"),
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
     }
@@ -743,6 +782,19 @@ async def update_organization(
     if not org_data.get("organization_type") and "Organization Type is required." not in errors:
         errors.append("Organization Type is required.")
 
+    # Parse asset_class and product_funds (multi-select checkboxes)
+    asset_class_vals = form.getlist("asset_class")
+    org_data["asset_class"] = asset_class_vals if asset_class_vals else None
+    product_fund_vals = form.getlist("product_funds")
+    org_data["product_funds"] = product_fund_vals if product_fund_vals else None
+
+    # Client-specific validation
+    if org_data.get("relationship_type") == "client":
+        if not asset_class_vals:
+            errors.append("Asset Class is required for client organizations.")
+        if asset_class_vals and "product" in asset_class_vals and not product_fund_vals:
+            errors.append("Product Funds is required when 'Product' is selected as an asset class.")
+
     if errors:
         form_ctx = build_form_context("organization", record=old_org)
         context = {
@@ -753,6 +805,8 @@ async def update_organization(
             "relationship_types": get_reference_data("relationship_type"),
             "organization_types": get_reference_data("organization_type"),
             "countries": get_reference_data("country"),
+            "org_asset_classes": get_reference_data("org_asset_class"),
+            "org_product_funds": get_reference_data("org_product_fund"),
             "record": form_ctx["record"],
             "sections": form_ctx["sections"],
             "field_defs": form_ctx["field_defs"],
@@ -791,5 +845,44 @@ async def archive_organization(
     if request.headers.get("HX-Request"):
         return HTMLResponse('<p class="text-sm text-green-600">Organization archived.</p>')
     return RedirectResponse(url="/organizations", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# MARK FORMER — POST /organizations/{org_id}/mark-former
+# ---------------------------------------------------------------------------
+
+@router.post("/{org_id}/mark-former", response_class=HTMLResponse)
+async def mark_person_former(
+    request: Request,
+    org_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Mark a person as 'former' at this organization."""
+    require_role(current_user, ["admin", "standard_user", "rfp_team"])
+    sb = get_supabase()
+    form = await request.form()
+    person_id = (form.get("person_id") or "").strip()
+
+    if not person_id:
+        raise HTTPException(status_code=400, detail="No person specified.")
+
+    effective_date = (form.get("effective_date") or "").strip()
+    end_date = effective_date if effective_date else date.today().isoformat()
+
+    # Update link_type to 'former' and set end_date
+    sb.table("person_organization_links") \
+        .update({"link_type": "former", "end_date": end_date}) \
+        .eq("person_id", person_id) \
+        .eq("organization_id", str(org_id)) \
+        .execute()
+
+    # Audit log
+    log_field_change("person_organization_links", person_id, "link_type", "primary", "former", current_user.id)
+
+    # Redirect to refresh the people tab
+    return HTMLResponse(
+        content="",
+        headers={"HX-Redirect": f"/organizations/{org_id}?tab=people"}
+    )
 
 

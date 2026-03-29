@@ -292,8 +292,10 @@
         </button>
     </div>
 </form>
+{% endblock %}
 
 {% block scripts %}
+{% set lc = (field.linked_config if field and field.linked_config else {}) or {} %}
 <script>
 function toggleDropdownCategory() {
     const ft = document.getElementById('field_type').value;
@@ -362,5 +364,4 @@ function updateSourceFieldOptions() {
 toggleDropdownCategory();
 toggleLinkedConfig();
 </script>
-{% endblock %}
 {% endblock %}

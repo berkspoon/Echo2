@@ -405,9 +405,62 @@ CREATE INDEX IF NOT EXISTS idx_all_activity ON activity_lead_links (activity_id)
 CREATE INDEX IF NOT EXISTS idx_all_lead ON activity_lead_links (lead_id);
 
 -- =====================================================================
+-- Phase 7: Lead title, lead_stage ref data, org asset_class
+-- =====================================================================
+
+-- Add title column to leads
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS title TEXT;
+
+-- Ensure lead_stage reference data exists (may not have been seeded)
+INSERT INTO reference_data (category, value, label, parent_value, display_order) VALUES
+    ('lead_stage', 'exploratory', 'Open [Exploratory]', 'advisory', 1),
+    ('lead_stage', 'radar', 'Open [Radar]', 'advisory', 2),
+    ('lead_stage', 'focus', 'Open [Focus]', 'advisory', 3),
+    ('lead_stage', 'verbal_mandate', 'Open [Verbal Mandate - In Contract]', 'advisory', 4),
+    ('lead_stage', 'won', 'Inactive [Won Mandate – Aksia Client]', 'advisory', 5),
+    ('lead_stage', 'lost_dropped_out', 'Inactive [Lost – Aksia Dropped Out]', 'advisory', 6),
+    ('lead_stage', 'lost_selected_other', 'Inactive [Lost – Selected Someone Else]', 'advisory', 7),
+    ('lead_stage', 'lost_nobody_hired', 'Inactive [Lost – Nobody Hired]', 'advisory', 8),
+    ('lead_stage', 'target_identified', 'Target Identified', 'fundraise', 1),
+    ('lead_stage', 'intro_scheduled', 'Intro Scheduled', 'fundraise', 2),
+    ('lead_stage', 'initial_meeting_complete', 'Initial Meeting Complete', 'fundraise', 3),
+    ('lead_stage', 'ddq_materials_sent', 'DDQ / Materials Sent', 'fundraise', 4),
+    ('lead_stage', 'due_diligence', 'Due Diligence', 'fundraise', 5),
+    ('lead_stage', 'ic_review', 'IC Review', 'fundraise', 6),
+    ('lead_stage', 'soft_circle', 'Soft Circle', 'fundraise', 7),
+    ('lead_stage', 'legal_docs', 'Legal / Docs', 'fundraise', 8),
+    ('lead_stage', 'closed', 'Closed', 'fundraise', 9),
+    ('lead_stage', 'declined', 'Declined', 'fundraise', 10)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- Add asset_class and product_funds to organizations (for client orgs)
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS asset_class TEXT[];
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS product_funds TEXT[];
+
+-- Reference data for org asset class
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('org_asset_class', 'hf', 'HF', 1),
+    ('org_asset_class', 'pc', 'PC', 2),
+    ('org_asset_class', 'pe', 'PE', 3),
+    ('org_asset_class', 'ra', 'RA', 4),
+    ('org_asset_class', 'product', 'Product', 5)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- Reference data for product funds (shown when asset_class includes 'product')
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('org_product_fund', 'apc', 'APC', 1),
+    ('org_product_fund', 'capix', 'CAPIX', 2),
+    ('org_product_fund', 'capvx', 'CAPVX', 3),
+    ('org_product_fund', 'hedgx', 'HEDGX', 4)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- =====================================================================
 -- Done! Verify with:
 --   SELECT column_name FROM information_schema.columns WHERE table_name = 'people' AND column_name = 'is_deleted';
 --   SELECT count(*) FROM field_definitions;
 --   SELECT column_name FROM information_schema.columns WHERE table_name = 'field_definitions' AND column_name = 'linked_config';
 --   SELECT count(*) FROM information_schema.tables WHERE table_name = 'activity_lead_links';
+--   SELECT column_name FROM information_schema.columns WHERE table_name = 'leads' AND column_name = 'title';
+--   SELECT count(*) FROM reference_data WHERE category = 'lead_stage';
+--   SELECT column_name FROM information_schema.columns WHERE table_name = 'organizations' AND column_name = 'asset_class';
 -- =====================================================================
