@@ -219,12 +219,14 @@
                     <input type="text" id="inline_last_name" name="inline_last_name"
                            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500">
                 </div>
-                <div>
+                <div class="relative">
                     <label class="block text-xs font-medium text-gray-700 mb-1">Primary Organization <span class="text-red-500">*</span></label>
-                    <select id="inline_primary_organization_id" name="inline_primary_organization_id"
-                            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500">
-                        <option value="">-- Select from linked orgs --</option>
-                    </select>
+                    <input type="hidden" id="inline_primary_organization_id" name="inline_primary_organization_id" value="">
+                    <input type="text" id="inline_org_search" placeholder="Search organizations..."
+                           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500"
+                           autocomplete="off"
+                           oninput="searchInlineOrg(this.value)">
+                    <div id="inline-org-search-results" class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-auto"></div>
                 </div>
             </div>
             <div id="inline-person-form-result" class="mt-2"></div>
@@ -509,8 +511,8 @@ function showInlinePersonForm(searchText) {
         document.getElementById('inline_first_name').value = parts[0];
         document.getElementById('inline_last_name').value = parts.slice(1).join(' ');
     } else if (parts.length === 1) {
-        document.getElementById('inline_first_name').value = '';
-        document.getElementById('inline_last_name').value = parts[0];
+        document.getElementById('inline_first_name').value = parts[0];
+        document.getElementById('inline_last_name').value = '';
     }
     // Populate org dropdown from current chips
     populatePersonOrgDropdown();
@@ -526,28 +528,58 @@ function hideInlinePersonForm() {
 }
 
 function populatePersonOrgDropdown() {
-    const select = document.getElementById('inline_primary_organization_id');
-    select.innerHTML = '<option value="">-- Select from linked orgs --</option>';
-    document.querySelectorAll('.org-chip').forEach(chip => {
-        const opt = document.createElement('option');
-        opt.value = chip.dataset.orgId;
-        opt.textContent = chip.dataset.orgName || chip.querySelector('span').textContent;
-        select.appendChild(opt);
-    });
-    // Auto-select if only one org
-    if (select.options.length === 2) {
-        select.selectedIndex = 1;
+    // Pre-fill from linked orgs if exactly one is linked
+    const chips = document.querySelectorAll('.org-chip');
+    if (chips.length === 1) {
+        const chip = chips[0];
+        document.getElementById('inline_primary_organization_id').value = chip.dataset.orgId;
+        document.getElementById('inline_org_search').value = chip.dataset.orgName || chip.querySelector('span').textContent;
     }
+}
+
+let inlineOrgSearchTimer = null;
+function searchInlineOrg(q) {
+    clearTimeout(inlineOrgSearchTimer);
+    const resultsDiv = document.getElementById('inline-org-search-results');
+    if (!q || q.length < 2) { resultsDiv.innerHTML = ''; return; }
+    inlineOrgSearchTimer = setTimeout(() => {
+        fetch('/activities/search-orgs?q=' + encodeURIComponent(q))
+            .then(r => r.text())
+            .then(html => {
+                // Rewrite onclick handlers to use selectInlineOrg instead of addOrg
+                const modified = html.replace(/onclick="addOrg\('([^']+)',\s*'([^']+)'\)"/g,
+                    'onclick="selectInlineOrg(\'$1\', \'$2\')"');
+                // Remove the "Add New" button (last button with showInlineOrgForm)
+                const div = document.createElement('div');
+                div.innerHTML = modified;
+                const btns = div.querySelectorAll('button');
+                btns.forEach(btn => {
+                    if (btn.innerHTML.includes('Add New Organization')) btn.remove();
+                });
+                resultsDiv.innerHTML = div.innerHTML;
+            });
+    }, 300);
+}
+
+function selectInlineOrg(orgId, orgName) {
+    document.getElementById('inline_primary_organization_id').value = orgId;
+    document.getElementById('inline_org_search').value = orgName.replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+    document.getElementById('inline-org-search-results').innerHTML = '';
 }
 
 function submitInlinePerson() {
     const first = document.getElementById('inline_first_name').value.trim();
     const last = document.getElementById('inline_last_name').value.trim();
     const orgId = document.getElementById('inline_primary_organization_id').value;
+    const orgName = document.getElementById('inline_org_search').value.trim();
     if (!first || !last || !orgId) {
         document.getElementById('inline-person-form-result').innerHTML =
             '<div class="text-sm text-red-600">First name, last name, and organization are required.</div>';
         return;
+    }
+    // Auto-link the org if not already linked
+    if (!document.querySelector(`.org-chip[data-org-id="${orgId}"]`)) {
+        addOrg(orgId, orgName);
     }
     const formData = new FormData();
     formData.append('inline_first_name', first);
@@ -565,6 +597,13 @@ function submitInlinePerson() {
                 '<div class="text-sm text-red-600">Error creating contact.</div>';
         });
 }
+
+/* --- On page load: fetch leads for pre-populated orgs --- */
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.querySelectorAll('.org-chip').length > 0) {
+        loadLeadSuggestions();
+    }
+});
 
 /* --- Subtype visibility --- */
 function toggleSubtypeField(typeValue) {
