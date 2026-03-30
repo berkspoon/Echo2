@@ -22,6 +22,56 @@ templates = Jinja2Templates(directory="templates")
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _sync_coverage_owners(person_id: str, owner_ids: list[str]) -> None:
+    """Sync the person_coverage_owners junction table for a person.
+    Replaces all existing owners. First owner is marked primary.
+    Also updates legacy coverage_owner column for backward compat.
+    """
+    sb = get_supabase()
+    sb.table("person_coverage_owners").delete().eq("person_id", person_id).execute()
+    primary_id = owner_ids[0] if owner_ids else None
+    for uid in owner_ids:
+        sb.table("person_coverage_owners").insert({
+            "person_id": person_id,
+            "user_id": uid,
+            "is_primary": uid == primary_id,
+        }).execute()
+    # Dual-write legacy column
+    sb.table("people").update({
+        "coverage_owner": primary_id,
+    }).eq("id", person_id).execute()
+
+
+def _get_coverage_owners(person_id: str) -> list[dict]:
+    """Get coverage owners for a person from the junction table."""
+    sb = get_supabase()
+    pco_resp = (
+        sb.table("person_coverage_owners")
+        .select("user_id, is_primary")
+        .eq("person_id", person_id)
+        .order("is_primary", desc=True)
+        .execute()
+    )
+    if not pco_resp.data:
+        return []
+    user_ids = [str(p["user_id"]) for p in pco_resp.data]
+    users_resp = (
+        sb.table("users")
+        .select("id, display_name")
+        .in_("id", user_ids)
+        .execute()
+    )
+    user_map = {str(u["id"]): u["display_name"] for u in (users_resp.data or [])}
+    return [
+        {
+            "user_id": str(p["user_id"]),
+            "display_name": user_map.get(str(p["user_id"]), "Unknown"),
+            "is_primary": p["is_primary"],
+        }
+        for p in pco_resp.data
+    ]
+
+
 def _check_duplicates(
     first_name: str,
     last_name: str,
@@ -129,9 +179,12 @@ def _build_person_data_from_form(form) -> dict:
     asset_classes = form.getlist("asset_classes_of_interest") if hasattr(form, "getlist") else []
     data["asset_classes_of_interest"] = list(asset_classes) if asset_classes else None
 
-    # Coverage owner (user UUID)
-    coverage = (form.get("coverage_owner") or "").strip()
-    data["coverage_owner"] = coverage if coverage else None
+    # Coverage owners (multi-select from typeahead)
+    coverage_owner_ids = form.getlist("coverage_owner_ids[]") if hasattr(form, "getlist") else []
+    coverage_owner_ids = [o.strip() for o in coverage_owner_ids if o.strip()]
+    data["_coverage_owner_ids"] = coverage_owner_ids
+    # Legacy single column: primary owner (first in list)
+    data["coverage_owner"] = coverage_owner_ids[0] if coverage_owner_ids else None
 
     # Booleans (checkboxes)
     data["do_not_contact"] = form.get("do_not_contact") == "on"
@@ -257,6 +310,54 @@ async def search_orgs(
 
 
 # ---------------------------------------------------------------------------
+# SEARCH USERS — HTMX typeahead for coverage owner picker
+# ---------------------------------------------------------------------------
+
+@router.get("/search-users", response_class=HTMLResponse)
+async def search_users(
+    request: Request,
+    q: str = Query(""),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """HTMX endpoint: return user search results for typeahead.
+    Matches from the start of first name or last name (prefix match).
+    """
+    if not q or len(q) < 2:
+        return HTMLResponse("")
+
+    sb = get_supabase()
+    # Fetch all active users and filter by prefix match on first/last name
+    resp = sb.table("users").select("id, display_name, email").eq("is_active", True).order("display_name").execute()
+    users = resp.data or []
+
+    q_lower = q.lower()
+    matches = []
+    for u in users:
+        name = u.get("display_name", "")
+        parts = name.lower().split()
+        if any(p.startswith(q_lower) for p in parts):
+            matches.append(u)
+        if len(matches) >= 8:
+            break
+
+    if not matches:
+        return HTMLResponse('<div class="px-4 py-2 text-sm text-gray-400">No users found</div>')
+
+    html_parts = []
+    for u in matches:
+        safe_name = u["display_name"].replace("'", "&#39;").replace('"', "&quot;")
+        html_parts.append(
+            f'<button type="button" '
+            f'class="w-full text-left px-4 py-2 hover:bg-brand-50 text-sm" '
+            f"onclick=\"addCoverageOwner('{u['id']}', '{safe_name}')\">"
+            f'<div class="font-medium text-gray-900">{u["display_name"]}</div>'
+            f'<div class="text-xs text-gray-400">{u.get("email", "")}</div>'
+            f'</button>'
+        )
+    return HTMLResponse("\n".join(html_parts))
+
+
+# ---------------------------------------------------------------------------
 # LIST — GET /people
 # ---------------------------------------------------------------------------
 
@@ -296,13 +397,12 @@ async def my_people(
     """List people where the current user is coverage owner."""
     sb = get_supabase()
     my_resp = (
-        sb.table("people")
-        .select("id")
-        .eq("coverage_owner", str(current_user.id))
-        .eq("is_deleted", False)
+        sb.table("person_coverage_owners")
+        .select("person_id")
+        .eq("user_id", str(current_user.id))
         .execute()
     )
-    my_ids = [str(p["id"]) for p in (my_resp.data or [])]
+    my_ids = [str(p["person_id"]) for p in (my_resp.data or [])]
     if not my_ids:
         my_ids = ["00000000-0000-0000-0000-000000000000"]
 
@@ -364,6 +464,7 @@ async def new_person_form(
         "pre_org": pre_org,
         "asset_classes": get_reference_data("asset_class"),
         "users": users_list,
+        "coverage_owners": [],
         "record": form_ctx["record"],
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
@@ -646,18 +747,8 @@ async def get_person(
     )
     distribution_lists = dl_resp.data or []
 
-    # Coverage owner name
-    coverage_name = None
-    if person.get("coverage_owner"):
-        user_resp = (
-            sb.table("users")
-            .select("display_name")
-            .eq("id", str(person["coverage_owner"]))
-            .maybe_single()
-            .execute()
-        )
-        if user_resp.data:
-            coverage_name = user_resp.data["display_name"]
+    # Coverage owners from junction table
+    coverage_owners = _get_coverage_owners(str(person_id))
 
     context = {
         "request": request,
@@ -666,7 +757,7 @@ async def get_person(
         "org_links": org_links,
         "activities": activities,
         "distribution_lists": distribution_lists,
-        "coverage_name": coverage_name,
+        "coverage_owners": coverage_owners,
         "active_tab": tab,
     }
 
@@ -751,6 +842,9 @@ async def create_person(
                 org_resp = sb.table("organizations").select("id, company_name").eq("id", primary_org_id).maybe_single().execute()
                 pre_org = org_resp.data
             form_ctx = build_form_context("person", record=None, extra_context={"users": users_list})
+            # Reconstruct coverage_owners for re-render
+            co_ids = person_data.get("_coverage_owner_ids", [])
+            re_coverage = [{"user_id": uid, "display_name": uid, "is_primary": i == 0} for i, uid in enumerate(co_ids)]
             context = {
                 "request": request,
                 "user": current_user,
@@ -760,15 +854,19 @@ async def create_person(
                 "duplicates": dupes,
                 "asset_classes": get_reference_data("asset_class"),
                 "users": users_list,
+                "coverage_owners": re_coverage,
                 "record": form_ctx["record"],
                 "sections": form_ctx["sections"],
                 "field_defs": form_ctx["field_defs"],
             }
             return templates.TemplateResponse("people/form.html", context)
 
-    # Set default coverage owner to creator
-    if not person_data.get("coverage_owner"):
-        person_data["coverage_owner"] = str(current_user.id)
+    # Extract coverage owner IDs before insert
+    coverage_owner_ids = person_data.pop("_coverage_owner_ids", [])
+    # Set default coverage owner to creator if none selected
+    if not coverage_owner_ids:
+        coverage_owner_ids = [str(current_user.id)]
+    person_data["coverage_owner"] = coverage_owner_ids[0]  # Legacy column
 
     # Insert
     person_data["created_by"] = str(current_user.id)
@@ -783,6 +881,9 @@ async def create_person(
         # Save EAV custom field values
         if eav_data:
             save_custom_values("person", str(person_id), eav_data, field_defs)
+
+        # Sync coverage owners junction table
+        _sync_coverage_owners(str(person_id), coverage_owner_ids)
 
         # Create primary org link
         _sync_org_links(str(person_id), form_data, current_user.id)
@@ -846,6 +947,9 @@ async def edit_person_form(
 
     form_ctx = build_form_context("person", record=person, extra_context={"users": users_list})
 
+    # Get existing coverage owners for the typeahead UI
+    coverage_owners = _get_coverage_owners(str(person_id))
+
     context = {
         "request": request,
         "user": current_user,
@@ -854,6 +958,7 @@ async def edit_person_form(
         "pre_org": pre_org,
         "asset_classes": get_reference_data("asset_class"),
         "users": users_list,
+        "coverage_owners": coverage_owners,
         "record": form_ctx["record"],
         "sections": form_ctx["sections"],
         "field_defs": form_ctx["field_defs"],
@@ -922,6 +1027,8 @@ async def update_person(
             .execute()
         )
         form_ctx = build_form_context("person", record={**old_person, **person_data}, extra_context={"users": users_list})
+        # Re-fetch coverage owners for re-render
+        re_coverage = _get_coverage_owners(str(person_id))
         context = {
             "request": request,
             "user": current_user,
@@ -931,11 +1038,15 @@ async def update_person(
             "errors": errors,
             "asset_classes": get_reference_data("asset_class"),
             "users": users_list,
+            "coverage_owners": re_coverage,
             "record": form_ctx["record"],
             "sections": form_ctx["sections"],
             "field_defs": form_ctx["field_defs"],
         }
         return templates.TemplateResponse("people/form.html", context)
+
+    # Extract coverage owner IDs before update
+    coverage_owner_ids = person_data.pop("_coverage_owner_ids", [])
 
     # Audit log every changed field
     audit_changes("person", str(person_id), old_person, person_data, current_user.id)
@@ -945,6 +1056,9 @@ async def update_person(
     sb.table("people").update(core_data).eq("id", str(person_id)).execute()
     if eav_data:
         save_custom_values("person", str(person_id), eav_data, field_defs)
+
+    # Sync coverage owners junction table
+    _sync_coverage_owners(str(person_id), coverage_owner_ids)
 
     # Sync org links
     _sync_org_links(str(person_id), form_data, current_user.id)

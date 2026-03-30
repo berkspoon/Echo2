@@ -158,15 +158,14 @@ async def my_organizations(
     """List organizations where the current user is a coverage owner (via people or leads)."""
     sb = get_supabase()
 
-    # Find orgs where user is coverage_owner on linked people
-    covered_people = (
-        sb.table("people")
-        .select("id")
-        .eq("coverage_owner", str(current_user.id))
-        .eq("is_deleted", False)
+    # Find orgs where user is coverage owner (via junction table)
+    pco_resp = (
+        sb.table("person_coverage_owners")
+        .select("person_id")
+        .eq("user_id", str(current_user.id))
         .execute()
     )
-    person_ids = [str(p["id"]) for p in (covered_people.data or [])]
+    person_ids = [str(p["person_id"]) for p in (pco_resp.data or [])]
     my_org_ids = set()
     if person_ids:
         pol_resp = (
@@ -486,8 +485,8 @@ async def get_organization(
     )
     contracts = contracts_resp.data or []
 
-    # Linked fundraise/product leads (replaces fund_prospects)
-    fundraise_resp = (
+    # Linked product leads (replaces fund_prospects)
+    product_resp = (
         sb.table("leads")
         .select("id, fund_id, share_class, rating, aksia_owner_id, target_allocation_mn, probability_pct, lead_type")
         .eq("organization_id", str(org_id))
@@ -495,13 +494,13 @@ async def get_organization(
         .eq("lead_type", "product")
         .execute()
     )
-    fundraise_leads = fundraise_resp.data or []
+    product_leads = product_resp.data or []
 
-    # Enrich fundraise leads with fund ticker
-    if fundraise_leads:
+    # Enrich product leads with fund ticker
+    if product_leads:
         funds_resp = sb.table("funds").select("id, ticker").execute()
         funds_map = {f["id"]: f["ticker"] for f in (funds_resp.data or [])}
-        for fl in fundraise_leads:
+        for fl in product_leads:
             fl["fund_ticker"] = funds_map.get(fl.get("fund_id"), "?")
             fl["stage"] = fl.get("rating", "target_identified")
 
@@ -515,12 +514,13 @@ async def get_organization(
     )
     fee_arrangements = fee_resp.data or []
 
-    # Coverage rollup — collect unique coverage owners from people and leads
+    # Coverage rollup — collect unique coverage owners from junction table + leads
     coverage_owners = set()
-    for p in people:
-        person_data = p.get("person") or p
-        if person_data.get("coverage_owner"):
-            coverage_owners.add(person_data["coverage_owner"])
+    person_ids_at_org = [str((p.get("person") or p).get("id")) for p in people if (p.get("person") or p).get("id")]
+    if person_ids_at_org:
+        pco_resp = sb.table("person_coverage_owners").select("user_id").in_("person_id", person_ids_at_org).execute()
+        for pco in (pco_resp.data or []):
+            coverage_owners.add(pco["user_id"])
     for lead in leads:
         if lead.get("aksia_owner_id"):
             coverage_owners.add(lead["aksia_owner_id"])
@@ -567,7 +567,7 @@ async def get_organization(
         "activities": activities,
         "leads": leads,
         "contracts": contracts,
-        "fundraise_leads": fundraise_leads,
+        "product_leads": product_leads,
         "fee_arrangements": fee_arrangements,
         "coverage_names": coverage_names,
         "last_contact_date": last_contact_date,

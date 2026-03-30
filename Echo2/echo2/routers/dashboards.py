@@ -456,9 +456,10 @@ async def widget_my_coverage(
     try:
         sb = get_supabase()
 
-        # Count people where coverage_owner = current user
-        people_resp = sb.table("people").select("id", count="exact").eq("is_deleted", False).eq("coverage_owner", str(current_user.id)).execute()
-        people_count = people_resp.count or 0
+        # Count people where current user is coverage owner (junction table)
+        pco_resp = sb.table("person_coverage_owners").select("person_id").eq("user_id", str(current_user.id)).execute()
+        my_person_ids = [str(p["person_id"]) for p in (pco_resp.data or [])]
+        people_count = len(my_person_ids)
 
         # Count service leads where aksia_owner = current user
         service_leads_resp = sb.table("leads").select("id", count="exact").eq("is_deleted", False).eq("aksia_owner_id", str(current_user.id)).eq("lead_type", "service").execute()
@@ -471,8 +472,7 @@ async def widget_my_coverage(
         # Count orgs (via coverage on people + leads)
         my_org_ids = set()
         if people_count > 0:
-            covered_people = sb.table("people").select("id").eq("coverage_owner", str(current_user.id)).eq("is_deleted", False).execute()
-            person_ids = [str(p["id"]) for p in (covered_people.data or [])]
+            person_ids = my_person_ids
             if person_ids:
                 pol_resp = sb.table("person_organization_links").select("organization_id").in_("person_id", person_ids).execute()
                 my_org_ids |= {str(r["organization_id"]) for r in (pol_resp.data or [])}
@@ -508,9 +508,14 @@ async def widget_missing_info(
     try:
         sb = get_supabase()
 
-        # People missing email or phone
-        people_resp = sb.table("people").select("id, first_name, last_name, email, phone").eq("is_deleted", False).eq("coverage_owner", str(current_user.id)).execute()
-        all_people = people_resp.data or []
+        # People missing email or phone (via junction table)
+        pco_resp = sb.table("person_coverage_owners").select("person_id").eq("user_id", str(current_user.id)).execute()
+        my_pids = [str(p["person_id"]) for p in (pco_resp.data or [])]
+        if my_pids:
+            people_resp = sb.table("people").select("id, first_name, last_name, email, phone").eq("is_deleted", False).in_("id", my_pids).execute()
+            all_people = people_resp.data or []
+        else:
+            all_people = []
         people_missing = [p for p in all_people if not p.get("email") or not p.get("phone")]
 
         # Leads missing expected_revenue or service_type
@@ -556,9 +561,14 @@ async def widget_stale_contacts(
         sb = get_supabase()
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
-        # Get all covered people
-        people_resp = sb.table("people").select("id, first_name, last_name, email").eq("is_deleted", False).eq("coverage_owner", str(current_user.id)).execute()
-        covered_people = people_resp.data or []
+        # Get all covered people (via junction table)
+        pco_resp = sb.table("person_coverage_owners").select("person_id").eq("user_id", str(current_user.id)).execute()
+        my_pids = [str(p["person_id"]) for p in (pco_resp.data or [])]
+        if my_pids:
+            people_resp = sb.table("people").select("id, first_name, last_name, email").eq("is_deleted", False).in_("id", my_pids).execute()
+            covered_people = people_resp.data or []
+        else:
+            covered_people = []
 
         if not covered_people:
             return templates.TemplateResponse("dashboards/_widget_stale_contacts.html", {

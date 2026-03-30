@@ -985,6 +985,19 @@ def _enrich_people(rows: list[dict]) -> None:
             if lead.get("rating") not in _INACTIVE_STAGES:
                 active_org_set.add(str(lead["organization_id"]))
 
+    # Resolve coverage owners from junction table
+    pco_resp = (
+        sb.table("person_coverage_owners")
+        .select("person_id, user_id, is_primary")
+        .in_("person_id", person_ids)
+        .execute()
+    )
+    pco_map: dict[str, list[str]] = {}
+    for pco in (pco_resp.data or []):
+        pco_map.setdefault(str(pco["person_id"]), []).append(str(pco["user_id"]))
+    all_co_uids = list({uid for uids in pco_map.values() for uid in uids})
+    co_user_map = batch_resolve_users(all_co_uids) if all_co_uids else {}
+
     for row in rows:
         org_id = person_org_map.get(str(row["id"]))
         if org_id and org_id in org_map:
@@ -999,6 +1012,10 @@ def _enrich_people(rows: list[dict]) -> None:
         row["org_type"] = org_info.get("organization_type") if org_info else None
         row["org_aum_mn"] = org_info.get("aum_mn") if org_info else None
         row["has_active_leads"] = org_id in active_org_set if org_id else False
+        # Coverage owners from junction table — override coverage_owner with display names
+        co_ids = pco_map.get(str(row["id"]), [])
+        co_display = ", ".join(co_user_map.get(uid, "Unknown") for uid in co_ids)
+        row["coverage_owner"] = co_display or None
 
 
 def _enrich_leads(rows: list[dict]) -> None:
@@ -1177,7 +1194,7 @@ def _enrich_tasks(rows: list[dict]) -> None:
         "manual": "Manual",
         "activity_follow_up": "Activity Follow-Up",
         "lead_next_steps": "Lead Next Steps",
-        "fund_prospect_next_steps": "Fundraise Lead Next Steps",
+        "fund_prospect_next_steps": "Product Lead Next Steps",
     }
 
     for row in rows:

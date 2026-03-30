@@ -694,27 +694,47 @@ async def search_people(
         org_resp = org_query.execute()
         filtered_org_ids = [o["id"] for o in (org_resp.data or [])]
 
-        # If fund filter, further restrict to orgs that have fund prospects for that fund
+        # If fund filter, further restrict to orgs that have product leads for that fund
         if fund and filtered_org_ids:
             fp_resp = (
-                sb.table("fund_prospects")
+                sb.table("leads")
                 .select("organization_id")
                 .eq("fund_id", fund)
+                .eq("lead_type", "product")
                 .eq("is_deleted", False)
                 .execute()
             )
             fp_org_ids = {str(fp["organization_id"]) for fp in (fp_resp.data or [])}
-            filtered_org_ids = [oid for oid in filtered_org_ids if str(oid) in fp_org_ids]
-        elif fund and not filtered_org_ids and not country and not rel_type:
-            # Fund filter only, no country/rel_type
-            fp_resp = (
+            # Also check legacy fund_prospects table
+            fp_legacy = (
                 sb.table("fund_prospects")
                 .select("organization_id")
                 .eq("fund_id", fund)
                 .eq("is_deleted", False)
                 .execute()
             )
+            fp_org_ids.update({str(fp["organization_id"]) for fp in (fp_legacy.data or [])})
+            filtered_org_ids = [oid for oid in filtered_org_ids if str(oid) in fp_org_ids]
+        elif fund and not filtered_org_ids and not country and not rel_type:
+            # Fund filter only, no country/rel_type
+            fp_resp = (
+                sb.table("leads")
+                .select("organization_id")
+                .eq("fund_id", fund)
+                .eq("lead_type", "product")
+                .eq("is_deleted", False)
+                .execute()
+            )
             filtered_org_ids = list({str(fp["organization_id"]) for fp in (fp_resp.data or [])})
+            fp_legacy = (
+                sb.table("fund_prospects")
+                .select("organization_id")
+                .eq("fund_id", fund)
+                .eq("is_deleted", False)
+                .execute()
+            )
+            filtered_org_ids.extend(list({str(fp["organization_id"]) for fp in (fp_legacy.data or [])}))
+            filtered_org_ids = list(set(filtered_org_ids))
 
         if not filtered_org_ids:
             return HTMLResponse('<div class="px-4 py-2 text-sm text-gray-400">No people match the selected filters</div>')

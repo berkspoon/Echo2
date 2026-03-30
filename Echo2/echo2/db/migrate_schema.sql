@@ -660,10 +660,37 @@ UPDATE leads SET risk_weight = '75_100' WHERE risk_weight = 'high';
 UPDATE contracts SET service_type = 'investment_management' WHERE service_type = 'discretionary';
 
 -- =====================================================================
+-- Phase 9: person_coverage_owners junction table (multi-coverage)
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS person_coverage_owners (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    person_id   UUID NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    is_primary  BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(person_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pco_person ON person_coverage_owners (person_id);
+CREATE INDEX IF NOT EXISTS idx_pco_user ON person_coverage_owners (user_id);
+
+-- Migrate existing coverage_owner data to junction table
+INSERT INTO person_coverage_owners (person_id, user_id, is_primary)
+SELECT id, coverage_owner, TRUE
+FROM people
+WHERE coverage_owner IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM person_coverage_owners pco
+      WHERE pco.person_id = people.id AND pco.user_id = people.coverage_owner
+  );
+
+-- =====================================================================
 -- Done! Verify with:
 --   SELECT column_name FROM information_schema.columns WHERE table_name = 'leads' AND column_name = 'engagement_status';
 --   SELECT count(*) FROM reference_data WHERE category = 'engagement_status';
 --   SELECT count(*) FROM reference_data WHERE category = 'lead_type';
 --   SELECT DISTINCT lead_type FROM leads;
 --   SELECT DISTINCT rating FROM leads;
+--   SELECT count(*) FROM person_coverage_owners;
 -- =====================================================================

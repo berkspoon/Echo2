@@ -6,7 +6,7 @@
         + New Product Lead
     </a>
 </div>
-{% if fundraise_leads %}
+{% if product_leads %}
 <table class="min-w-full divide-y divide-gray-200">
     <thead class="bg-gray-50">
         <tr>
@@ -18,7 +18,7 @@
         </tr>
     </thead>
     <tbody class="divide-y divide-gray-200">
-        {% for lead in fundraise_leads %}
+        {% for lead in product_leads %}
         <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='/leads/{{ lead.id }}'">
             <td class="px-4 py-2 text-sm">
                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-gray-100 text-gray-800">{{ lead.fund_ticker or '?' }}</span>

@@ -2,7 +2,7 @@
 {% block title %}{{ lead.title or 'Lead' }} — {{ org_name }} — Echo 2.0{% endblock %}
 {% block page_title %}{{ lead.title or 'Lead Detail' }}{% endblock %}
 
-{% set is_fundraise = lead_type in ('product',) %}
+{% set is_product = lead_type in ('product',) %}
 {% set current_stage = stage_order.get(lead.rating, 1) %}
 
 {% block content %}
@@ -68,7 +68,7 @@
 
             <!-- Stage Progress Bar -->
             <div class="mt-6">
-                {% if is_fundraise %}
+                {% if is_product %}
                 {# Product stage progress bar #}
                 {% set fr_stages = [('target_identified', 'Target', 1), ('intro_scheduled', 'Intro', 2), ('initial_meeting_complete', 'Initial Mtg', 3), ('ddq_materials_sent', 'DDQ', 4), ('due_diligence', 'DD', 5), ('ic_review', 'IC', 6), ('soft_circle', 'Soft Circle', 7), ('legal_docs', 'Legal', 8)] %}
                 <div class="flex items-center gap-1">
@@ -127,7 +127,7 @@
                     <dt class="text-xs font-medium text-gray-500 uppercase">End Date</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ lead.end_date or '—' }}</dd>
                 </div>
-                {% if not is_fundraise %}
+                {% if not is_product %}
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Relationship</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ (lead.relationship or '—') | replace('_', ' ') | title }}</dd>
@@ -137,7 +137,7 @@
                     <dt class="text-xs font-medium text-gray-500 uppercase">Lead Owners</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ owner_name }}</dd>
                 </div>
-                {% if not is_fundraise %}
+                {% if not is_product %}
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Service Type</dt>
                     <dd class="mt-1 text-sm text-gray-900">{{ (lead.service_type or '—') | replace('_', ' ') | title }}</dd>
@@ -158,7 +158,7 @@
             </div>
 
             <!-- Asset Classes (service only) -->
-            {% if not is_fundraise and lead.asset_classes %}
+            {% if not is_product and lead.asset_classes %}
             <div class="mt-4">
                 <dt class="text-xs font-medium text-gray-500 uppercase mb-2">Asset Classes</dt>
                 <div class="flex flex-wrap gap-1.5">
@@ -173,7 +173,7 @@
         </div>
     </div>
 
-    {% if is_fundraise %}
+    {% if is_product %}
     <!-- Fund & Allocation Details (product only) -->
     <div class="bg-white rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200">
@@ -509,7 +509,7 @@
 
     <!-- Back link -->
     <div>
-        {% if is_fundraise %}
+        {% if is_product %}
         <a href="/leads?lead_type=product" class="text-sm text-brand-600 hover:underline">&larr; Back to Product Pipeline</a>
         {% else %}
         <a href="/leads?lead_type=service" class="text-sm text-brand-600 hover:underline">&larr; Back to Service Pipeline</a>

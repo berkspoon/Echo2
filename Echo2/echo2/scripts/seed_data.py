@@ -275,6 +275,32 @@ def seed_person_org_links(people: list[dict], orgs: list[dict]) -> list[dict]:
     return results
 
 
+def seed_person_coverage_owners(people: list[dict], user_ids: list[str]) -> int:
+    """Seed person_coverage_owners junction table from people.coverage_owner + random secondaries."""
+    print("  Seeding person coverage owners...")
+    rows = []
+    for person in people:
+        co = person.get("coverage_owner")
+        if co:
+            rows.append({
+                "person_id": person["id"],
+                "user_id": co,
+                "is_primary": True,
+            })
+            # 25% chance of a second coverage owner
+            if _pct(25):
+                second = random.choice([uid for uid in user_ids if uid != co])
+                rows.append({
+                    "person_id": person["id"],
+                    "user_id": second,
+                    "is_primary": False,
+                })
+    if rows:
+        _batch_insert("person_coverage_owners", rows)
+    print(f"    -> {len(rows)} coverage owner entries")
+    return len(rows)
+
+
 def seed_activities(user_ids: list[str], orgs: list[dict], people: list[dict], fund_ids: dict, ref: dict) -> list[dict]:
     """Seed ~500 activities with org and people links."""
     print("  Seeding activities...")
@@ -469,9 +495,9 @@ def seed_leads(user_ids: list[str], orgs: list[dict], ref: dict) -> tuple[list[d
     return leads, contracts
 
 
-def seed_fundraise_leads(user_ids: list[str], orgs: list[dict], fund_ids: dict, ref: dict) -> list[dict]:
-    """Seed ~150 fundraise leads (lead_type='fundraise')."""
-    print("  Seeding fundraise leads...")
+def seed_product_leads(user_ids: list[str], orgs: list[dict], fund_ids: dict, ref: dict) -> list[dict]:
+    """Seed ~150 product leads (lead_type='product')."""
+    print("  Seeding product leads...")
 
     org_ids = [o["id"] for o in orgs]
     fund_tickers = list(fund_ids.keys())
@@ -505,7 +531,7 @@ def seed_fundraise_leads(user_ids: list[str], orgs: list[dict], fund_ids: dict, 
 
         row = {
             "organization_id": org_id,
-            "lead_type": "fundraise",
+            "lead_type": "product",
             "rating": stage,
             "fund_id": fund_ids[ticker],
             "share_class": "domestic" if _pct(60) else "offshore",
@@ -522,7 +548,7 @@ def seed_fundraise_leads(user_ids: list[str], orgs: list[dict], fund_ids: dict, 
             "created_by": random.choice(user_ids),
         }
 
-        # Next steps for active fundraise leads
+        # Next steps for active product leads
         if stage not in ("closed", "declined") and _pct(25):
             row["next_steps"] = fake.sentence()
             row["next_steps_date"] = _random_future_date(7, 60)
@@ -531,8 +557,8 @@ def seed_fundraise_leads(user_ids: list[str], orgs: list[dict], fund_ids: dict, 
 
     results = _batch_insert("leads", rows)
 
-    # Create lead_owners for each fundraise lead
-    print("  Seeding lead owners for fundraise leads...")
+    # Create lead_owners for each product lead
+    print("  Seeding lead owners for product leads...")
     lo_rows = []
     for lead in results:
         owner_id = lead.get("aksia_owner_id")
@@ -545,7 +571,7 @@ def seed_fundraise_leads(user_ids: list[str], orgs: list[dict], fund_ids: dict, 
     if lo_rows:
         _batch_insert("lead_owners", lo_rows)
     print(f"    -> {len(lo_rows)} lead owners")
-    print(f"    -> {len(results)} fundraise leads")
+    print(f"    -> {len(results)} product leads")
     return results
 
 
@@ -695,7 +721,7 @@ def seed_distribution_list_members(dist_lists: list[dict], people: list[dict], u
 
 
 def seed_tasks(user_ids: list[str], activities: list[dict], leads: list[dict],
-               fundraise_leads: list[dict], orgs: list[dict], people: list[dict]) -> list[dict]:
+               product_leads: list[dict], orgs: list[dict], people: list[dict]) -> list[dict]:
     """Seed ~200 tasks: manual + system-generated types."""
     print("  Seeding tasks...")
 
@@ -739,8 +765,8 @@ def seed_tasks(user_ids: list[str], activities: list[dict], leads: list[dict],
             elif link_choice == "person":
                 linked_id = random.choice(person_ids)
             elif link_choice == "lead":
-                # Link to either advisory or fundraise leads
-                all_leads = leads + fundraise_leads
+                # Link to either service or product leads
+                all_leads = leads + product_leads
                 if all_leads:
                     linked_id = random.choice(all_leads)["id"]
 
@@ -787,11 +813,11 @@ def seed_tasks(user_ids: list[str], activities: list[dict], leads: list[dict],
             "created_by": lead.get("created_by") or random.choice(user_ids),
         })
 
-    # Fundraise lead next-steps tasks (~30)
-    fr_with_ns = [fl for fl in fundraise_leads if fl.get("next_steps_date")][:30]
+    # Product lead next-steps tasks (~30)
+    fr_with_ns = [fl for fl in product_leads if fl.get("next_steps_date")][:30]
     for fl in fr_with_ns:
         rows.append({
-            "title": f"Fundraise lead next step: {(fl.get('summary') or 'Follow up')[:50]}",
+            "title": f"Product lead next step: {(fl.get('summary') or 'Follow up')[:50]}",
             "due_date": fl["next_steps_date"],
             "assigned_to": fl.get("aksia_owner_id") or random.choice(user_ids),
             "status": random.choices(["open", "in_progress", "complete"], weights=[50, 20, 30])[0],
@@ -929,12 +955,13 @@ def seed_all():
     orgs = seed_organizations(user_ids, ref)
     people = seed_people(user_ids, ref)
     seed_person_org_links(people, orgs)
+    seed_person_coverage_owners(people, user_ids)
     activities = seed_activities(user_ids, orgs, people, fund_ids, ref)
     leads, contracts = seed_leads(user_ids, orgs, ref)
-    fundraise_leads = seed_fundraise_leads(user_ids, orgs, fund_ids, ref)
+    product_leads = seed_product_leads(user_ids, orgs, fund_ids, ref)
     dist_lists = seed_distribution_lists(user_ids, ref)
     seed_distribution_list_members(dist_lists, people, user_ids)
-    seed_tasks(user_ids, activities, leads, fundraise_leads, orgs, people)
+    seed_tasks(user_ids, activities, leads, product_leads, orgs, people)
     seed_fee_arrangements(user_ids, orgs, ref)
 
     print("\n" + "=" * 60)

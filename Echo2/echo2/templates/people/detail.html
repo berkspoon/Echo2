@@ -67,8 +67,16 @@
                     <dd class="mt-1 text-sm text-gray-900">{{ person.phone or '&mdash;' }}</dd>
                 </div>
                 <div>
-                    <dt class="text-xs font-medium text-gray-500 uppercase">Coverage Owner</dt>
-                    <dd class="mt-1 text-sm text-gray-900">{{ coverage_name or '&mdash;' }}</dd>
+                    <dt class="text-xs font-medium text-gray-500 uppercase">Coverage Owners</dt>
+                    <dd class="mt-1 text-sm text-gray-900">
+                        {% if coverage_owners %}
+                        {% for co in coverage_owners %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ 'bg-brand-100 text-brand-800' if co.is_primary else 'bg-gray-100 text-gray-700' }}">
+                            {{ co.display_name }}{% if co.is_primary %} (primary){% endif %}
+                        </span>
+                        {% endfor %}
+                        {% else %}&mdash;{% endif %}
+                    </dd>
                 </div>
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Asset Classes</dt>

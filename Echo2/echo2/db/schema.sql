@@ -66,35 +66,32 @@ INSERT INTO reference_data (category, value, label, parent_value, display_order)
     ('activity_subtype', 'pipeline_call', 'Pipeline Call', 'meeting', 4),
     ('activity_subtype', 'site_visit', 'Site Visit', 'meeting', 5);
 
--- Seed: Lead Stage (advisory stages scoped with parent_value='advisory')
+-- Seed: Lead Stage (service stages scoped with parent_value='service')
 INSERT INTO reference_data (category, value, label, parent_value, display_order) VALUES
-    ('lead_stage', 'exploratory', 'Open [Exploratory]', 'advisory', 1),
-    ('lead_stage', 'radar', 'Open [Radar]', 'advisory', 2),
-    ('lead_stage', 'focus', 'Open [Focus]', 'advisory', 3),
-    ('lead_stage', 'verbal_mandate', 'Open [Verbal Mandate - In Contract]', 'advisory', 4),
-    ('lead_stage', 'won', 'Inactive [Won Mandate – Aksia Client]', 'advisory', 5),
-    ('lead_stage', 'lost_dropped_out', 'Inactive [Lost – Aksia Dropped Out]', 'advisory', 6),
-    ('lead_stage', 'lost_selected_other', 'Inactive [Lost – Selected Someone Else]', 'advisory', 7),
-    ('lead_stage', 'lost_nobody_hired', 'Inactive [Lost – Nobody Hired]', 'advisory', 8);
+    ('lead_stage', 'exploratory', 'Open [Exploratory]', 'service', 1),
+    ('lead_stage', 'radar', 'Open [Radar]', 'service', 2),
+    ('lead_stage', 'focus', 'Open [Focus]', 'service', 3),
+    ('lead_stage', 'verbal_mandate', 'Open [Verbal Mandate - In Contract]', 'service', 4),
+    ('lead_stage', 'won', 'Inactive [Won Mandate – Aksia Client]', 'service', 5),
+    ('lead_stage', 'did_not_win', 'Inactive [Did Not Win]', 'service', 6);
 
--- Seed: Lead Stage (fundraise stages scoped with parent_value='fundraise')
+-- Seed: Lead Stage (product stages scoped with parent_value='product')
 INSERT INTO reference_data (category, value, label, parent_value, display_order) VALUES
-    ('lead_stage', 'target_identified', 'Target Identified', 'fundraise', 1),
-    ('lead_stage', 'intro_scheduled', 'Intro Scheduled', 'fundraise', 2),
-    ('lead_stage', 'initial_meeting_complete', 'Initial Meeting Complete', 'fundraise', 3),
-    ('lead_stage', 'ddq_materials_sent', 'DDQ / Materials Sent', 'fundraise', 4),
-    ('lead_stage', 'due_diligence', 'Due Diligence', 'fundraise', 5),
-    ('lead_stage', 'ic_review', 'IC Review', 'fundraise', 6),
-    ('lead_stage', 'soft_circle', 'Soft Circle', 'fundraise', 7),
-    ('lead_stage', 'legal_docs', 'Legal / Docs', 'fundraise', 8),
-    ('lead_stage', 'closed', 'Closed', 'fundraise', 9),
-    ('lead_stage', 'declined', 'Declined', 'fundraise', 10);
+    ('lead_stage', 'target_identified', 'Target Identified', 'product', 1),
+    ('lead_stage', 'intro_scheduled', 'Intro Scheduled', 'product', 2),
+    ('lead_stage', 'initial_meeting_complete', 'Initial Meeting Complete', 'product', 3),
+    ('lead_stage', 'ddq_materials_sent', 'DDQ / Materials Sent', 'product', 4),
+    ('lead_stage', 'due_diligence', 'Due Diligence', 'product', 5),
+    ('lead_stage', 'ic_review', 'IC Review', 'product', 6),
+    ('lead_stage', 'soft_circle', 'Soft Circle', 'product', 7),
+    ('lead_stage', 'legal_docs', 'Legal / Docs', 'product', 8),
+    ('lead_stage', 'closed', 'Closed', 'product', 9),
+    ('lead_stage', 'declined', 'Declined', 'product', 10);
 
 -- Seed: Lead Type
 INSERT INTO reference_data (category, value, label, display_order) VALUES
-    ('lead_type', 'advisory', 'Advisory', 1),
-    ('lead_type', 'product', 'Product', 2),
-    ('lead_type', 'fundraise', 'Fundraise', 3);
+    ('lead_type', 'service', 'Service', 1),
+    ('lead_type', 'product', 'Product', 2);
 
 -- Seed: Lead Relationship Type
 INSERT INTO reference_data (category, value, label, display_order) VALUES
@@ -904,6 +901,19 @@ CREATE TABLE lead_owners (
 
 CREATE INDEX idx_lo_lead ON lead_owners (lead_id);
 CREATE INDEX idx_lo_user ON lead_owners (user_id);
+
+-- Person coverage owners (multi-coverage, like lead_owners)
+CREATE TABLE person_coverage_owners (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    person_id   UUID NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    is_primary  BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(person_id, user_id)
+);
+
+CREATE INDEX idx_pco_person ON person_coverage_owners (person_id);
+CREATE INDEX idx_pco_user ON person_coverage_owners (user_id);
 
 -- =============================================================================
 -- HELPER: Fuzzy duplicate detection for organizations

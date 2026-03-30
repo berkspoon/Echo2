@@ -441,6 +441,12 @@ async def quick_create_person(
             "organization_id": primary_org_id,
             "link_type": "primary",
         }).execute()
+        # Create coverage owner junction entry
+        sb.table("person_coverage_owners").insert({
+            "person_id": str(person["id"]),
+            "user_id": str(current_user.id),
+            "is_primary": True,
+        }).execute()
         log_field_change("person", str(person["id"]), "_created", None, "quick-created from activity form", current_user.id)
         display_name = f"{first_name} {last_name}".replace("'", "\\'").replace('"', '\\"')
         return HTMLResponse(
@@ -542,9 +548,9 @@ async def my_activities(
     auth_resp = sb.table("activities").select("id").eq("author_id", str(current_user.id)).eq("is_deleted", False).execute()
     my_activity_ids |= {str(a["id"]) for a in (auth_resp.data or [])}
 
-    # 2. Activities linked to people where user is coverage owner
-    covered_people = sb.table("people").select("id").eq("coverage_owner", str(current_user.id)).eq("is_deleted", False).execute()
-    person_ids = [str(p["id"]) for p in (covered_people.data or [])]
+    # 2. Activities linked to people where user is coverage owner (junction table)
+    pco_resp = sb.table("person_coverage_owners").select("person_id").eq("user_id", str(current_user.id)).execute()
+    person_ids = [str(p["person_id"]) for p in (pco_resp.data or [])]
     if person_ids:
         apl_resp = sb.table("activity_people_links").select("activity_id").in_("person_id", person_ids).execute()
         my_activity_ids |= {str(r["activity_id"]) for r in (apl_resp.data or [])}

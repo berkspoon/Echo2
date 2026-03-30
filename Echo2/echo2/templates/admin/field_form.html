@@ -240,7 +240,7 @@
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-1">Lead type scope:</label>
                             <input type="text" name="vis_lead_type" value="{{ vis.get('lead_type', '') if vis.get('lead_type') is string else (vis.get('lead_type', []) | join(', ') if vis.get('lead_type') else '') }}"
-                                   placeholder="e.g. advisory, fundraise"
+                                   placeholder="e.g. service, product"
                                    class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
                         </div>
                     </div>

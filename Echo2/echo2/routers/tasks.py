@@ -210,7 +210,7 @@ _SOURCE_LABELS = {
     "manual": "Manual",
     "activity_follow_up": "Activity Follow-Up",
     "lead_next_steps": "Lead Next Steps",
-    "fund_prospect_next_steps": "Fundraise Lead Next Steps",
+    "fund_prospect_next_steps": "Product Lead Next Steps",
 }
 
 
@@ -359,7 +359,7 @@ async def search_records(
                 )
 
     elif record_type == "fund_prospect":
-        # Now searches fundraise/product leads in the leads table
+        # Now searches product leads in the leads table
         resp = (
             sb.table("organizations")
             .select("id, company_name")
@@ -396,7 +396,7 @@ async def search_records(
                     f'class="w-full text-left px-4 py-2 hover:bg-brand-50 text-sm" '
                     f"onclick=\"selectRecord('{fp['id']}', '{safe_name}')\">"
                     f'<div class="font-medium text-gray-900">{display}</div>'
-                    f'<div class="text-xs text-gray-400">Fundraise Lead</div>'
+                    f'<div class="text-xs text-gray-400">Product Lead</div>'
                     f'</button>'
                 )
 
@@ -478,9 +478,9 @@ async def new_task_form(
                 pol_resp = sb.table("person_organization_links").select("person_id").in_("organization_id", org_ids).in_("link_type", ["primary", "secondary"]).execute()
                 person_ids = list({r["person_id"] for r in (pol_resp.data or [])})
                 if person_ids:
-                    # Get coverage owners for those people
-                    people_resp = sb.table("people").select("coverage_owner").in_("id", person_ids).eq("is_deleted", False).execute()
-                    coverage_owner_ids = list({str(p["coverage_owner"]) for p in (people_resp.data or []) if p.get("coverage_owner")})
+                    # Get coverage owners for those people (junction table)
+                    pco_resp = sb.table("person_coverage_owners").select("user_id").in_("person_id", person_ids).execute()
+                    coverage_owner_ids = list({str(p["user_id"]) for p in (pco_resp.data or [])})
                     if coverage_owner_ids:
                         # Get user details for those coverage owners
                         owners_resp = sb.table("users").select("id, display_name").in_("id", coverage_owner_ids).eq("is_active", True).execute()

@@ -80,6 +80,20 @@ def _sync_lead_owners(lead_id: str, owner_ids: list[str], primary_owner_id: str 
         }).execute()
 
 
+def _transition_prospect_to_client(org_id: str, user_id) -> None:
+    """When a lead is won, transition the linked org from prospect to client."""
+    if not org_id:
+        return
+    sb = get_supabase()
+    org_resp = sb.table("organizations").select("id, relationship_type").eq("id", str(org_id)).maybe_single().execute()
+    if org_resp.data and org_resp.data.get("relationship_type") == "prospect":
+        sb.table("organizations").update({"relationship_type": "client"}).eq("id", str(org_id)).execute()
+        audit_changes("organization", str(org_id),
+                       {"relationship_type": "prospect"},
+                       {"relationship_type": "client"},
+                       user_id)
+
+
 def _get_lead_owners(lead_id: str) -> list[dict]:
     """Get all owners for a lead from the junction table."""
     sb = get_supabase()
@@ -938,6 +952,10 @@ async def create_lead(
         # Audit log
         log_field_change("lead", str(lead_id), "_created", None, "record created", current_user.id)
 
+        # Prospect → Client transition on won
+        if rating == "won" and new_lead.get("organization_id"):
+            _transition_prospect_to_client(str(new_lead["organization_id"]), current_user.id)
+
         # Next steps task auto-generation
         if new_lead.get("next_steps_date"):
             org_name = get_org_name(str(new_lead["organization_id"])) if new_lead.get("organization_id") else "Lead"
@@ -1134,6 +1152,13 @@ async def update_lead(
     # Sync lead owners
     if owner_ids:
         _sync_lead_owners(str(lead_id), owner_ids)
+
+    # Prospect → Client transition on won (only when rating changes to won)
+    old_rating = old_lead.get("rating")
+    if rating == "won" and old_rating != "won":
+        org_id = lead_data.get("organization_id") or old_lead.get("organization_id")
+        if org_id:
+            _transition_prospect_to_client(str(org_id), current_user.id)
 
     # Next steps task: if next_steps_date changed and is now set
     old_nsd = old_lead.get("next_steps_date")

@@ -93,14 +93,32 @@
             </div>
 
             <div>
-                <label for="coverage_owner" class="block text-sm font-medium text-gray-700">Coverage Owner</label>
-                <select name="coverage_owner" id="coverage_owner"
-                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
-                    <option value="">Defaults to you</option>
-                    {% for u in users %}
-                    <option value="{{ u.id }}" {{ 'selected' if person and person.coverage_owner is not none and person.coverage_owner|string == u.id|string else '' }}>{{ u.display_name }}</option>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Coverage Owners</label>
+                <p class="text-xs text-gray-400 mb-2">Type a name to search. First added is primary.</p>
+                <!-- Selected coverage owners as chips -->
+                <div id="coverage-chips" class="flex flex-wrap gap-2 mb-2">
+                    {% for co in coverage_owners %}
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium {{ 'bg-brand-100 text-brand-800' if co.is_primary else 'bg-gray-100 text-gray-700' }}" data-uid="{{ co.user_id }}">
+                        {{ co.display_name }}{% if co.is_primary %} (primary){% endif %}
+                        <input type="hidden" name="coverage_owner_ids[]" value="{{ co.user_id }}">
+                        <button type="button" onclick="removeCoverageOwner(this.parentElement)" class="ml-0.5 text-gray-400 hover:text-red-500">&times;</button>
+                    </span>
                     {% endfor %}
-                </select>
+                </div>
+                <!-- Typeahead search input -->
+                <div class="relative">
+                    <input type="text" id="coverage-search-input"
+                           placeholder="Start typing a name..."
+                           autocomplete="off"
+                           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                           hx-get="/people/search-users"
+                           hx-trigger="keyup changed delay:300ms"
+                           hx-target="#coverage-search-results"
+                           hx-vals='{"q": ""}'
+                           hx-include="this"
+                           name="q">
+                    <div id="coverage-search-results" class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto hidden"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -268,6 +286,55 @@ function confirmDNC(checkbox) {
         document.getElementById('legal-notices-field').classList.remove('hidden');
     }
 }
+
+// Coverage owner typeahead
+function addCoverageOwner(uid, displayName) {
+    const chips = document.getElementById('coverage-chips');
+    // Prevent duplicates
+    if (chips.querySelector('[data-uid="' + uid + '"]')) return;
+    const isFirst = chips.children.length === 0;
+    const chip = document.createElement('span');
+    chip.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ' +
+        (isFirst ? 'bg-brand-100 text-brand-800' : 'bg-gray-100 text-gray-700');
+    chip.setAttribute('data-uid', uid);
+    chip.innerHTML = displayName + (isFirst ? ' (primary)' : '') +
+        '<input type="hidden" name="coverage_owner_ids[]" value="' + uid + '">' +
+        '<button type="button" onclick="removeCoverageOwner(this.parentElement)" class="ml-0.5 text-gray-400 hover:text-red-500">&times;</button>';
+    chips.appendChild(chip);
+    document.getElementById('coverage-search-input').value = '';
+    document.getElementById('coverage-search-results').classList.add('hidden');
+}
+
+function removeCoverageOwner(chipEl) {
+    const chips = chipEl.parentElement;
+    chipEl.remove();
+    // Re-mark first as primary
+    const remaining = chips.children;
+    if (remaining.length > 0) {
+        const first = remaining[0];
+        first.className = first.className.replace('bg-gray-100 text-gray-700', 'bg-brand-100 text-brand-800');
+        const nameText = first.getAttribute('data-uid');
+        if (!first.textContent.includes('(primary)')) {
+            const btn = first.querySelector('button');
+            const hidden = first.querySelector('input');
+            const displayName = first.textContent.replace('×', '').trim();
+            first.innerHTML = displayName + ' (primary)' +
+                '<input type="hidden" name="coverage_owner_ids[]" value="' + hidden.value + '">' +
+                '<button type="button" onclick="removeCoverageOwner(this.parentElement)" class="ml-0.5 text-gray-400 hover:text-red-500">&times;</button>';
+        }
+    }
+}
+
+// Show/hide search results dropdown
+document.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id === 'coverage-search-results') {
+        const results = evt.detail.target;
+        results.classList.toggle('hidden', results.innerHTML.trim() === '');
+    }
+});
+document.getElementById('coverage-search-input').addEventListener('blur', function() {
+    setTimeout(function() { document.getElementById('coverage-search-results').classList.add('hidden'); }, 200);
+});
 </script>
 {% endblock %}
 {% endblock %}

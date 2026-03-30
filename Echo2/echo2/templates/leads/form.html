@@ -3,7 +3,7 @@
 {% block page_title %}{{ 'Edit Lead' if lead and lead.id is defined else 'New Lead' }}{% endblock %}
 
 {% set current_lead_type = lead_type | default('service') %}
-{% set is_fundraise = current_lead_type in ('product',) %}
+{% set is_product = current_lead_type in ('product',) %}
 {% set is_editing = lead and lead.id is defined %}
 
 {% block content %}
@@ -107,7 +107,7 @@
             </div>
 
             <!-- Relationship (service only) -->
-            <div id="field-relationship" class="{{ 'hidden' if is_fundraise else '' }}">
+            <div id="field-relationship" class="{{ 'hidden' if is_product else '' }}">
                 <label for="relationship" class="block text-sm font-medium text-gray-700">Relationship <span class="text-red-500">*</span></label>
                 <select name="relationship" id="relationship"
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
@@ -177,7 +177,7 @@
         <h3 class="text-base font-semibold text-gray-900 mb-4">Overview</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <!-- Includes Product Allocation (service only) -->
-            <div id="field-includes-product" class="{{ 'hidden' if is_fundraise else '' }}">
+            <div id="field-includes-product" class="{{ 'hidden' if is_product else '' }}">
                 <label class="flex items-center gap-3 mt-2">
                     <input type="checkbox" name="includes_product_allocation" id="includes_product_allocation"
                            {{ 'checked' if lead and lead.includes_product_allocation else '' }}
@@ -186,7 +186,7 @@
                 </label>
             </div>
             <!-- Includes MAX Access (product only) -->
-            <div id="field-includes-max" class="{{ '' if is_fundraise else 'hidden' }}">
+            <div id="field-includes-max" class="{{ '' if is_product else 'hidden' }}">
                 <label class="flex items-center gap-3 mt-2">
                     <input type="checkbox" name="includes_max_access" id="includes_max_access"
                            {{ 'checked' if lead and lead.includes_max_access else '' }}
@@ -198,7 +198,7 @@
     </div>
 
     <!-- ===== PRODUCT-SPECIFIC: Fund & Allocation Section ===== -->
-    <div id="section-fundraise" class="bg-white rounded-lg shadow p-6 {{ '' if is_fundraise else 'hidden' }}">
+    <div id="section-product" class="bg-white rounded-lg shadow p-6 {{ '' if is_product else 'hidden' }}">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Fund & Allocation</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
@@ -288,7 +288,7 @@
     </div>
 
     <!-- ===== SERVICE: Radar+ Fields ===== -->
-    <div id="section-radar" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-min="2">
+    <div id="section-radar" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_product else '' }}" data-stage-min="2">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Service & Classification
             <span class="text-xs text-gray-400 font-normal ml-2">Radar+</span>
         </h3>
@@ -335,7 +335,7 @@
     </div>
 
     <!-- ===== SERVICE: Focus+ Fields ===== -->
-    <div id="section-focus" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-min="3">
+    <div id="section-focus" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_product else '' }}" data-stage-min="3">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Pipeline Details
             <span class="text-xs text-gray-400 font-normal ml-2">Focus+</span>
         </h3>
@@ -630,7 +630,7 @@
     </div>
 
     <!-- ===== SERVICE: Verbal Mandate+ Fields ===== -->
-    <div id="section-verbal" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-min="4">
+    <div id="section-verbal" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_product else '' }}" data-stage-min="4">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Verbal Mandate Details
             <span class="text-xs text-gray-400 font-normal ml-2">Verbal Mandate+</span>
         </h3>
@@ -667,7 +667,7 @@
     </div>
 
     <!-- ===== SERVICE: Closure Fields (Inactive stages) ===== -->
-    <div id="section-inactive" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-inactive>
+    <div id="section-inactive" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_product else '' }}" data-stage-inactive>
         <h3 class="text-base font-semibold text-gray-900 mb-4">Closure</h3>
 
         <!-- Won banner -->
@@ -716,7 +716,7 @@
     {# feedback: [padelsbach] custom EAV fields in correct sections with (custom) label #}
     {% from "components/_field_renderer.html" import render_field %}
     {% if sections is defined %}
-      {% set known_sections = ['Basic Information', 'Deal Details', 'Financial', 'Fundraise Details'] %}
+      {% set known_sections = ['Basic Information', 'Deal Details', 'Financial', 'Product Details'] %}
       {% set ns = namespace(has_additional=false) %}
       {% for sec_name, fields in sections.items() %}
         {% set eav_fields = fields | selectattr("storage_type", "equalto", "eav") | list %}
@@ -765,7 +765,7 @@
 {% block scripts %}
 <script>
 /* --- Lead type toggle --- */
-const isProduct = {{ 'true' if is_fundraise else 'false' }};
+const isProduct = {{ 'true' if is_product else 'false' }};
 
 const SERVICE_STAGE_ORDER = {
     exploratory: 1, radar: 2, focus: 3, verbal_mandate: 4,
@@ -790,7 +790,7 @@ const RFP_ENGAGEMENT_STATUSES = ['rfp_expected', 'rfp_in_progress', 'rfp_submitt
 
 function toggleLeadType(val) {
     const fr = (val === 'product');
-    document.getElementById('section-fundraise').classList.toggle('hidden', !fr);
+    document.getElementById('section-product').classList.toggle('hidden', !fr);
     document.getElementById('section-radar').classList.toggle('hidden', fr);
     document.getElementById('section-focus').classList.toggle('hidden', fr);
     document.getElementById('section-verbal').classList.toggle('hidden', fr);

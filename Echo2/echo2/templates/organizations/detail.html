@@ -216,7 +216,7 @@
         {% endif %}
     </div>
 
-    <!-- Tabs: People, Activities, Leads, Contracts, Fundraise Leads, Fee Arrangements -->
+    <!-- Tabs: People, Activities, Leads, Contracts, Product Leads, Fee Arrangements -->
     <div class="bg-white rounded-lg shadow">
         <nav class="flex border-b border-gray-200 px-6 overflow-x-auto">
             {% set tabs = [
@@ -224,7 +224,7 @@
                 ("activities", "Activities", activities | length),
                 ("leads", "Leads", leads | length),
                 ("contracts", "Contracts", contracts | length),
-                ("fundraise_leads", "Product Leads", fundraise_leads | length),
+                ("product_leads", "Product Leads", product_leads | length),
                 ("fee_arrangements", "Fee Arrangements", fee_arrangements | length),
                 ("documents", "Documents", none),
                 ("former_employees", "Former Employees", former_employees | length),
