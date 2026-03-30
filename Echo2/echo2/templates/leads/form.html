@@ -144,6 +144,56 @@
                        placeholder="Short description of the opportunity (max 200 chars)"
                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
             </div>
+
+            <!-- Engagement Status -->
+            <div>
+                <label for="engagement_status" class="block text-sm font-medium text-gray-700">Engagement Status</label>
+                <select name="engagement_status" id="engagement_status"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="updateConditionalFields()">
+                    <option value="">— Select —</option>
+                    {% for es in engagement_statuses %}
+                    <option value="{{ es.value }}" {{ 'selected' if lead and lead.engagement_status == es.value else '' }}>{{ es.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Coverage Office -->
+            <div>
+                <label for="coverage_office" class="block text-sm font-medium text-gray-700">Coverage Office</label>
+                <select name="coverage_office" id="coverage_office"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for co in coverage_offices %}
+                    <option value="{{ co.value }}" {{ 'selected' if lead and lead.coverage_office == co.value else '' }}>{{ co.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Overview Section (Always visible) ===== -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Overview</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Includes Product Allocation (service only) -->
+            <div id="field-includes-product" class="{{ 'hidden' if is_fundraise else '' }}">
+                <label class="flex items-center gap-3 mt-2">
+                    <input type="checkbox" name="includes_product_allocation" id="includes_product_allocation"
+                           {{ 'checked' if lead and lead.includes_product_allocation else '' }}
+                           class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                    <span class="text-sm font-medium text-gray-700">Includes Product Allocation</span>
+                </label>
+            </div>
+            <!-- Includes MAX Access (product only) -->
+            <div id="field-includes-max" class="{{ '' if is_fundraise else 'hidden' }}">
+                <label class="flex items-center gap-3 mt-2">
+                    <input type="checkbox" name="includes_max_access" id="includes_max_access"
+                           {{ 'checked' if lead and lead.includes_max_access else '' }}
+                           class="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                    <span class="text-sm font-medium text-gray-700">Includes MAX Access</span>
+                </label>
+            </div>
         </div>
     </div>
 
@@ -220,15 +270,15 @@
             </div>
         </div>
 
-        <!-- Next Steps (product) -->
+        <!-- Follow-Up Notes (product) -->
         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <label for="next_steps_fr" class="block text-sm font-medium text-gray-700">Next Steps</label>
+                <label for="next_steps_fr" class="block text-sm font-medium text-gray-700">Follow-Up Notes</label>
                 <textarea name="next_steps" id="next_steps_fr" rows="2"
                           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ lead.next_steps if lead and lead.next_steps else '' }}</textarea>
             </div>
             <div>
-                <label for="next_steps_date_fr" class="block text-sm font-medium text-gray-700">Next Steps Date</label>
+                <label for="next_steps_date_fr" class="block text-sm font-medium text-gray-700">Follow-Up Date</label>
                 <input type="date" name="next_steps_date" id="next_steps_date_fr"
                        value="{{ lead.next_steps_date if lead and lead.next_steps_date else '' }}"
                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
@@ -248,7 +298,8 @@
             <div>
                 <label for="service_type" class="block text-sm font-medium text-gray-700">Service Type <span class="text-red-500">*</span></label>
                 <select name="service_type" id="service_type"
-                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        onchange="updateConditionalFields()">
                     <option value="">— Select —</option>
                     {% for st in service_types %}
                     <option value="{{ st.value }}" {{ 'selected' if lead and lead.service_type == st.value else '' }}>{{ st.label }}</option>
@@ -290,6 +341,62 @@
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
+            <!-- Probability of Close -->
+            <div>
+                <label for="risk_weight" class="block text-sm font-medium text-gray-700">Probability of Close <span class="text-red-500">*</span></label>
+                <select name="risk_weight" id="risk_weight"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for rw in risk_weights %}
+                    <option value="{{ rw.value }}" {{ 'selected' if lead and lead.risk_weight == rw.value else '' }}>{{ rw.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Indicative Size (Low) -->
+            <div>
+                <label for="indicative_size_low" class="block text-sm font-medium text-gray-700">Indicative Size (Low)</label>
+                <input type="number" name="indicative_size_low" id="indicative_size_low" step="0.01" min="0"
+                       value="{{ lead.indicative_size_low if lead and lead.indicative_size_low is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Indicative Size (High) -->
+            <div>
+                <label for="indicative_size_high" class="block text-sm font-medium text-gray-700">Indicative Size (High)</label>
+                <input type="number" name="indicative_size_high" id="indicative_size_high" step="0.01" min="0"
+                       value="{{ lead.indicative_size_high if lead and lead.indicative_size_high is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Expected Contract Start Date -->
+            <div>
+                <label for="expected_contract_start_date" class="block text-sm font-medium text-gray-700">Expected Contract Start Date</label>
+                <input type="date" name="expected_contract_start_date" id="expected_contract_start_date"
+                       value="{{ lead.expected_contract_start_date if lead and lead.expected_contract_start_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Revenue Currency -->
+            <div>
+                <label for="revenue_currency" class="block text-sm font-medium text-gray-700">Revenue Currency</label>
+                <select name="revenue_currency" id="revenue_currency"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for rc in revenue_currencies %}
+                    <option value="{{ rc.value }}" {{ 'selected' if lead and lead.revenue_currency == rc.value else '' }}>{{ rc.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Expected Fee ($) -->
+            <div>
+                <label for="expected_fee" class="block text-sm font-medium text-gray-700">Expected Fee ($)</label>
+                <input type="number" name="expected_fee" id="expected_fee" step="0.01" min="0"
+                       value="{{ lead.expected_fee if lead and lead.expected_fee is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
             <!-- Expected Revenue Notes -->
             <div>
                 <label for="expected_revenue_notes" class="block text-sm font-medium text-gray-700">Revenue Notes</label>
@@ -315,63 +422,211 @@
                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
             </div>
 
-            <!-- Previous FLAR (conditional on Extension/Re-Up) -->
-            <div id="previous-flar-wrapper" class="{{ '' if lead and lead.relationship in ('contract_extension', 're_up') else 'hidden' }}">
+            <!-- Previous FLAR (conditional on existing_client_contract_extension) -->
+            <div id="previous-flar-wrapper" class="{{ '' if lead and lead.relationship == 'existing_client_contract_extension' else 'hidden' }}">
                 <label for="previous_flar" class="block text-sm font-medium text-gray-700">Previous FLAR ($) <span class="text-red-500">*</span></label>
                 <input type="number" name="previous_flar" id="previous_flar" step="0.01" min="0"
                        value="{{ lead.previous_flar if lead and lead.previous_flar is not none else '' }}"
                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
             </div>
-
-            <!-- RFP Status -->
-            <div>
-                <label for="rfp_status" class="block text-sm font-medium text-gray-700">RFP Status <span class="text-red-500">*</span></label>
-                <select name="rfp_status" id="rfp_status"
-                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        onchange="updateConditionalFields()">
-                    <option value="">— Select —</option>
-                    {% for rs in rfp_statuses %}
-                    <option value="{{ rs.value }}" {{ 'selected' if lead and lead.rfp_status == rs.value else '' }}>{{ rs.label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <!-- RFP Expected Date (conditional) -->
-            <div id="rfp-date-wrapper" class="{{ '' if lead and lead.rfp_status and lead.rfp_status != 'not_applicable' else 'hidden' }}">
-                <label for="rfp_expected_date" class="block text-sm font-medium text-gray-700">RFP Expected Date <span class="text-red-500">*</span></label>
-                <input type="date" name="rfp_expected_date" id="rfp_expected_date"
-                       value="{{ lead.rfp_expected_date if lead and lead.rfp_expected_date else '' }}"
-                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
-            </div>
-
-            <!-- Risk Weight -->
-            <div>
-                <label for="risk_weight" class="block text-sm font-medium text-gray-700">Risk Weight <span class="text-red-500">*</span></label>
-                <select name="risk_weight" id="risk_weight"
-                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
-                    <option value="">— Select —</option>
-                    {% for rw in risk_weights %}
-                    <option value="{{ rw.value }}" {{ 'selected' if lead and lead.risk_weight == rw.value else '' }}>{{ rw.label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
         </div>
 
-        <!-- Next Steps (service) -->
+        <!-- Follow-Up Notes (service) -->
         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <label for="next_steps" class="block text-sm font-medium text-gray-700">Next Steps</label>
+                <label for="next_steps" class="block text-sm font-medium text-gray-700">Follow-Up Notes</label>
                 <textarea name="next_steps" id="next_steps" rows="2"
                           class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ lead.next_steps if lead and lead.next_steps else '' }}</textarea>
             </div>
             <div>
-                <label for="next_steps_date" class="block text-sm font-medium text-gray-700">Next Steps Date</label>
+                <label for="next_steps_date" class="block text-sm font-medium text-gray-700">Follow-Up Date</label>
                 <input type="date" name="next_steps_date" id="next_steps_date"
                        value="{{ lead.next_steps_date if lead and lead.next_steps_date else '' }}"
                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
                 <p class="mt-1 text-xs text-gray-400">Setting a date auto-generates a task assigned to the Aksia Owner.</p>
             </div>
         </div>
+    </div>
+
+    <!-- ===== SERVICE: IM Details (Focus+, service_type = investment_management) ===== -->
+    <div id="section-im-details" class="bg-white rounded-lg shadow p-6 hidden" data-stage-min="3">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">IM Details
+            <span class="text-xs text-gray-400 font-normal ml-2">Focus+</span>
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+            <!-- Expected Management Fee (%) -->
+            <div>
+                <label for="expected_management_fee" class="block text-sm font-medium text-gray-700">Expected Management Fee (%)</label>
+                <input type="number" name="expected_management_fee" id="expected_management_fee" step="0.01" min="0"
+                       value="{{ lead.expected_management_fee if lead and lead.expected_management_fee is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Expected Incentive Fee (%) -->
+            <div>
+                <label for="expected_incentive_fee" class="block text-sm font-medium text-gray-700">Expected Incentive Fee (%)</label>
+                <input type="number" name="expected_incentive_fee" id="expected_incentive_fee" step="0.01" min="0"
+                       value="{{ lead.expected_incentive_fee if lead and lead.expected_incentive_fee is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Expected Preferred Return (%) -->
+            <div>
+                <label for="expected_preferred_return" class="block text-sm font-medium text-gray-700">Expected Preferred Return (%)</label>
+                <input type="number" name="expected_preferred_return" id="expected_preferred_return" step="0.01" min="0"
+                       value="{{ lead.expected_preferred_return if lead and lead.expected_preferred_return is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Expected Catch-Up (%) -->
+            <div>
+                <label for="expected_catchup_pct" class="block text-sm font-medium text-gray-700">Expected Catch-Up (%)</label>
+                <input type="number" name="expected_catchup_pct" id="expected_catchup_pct" step="0.01" min="0"
+                       value="{{ lead.expected_catchup_pct if lead and lead.expected_catchup_pct is not none else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Expected Size -->
+            <div>
+                <label for="expected_size" class="block text-sm font-medium text-gray-700">Expected Size</label>
+                <input type="text" name="expected_size" id="expected_size"
+                       value="{{ lead.expected_size if lead and lead.expected_size else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- GP Commitment -->
+            <div>
+                <label for="gp_commitment" class="block text-sm font-medium text-gray-700">GP Commitment</label>
+                <select name="gp_commitment" id="gp_commitment"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for gp in gp_commitment_options %}
+                    <option value="{{ gp.value }}" {{ 'selected' if lead and lead.gp_commitment == gp.value else '' }}>{{ gp.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Deployment Period -->
+            <div>
+                <label for="deployment_period" class="block text-sm font-medium text-gray-700">Deployment Period</label>
+                <select name="deployment_period" id="deployment_period"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for dp in deployment_periods %}
+                    <option value="{{ dp.value }}" {{ 'selected' if lead and lead.deployment_period == dp.value else '' }}>{{ dp.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SERVICE: Product Details (Focus+, service_type = product) ===== -->
+    <div id="section-product-details" class="bg-white rounded-lg shadow p-6 hidden" data-stage-min="3">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Product Details
+            <span class="text-xs text-gray-400 font-normal ml-2">Focus+</span>
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+            <!-- Commitment Status -->
+            <div>
+                <label for="commitment_status" class="block text-sm font-medium text-gray-700">Commitment Status</label>
+                <select name="commitment_status" id="commitment_status"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for cs in commitment_statuses %}
+                    <option value="{{ cs.value }}" {{ 'selected' if lead and lead.commitment_status == cs.value else '' }}>{{ cs.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Waystone Approved -->
+            <div>
+                <label for="waystone_approved" class="block text-sm font-medium text-gray-700">Waystone Approved</label>
+                <select name="waystone_approved" id="waystone_approved"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for wo in waystone_options %}
+                    <option value="{{ wo.value }}" {{ 'selected' if lead and lead.waystone_approved == wo.value else '' }}>{{ wo.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Expected Fund Close -->
+            <div>
+                <label for="expected_fund_close" class="block text-sm font-medium text-gray-700">Expected Fund Close</label>
+                <select name="expected_fund_close" id="expected_fund_close"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for fc in fund_close_options %}
+                    <option value="{{ fc.value }}" {{ 'selected' if lead and lead.expected_fund_close == fc.value else '' }}>{{ fc.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== RFP Details (shown when engagement_status is rfp-related) ===== -->
+    <div id="section-rfp" class="bg-white rounded-lg shadow p-6 hidden">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">RFP Details</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <!-- RFP Due Date -->
+            <div>
+                <label for="rfp_due_date" class="block text-sm font-medium text-gray-700">RFP Due Date</label>
+                <input type="date" name="rfp_due_date" id="rfp_due_date"
+                       value="{{ lead.rfp_due_date if lead and lead.rfp_due_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- RFP Submitted Date -->
+            <div>
+                <label for="rfp_submitted_date" class="block text-sm font-medium text-gray-700">RFP Submitted Date</label>
+                <input type="date" name="rfp_submitted_date" id="rfp_submitted_date"
+                       value="{{ lead.rfp_submitted_date if lead and lead.rfp_submitted_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Timeline (auto-populated engagement dates) ===== -->
+    <div id="section-timeline" class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Timeline</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+            <!-- Prospect Contacted Date -->
+            <div>
+                <label for="prospect_contacted_date" class="block text-sm font-medium text-gray-700">Prospect Contacted Date</label>
+                <input type="date" name="prospect_contacted_date" id="prospect_contacted_date"
+                       value="{{ lead.prospect_contacted_date if lead and lead.prospect_contacted_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Prospect Responded Date -->
+            <div>
+                <label for="prospect_responded_date" class="block text-sm font-medium text-gray-700">Prospect Responded Date</label>
+                <input type="date" name="prospect_responded_date" id="prospect_responded_date"
+                       value="{{ lead.prospect_responded_date if lead and lead.prospect_responded_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Initial Meeting Date -->
+            <div>
+                <label for="initial_meeting_date" class="block text-sm font-medium text-gray-700">Initial Meeting Date</label>
+                <input type="date" name="initial_meeting_date" id="initial_meeting_date"
+                       value="{{ lead.initial_meeting_date if lead and lead.initial_meeting_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Initial Meeting Complete Date -->
+            <div>
+                <label for="initial_meeting_complete_date" class="block text-sm font-medium text-gray-700">Initial Meeting Complete Date</label>
+                <input type="date" name="initial_meeting_complete_date" id="initial_meeting_complete_date"
+                       value="{{ lead.initial_meeting_complete_date if lead and lead.initial_meeting_complete_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+        </div>
+        <p class="mt-3 text-xs text-gray-400">These dates auto-populate when Engagement Status changes.</p>
     </div>
 
     <!-- ===== SERVICE: Verbal Mandate+ Fields ===== -->
@@ -429,11 +684,32 @@
             </p>
         </div>
 
-        <div>
-            <label for="end_date" class="block text-sm font-medium text-gray-700">End Date <span id="end-date-required" class="text-red-500 hidden">*</span></label>
-            <input type="date" name="end_date" id="end_date"
-                   value="{{ lead.end_date if lead and lead.end_date else '' }}"
-                   class="mt-1 w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label for="end_date" class="block text-sm font-medium text-gray-700">End Date <span id="end-date-required" class="text-red-500 hidden">*</span></label>
+                <input type="date" name="end_date" id="end_date"
+                       value="{{ lead.end_date if lead and lead.end_date else '' }}"
+                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Decline Reason Code (did_not_win) -->
+            <div id="decline-code-wrapper" class="hidden">
+                <label for="decline_reason_code" class="block text-sm font-medium text-gray-700">Decline Reason <span class="text-red-500">*</span></label>
+                <select name="decline_reason_code" id="decline_reason_code"
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+                    <option value="">— Select —</option>
+                    {% for dc in decline_reason_codes %}
+                    <option value="{{ dc.value }}" {{ 'selected' if lead and lead.decline_reason_code == dc.value else '' }}>{{ dc.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Decline Rationale -->
+            <div id="decline-rationale-wrapper" class="hidden md:col-span-2">
+                <label for="decline_rationale" class="block text-sm font-medium text-gray-700">Decline Rationale</label>
+                <textarea name="decline_rationale" id="decline_rationale" maxlength="500" rows="2"
+                          class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">{{ lead.decline_rationale if lead and lead.decline_rationale else '' }}</textarea>
+            </div>
         </div>
     </div>
 
@@ -510,6 +786,8 @@ const PRODUCT_STAGES = [
     {% endfor %}
 ];
 
+const RFP_ENGAGEMENT_STATUSES = ['rfp_expected', 'rfp_in_progress', 'rfp_submitted'];
+
 function toggleLeadType(val) {
     const fr = (val === 'product');
     document.getElementById('section-fundraise').classList.toggle('hidden', !fr);
@@ -518,6 +796,8 @@ function toggleLeadType(val) {
     document.getElementById('section-verbal').classList.toggle('hidden', fr);
     document.getElementById('section-inactive').classList.toggle('hidden', fr);
     document.getElementById('field-relationship').classList.toggle('hidden', fr);
+    document.getElementById('field-includes-product').classList.toggle('hidden', fr);
+    document.getElementById('field-includes-max').classList.toggle('hidden', !fr);
 
     // Swap stage dropdown options based on lead type
     const ratingSelect = document.getElementById('rating');
@@ -535,6 +815,12 @@ function toggleLeadType(val) {
         const rating = document.getElementById('rating').value;
         const drw = document.getElementById('decline-reason-wrapper');
         if (drw) drw.classList.toggle('hidden', rating !== 'declined');
+    }
+
+    // Hide service-type-dependent sections when switching to product
+    if (fr) {
+        document.getElementById('section-im-details').classList.add('hidden');
+        document.getElementById('section-product-details').classList.add('hidden');
     }
 }
 
@@ -557,29 +843,51 @@ function updateStageVisibility(rating) {
     document.getElementById('section-verbal').classList.toggle('hidden', stage < 4);
     document.getElementById('section-inactive').classList.toggle('hidden', !isInactive);
 
+    // Show/hide IM Details and Product Details based on stage + service_type
+    const serviceType = document.getElementById('service_type');
+    const stVal = serviceType ? serviceType.value : '';
+    document.getElementById('section-im-details').classList.toggle('hidden', stage < 3 || stVal !== 'investment_management');
+    document.getElementById('section-product-details').classList.toggle('hidden', stage < 3 || stVal !== 'product');
+
     // Won/Lost banners
     document.getElementById('won-banner').classList.toggle('hidden', !isWon);
     document.getElementById('lost-banner').classList.toggle('hidden', !isLost);
 
     // End date required indicator
     document.getElementById('end-date-required').classList.toggle('hidden', !isLost);
+
+    // Decline fields for did_not_win
+    const declineCodeWrapper = document.getElementById('decline-code-wrapper');
+    const declineRationaleWrapper = document.getElementById('decline-rationale-wrapper');
+    if (declineCodeWrapper) declineCodeWrapper.classList.toggle('hidden', !isLost);
+    if (declineRationaleWrapper) declineRationaleWrapper.classList.toggle('hidden', !isLost);
 }
 
 function updateConditionalFields() {
     if (isProduct) return;
 
-    // Previous FLAR: show when relationship is extension or re-up
+    // Previous FLAR: show when relationship is existing_client_contract_extension
     const rel = document.getElementById('relationship');
     if (rel) {
         const pw = document.getElementById('previous-flar-wrapper');
-        if (pw) pw.classList.toggle('hidden', rel.value !== 'contract_extension' && rel.value !== 're_up');
+        if (pw) pw.classList.toggle('hidden', rel.value !== 'existing_client_contract_extension');
     }
 
-    // RFP Expected Date
-    const rfp = document.getElementById('rfp_status');
-    if (rfp) {
-        const rdw = document.getElementById('rfp-date-wrapper');
-        if (rdw) rdw.classList.toggle('hidden', !rfp.value || rfp.value === 'not_applicable');
+    // Service Type: show IM Details or Product Details
+    const serviceType = document.getElementById('service_type');
+    if (serviceType) {
+        const stVal = serviceType.value;
+        const rating = document.getElementById('rating').value;
+        const stage = SERVICE_STAGE_ORDER[rating] || 1;
+        document.getElementById('section-im-details').classList.toggle('hidden', stage < 3 || stVal !== 'investment_management');
+        document.getElementById('section-product-details').classList.toggle('hidden', stage < 3 || stVal !== 'product');
+    }
+
+    // Engagement Status: show RFP section when rfp-related
+    const engagementStatus = document.getElementById('engagement_status');
+    if (engagementStatus) {
+        const esVal = engagementStatus.value;
+        document.getElementById('section-rfp').classList.toggle('hidden', !RFP_ENGAGEMENT_STATUSES.includes(esVal));
     }
 
     // Legacy Onboarding Holdings

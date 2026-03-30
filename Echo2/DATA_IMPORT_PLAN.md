@@ -417,6 +417,47 @@ Source: Echo Mappings.xlsx "CountriesDistinctList" sheet. Includes duplicates (U
 
 ---
 
+## Files Affected by Lead Schema Changes (Reference for Future Steps)
+
+When modifying lead-related values (types, stages, field names, reference_data categories), check ALL of these files:
+
+### Python (routers + services)
+| File | What to check |
+|------|--------------|
+| `routers/leads.py` | Stage constants, lead_type defaults, validation rules, form parsing, form context |
+| `routers/dashboards.py` | Stage/type filters, LEAD_INACTIVE_STAGES, LEAD_LOST_STAGES, stage colors, coverage widget, drilldown queries |
+| `routers/activities.py` | INACTIVE_LEAD_STAGES, lead_type display labels |
+| `routers/contracts.py` | Won stage detection, lead_type defaults, pre-fill from lead fields |
+| `routers/organizations.py` | _INACTIVE_LEAD_STAGES, fundraise/product lead queries |
+| `routers/tasks.py` | Lead type queries for suggested assignees |
+| `routers/distribution_lists.py` | Lead type filter for fund-based DL queries |
+| `services/form_service.py` | _SERVICE_STAGE_ORDER, _PRODUCT_STAGE_ORDER, _get_stage_order() |
+| `services/grid_service.py` | _INACTIVE_STAGES, _DEFAULT_COLUMNS, _BASE_SELECT, _VALID_SORT, lead_type filter logic |
+| `scripts/seed_field_definitions.py` | LEAD_FIELDS array |
+| `scripts/seed_data.py` | Dummy data generation (lead_type, stages, reference values) |
+
+### Templates
+| File | What to check |
+|------|--------------|
+| `templates/leads/form.html` | Hardcoded field sections, JS stage/type visibility, dropdown context vars |
+| `templates/leads/detail.html` | Stage badges, field labels, lead_type display, back-link URLs |
+| `templates/leads/list.html` | Lead type filter tabs, page titles |
+| `templates/components/_grid.html` | Lead type badge colors |
+| `templates/organizations/_org_leads_panel.html` | Lead type badges |
+| `templates/organizations/_tab_fundraise_leads.html` | Product lead tab |
+| `templates/organizations/detail.html` | Tab labels |
+| `templates/dashboards/_widget_my_coverage.html` | Lead count variable names, link URLs |
+| `templates/dashboards/advisory_pipeline.html` | Stage references (if any) |
+| `templates/dashboards/capital_raise.html` | Stage references, drilldown container IDs |
+
+### Database
+| File | What to check |
+|------|--------------|
+| `db/migrate_schema.sql` | Column definitions, reference_data inserts, data migration UPDATEs |
+| `db/schema.sql` | Canonical schema (not always kept in sync — migrate_schema.sql is source of truth) |
+
+---
+
 ## Implementation Steps
 
 Each step is self-contained (can clear session between). After each step: update SESSION_LOG.md + this file, commit.
