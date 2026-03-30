@@ -817,9 +817,12 @@ function toggleLeadType(val) {
         if (drw) drw.classList.toggle('hidden', rating !== 'declined');
     }
 
-    // Hide service-type-dependent sections when switching to product
+    // Product leads: show Product Details always, hide IM Details
+    // Service leads: these are controlled by service_type in updateConditionalFields
     if (fr) {
         document.getElementById('section-im-details').classList.add('hidden');
+        document.getElementById('section-product-details').classList.remove('hidden');
+    } else {
         document.getElementById('section-product-details').classList.add('hidden');
     }
 }
@@ -829,6 +832,8 @@ function updateStageVisibility(rating) {
         // Product: show decline reason when declined
         const drw = document.getElementById('decline-reason-wrapper');
         if (drw) drw.classList.toggle('hidden', rating !== 'declined');
+        // Product Details always visible for product leads
+        document.getElementById('section-product-details').classList.remove('hidden');
         return;
     }
 
