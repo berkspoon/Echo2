@@ -318,8 +318,7 @@ async def suppress_duplicate(
 
 # Inactive lead stages — same as grid_service._enrich_organizations
 _INACTIVE_LEAD_STAGES = (
-    "won", "lost_dropped_out", "lost_selected_other",
-    "lost_nobody_hired", "closed", "declined",
+    "won", "did_not_win", "closed", "declined",
 )
 
 @router.get("/{org_id}/leads-panel", response_class=HTMLResponse)
@@ -493,7 +492,7 @@ async def get_organization(
         .select("id, fund_id, share_class, rating, aksia_owner_id, target_allocation_mn, probability_pct, lead_type")
         .eq("organization_id", str(org_id))
         .eq("is_deleted", False)
-        .in_("lead_type", ["fundraise", "product"])
+        .eq("lead_type", "product")
         .execute()
     )
     fundraise_leads = fundraise_resp.data or []

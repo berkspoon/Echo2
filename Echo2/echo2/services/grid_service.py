@@ -46,7 +46,7 @@ _DEFAULT_COLUMNS: dict[str, list[str]] = {
     ],
     "lead": [
         "title", "organization_id", "lead_type", "rating", "service_type",
-        "aksia_owner_id", "expected_revenue", "expected_yr1_flar", "start_date",
+        "aksia_owner_id", "engagement_status", "expected_yr1_flar", "start_date",
     ],
     "activity": [
         "effective_date", "title", "activity_type", "author_id",
@@ -68,7 +68,7 @@ _DEFAULT_COLUMNS: dict[str, list[str]] = {
 _BASE_SELECT: dict[str, str] = {
     "organization": "id, company_name, short_name, relationship_type, organization_type, country, city, aum_mn, rfp_hold, website, created_at",
     "person": "id, first_name, last_name, email, phone, job_title, do_not_contact, coverage_owner, asset_classes_of_interest, created_at",
-    "lead": "id, title, organization_id, lead_type, rating, service_type, relationship, aksia_owner_id, expected_revenue, expected_yr1_flar, start_date, end_date, summary, fund_id, share_class, target_allocation_mn, soft_circle_mn, probability_pct, created_at, is_deleted",
+    "lead": "id, title, organization_id, lead_type, rating, service_type, relationship, aksia_owner_id, engagement_status, expected_fee, expected_yr1_flar, expected_longterm_flar, start_date, end_date, summary, fund_id, share_class, target_allocation_mn, soft_circle_mn, probability_pct, coverage_office, risk_weight, commitment_status, waystone_approved, decline_reason_code, includes_product_allocation, includes_max_access, created_at, is_deleted",
     "activity": "id, title, effective_date, activity_type, subtype, author_id, details, follow_up_required, created_at",
     "contract": "id, organization_id, originating_lead_id, start_date, service_type, asset_classes, client_coverage, actual_revenue, created_at",
     "task": "id, title, status, due_date, assigned_to, source, notes, linked_record_type, linked_record_id, created_by, created_at",
@@ -96,10 +96,9 @@ _DEFAULT_SORT: dict[str, tuple[str, str]] = {
     "distribution_list": ("list_name", "asc"),
 }
 
-# Lead stages considered inactive (won/lost/closed/declined)
+# Lead stages considered inactive (won/did_not_win/closed/declined)
 _INACTIVE_STAGES = (
-    "won", "lost_dropped_out", "lost_selected_other",
-    "lost_nobody_hired", "closed", "declined",
+    "won", "did_not_win", "closed", "declined",
 )
 
 # ── Virtual / computed columns (not stored in DB or field_definitions) ────
@@ -656,10 +655,10 @@ def _apply_filters(entity_type: str, query, filters: dict):
     elif entity_type == "lead":
         if filters.get("lead_type"):
             lt = filters["lead_type"]
-            if lt in ("fundraise", "product"):
-                query = query.in_("lead_type", ["fundraise", "product"])
-            elif lt == "advisory":
-                query = query.or_("lead_type.eq.advisory,lead_type.is.null")
+            if lt == "product":
+                query = query.eq("lead_type", "product")
+            elif lt == "service":
+                query = query.or_("lead_type.eq.service,lead_type.is.null")
             else:
                 query = query.eq("lead_type", lt)
         if filters.get("stage"):

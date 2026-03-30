@@ -492,3 +492,31 @@ _Use this section to track decisions made during Claude Code sessions:_
 - **Production hardening:** (1) Cache TTL 60s — multi-worker safe, stale reads last max 60s. (2) Config shape validation on save — rejects malformed JSON with clear error messages. (3) Reset to Defaults button — restores seed config with confirmation dialog. (4) Audit logging — every config change logged to `audit_log` with old/new JSON diff. (5) `batch_resolve_orgs()` now selects `*` for full org data. (6) Dynamic available keys in admin editor built from `field_definitions` for org + lead entities.
 - **Zero-downtime:** Every `get_view_config()` call includes a `default=` with current hardcoded values. System works identically before seeds are run.
 - **DB migration required:** Run the Phase 6 block at the end of `migrate_schema.sql` in Supabase SQL Editor, then `python -m scripts.seed_view_configurations`.
+
+### Session 29 — March 30, 2026
+**Step 1: Lead Schema + V17 Fields** — Complete implementation of Patrick's V17 lead field restructuring.
+
+**Schema Changes (migrate_schema.sql Phase 8):**
+- Added 29 new columns to `leads` table: engagement_status, commitment_status, waystone_approved, decline_reason_code, decline_rationale, indicative_size_low/high, coverage_office, 4 timeline dates (prospect_contacted/responded, initial_meeting/complete), revenue_currency, 4 IM fee fields (management/incentive/preferred/catchup), expected_size, expected_fee, gp_commitment, deployment_period, expected_contract_start_date, expected_fund_close, rfp_due_date, rfp_submitted_date, service_subtype, includes_product_allocation, includes_max_access.
+- 10 new reference_data categories: engagement_status (10 values), commitment_status (5), waystone_approved (3), decline_reason_code (11), coverage_office (4), gp_commitment (2), deployment_period (5), expected_fund_close (4), revenue_currency (9).
+- **Breaking renames:** lead_type advisory→service, fundraise merged into product. rating lost_dropped_out/lost_selected_other/lost_nobody_hired→did_not_win. lead_stage parent_value advisory→service, fundraise→product. relationship new→new_client, cross_sell→existing_client_new_business, contract_extension→existing_client_contract_extension. service_type discretionary→investment_management (added advisory_bps). risk_weight high/medium/low→0_25/25_50/50_75/75_100.
+
+**Field Definitions (seed_field_definitions.py):**
+- LEAD_FIELDS rewritten: 58 fields across 13 sections (up from 34 fields in 8 sections).
+- Removed from UI: pricing_proposal, pricing_proposal_details, expected_revenue, expected_decision_date, rfp_status, rfp_expected_date.
+- New sections: Overview, Timeline, Service Details, IM Details, Product Details, RFP, Follow-Up (renamed from Next Steps).
+
+**Business Logic (leads.py):**
+- STAGE_ORDER: did_not_win replaces 3 lost stages. PRODUCT_STAGE_ORDER (was FUNDRAISE_).
+- _ENGAGEMENT_DATE_FIELDS: auto-populates timeline dates when engagement_status changes (prospect_contacted→prospect_contacted_date, etc.).
+- Validation: removed pricing_proposal/expected_revenue requirements at Focus. Source changed from required to suggested. decline_reason_code required at did_not_win.
+- All lead_type checks: advisory→service, fundraise→product.
+
+**Code Updates (13 files):**
+- form_service.py: _SERVICE_STAGE_ORDER, _PRODUCT_STAGE_ORDER.
+- grid_service.py: _INACTIVE_STAGES, _DEFAULT_COLUMNS (engagement_status replaces expected_revenue), _BASE_SELECT expanded.
+- dashboards.py: All stage/type references updated. Coverage widget: service_leads_count, product_leads_count.
+- activities.py, contracts.py, organizations.py, tasks.py, distribution_lists.py: stage/type references.
+- Templates (8 files): form.html, detail.html, list.html, _grid.html, _org_leads_panel.html, _tab_fundraise_leads.html, _widget_my_coverage.html, capital_raise/advisory templates.
+
+**DB migration required:** Run Phase 8 block at end of `migrate_schema.sql` in Supabase SQL Editor, then `python -m scripts.seed_field_definitions`.

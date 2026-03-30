@@ -18,8 +18,8 @@ templates = Jinja2Templates(directory="templates")
 
 # Lead stage ordering (mirrored from leads.py — each router is self-contained)
 LEAD_STAGE_ORDER = ["exploratory", "radar", "focus", "verbal_mandate"]
-LEAD_INACTIVE_STAGES = {"won", "lost_dropped_out", "lost_selected_other", "lost_nobody_hired"}
-LEAD_LOST_STAGES = {"lost_dropped_out", "lost_selected_other", "lost_nobody_hired"}
+LEAD_INACTIVE_STAGES = {"won", "did_not_win"}
+LEAD_LOST_STAGES = {"did_not_win"}
 LEAD_ALL_STAGES = LEAD_STAGE_ORDER + ["won"] + list(LEAD_LOST_STAGES)
 
 # Fund prospect stage ordering (mirrored from fund_prospects.py)
@@ -37,9 +37,7 @@ LEAD_STAGE_COLORS = {
     "focus": "bg-yellow-400",
     "verbal_mandate": "bg-purple-400",
     "won": "bg-green-400",
-    "lost_dropped_out": "bg-red-400",
-    "lost_selected_other": "bg-red-300",
-    "lost_nobody_hired": "bg-red-200",
+    "did_not_win": "bg-red-400",
 }
 
 FP_STAGE_COLORS = {
@@ -148,7 +146,7 @@ def _enrich_with_lead_fields(row: dict, lead_data: dict) -> None:
 
 
 def _compute_traction_score(stage: str) -> int:
-    """Return traction score for a fundraise stage."""
+    """Return traction score for a product lead stage."""
     return _TRACTION_SCORES.get(stage, 0)
 
 
@@ -454,7 +452,7 @@ async def widget_my_coverage(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Widget: counts of orgs, people, leads (advisory + fundraise) under user's coverage."""
+    """Widget: counts of orgs, people, leads (service + product) under user's coverage."""
     try:
         sb = get_supabase()
 
@@ -462,13 +460,13 @@ async def widget_my_coverage(
         people_resp = sb.table("people").select("id", count="exact").eq("is_deleted", False).eq("coverage_owner", str(current_user.id)).execute()
         people_count = people_resp.count or 0
 
-        # Count advisory leads where aksia_owner = current user
-        advisory_leads_resp = sb.table("leads").select("id", count="exact").eq("is_deleted", False).eq("aksia_owner_id", str(current_user.id)).eq("lead_type", "advisory").execute()
-        advisory_leads_count = advisory_leads_resp.count or 0
+        # Count service leads where aksia_owner = current user
+        service_leads_resp = sb.table("leads").select("id", count="exact").eq("is_deleted", False).eq("aksia_owner_id", str(current_user.id)).eq("lead_type", "service").execute()
+        service_leads_count = service_leads_resp.count or 0
 
-        # Count fundraise/product leads where aksia_owner = current user
-        fundraise_leads_resp = sb.table("leads").select("id", count="exact").eq("is_deleted", False).eq("aksia_owner_id", str(current_user.id)).in_("lead_type", ["fundraise", "product"]).execute()
-        fundraise_leads_count = fundraise_leads_resp.count or 0
+        # Count product leads where aksia_owner = current user
+        product_leads_resp = sb.table("leads").select("id", count="exact").eq("is_deleted", False).eq("aksia_owner_id", str(current_user.id)).eq("lead_type", "product").execute()
+        product_leads_count = product_leads_resp.count or 0
 
         # Count orgs (via coverage on people + leads)
         my_org_ids = set()
@@ -478,7 +476,7 @@ async def widget_my_coverage(
             if person_ids:
                 pol_resp = sb.table("person_organization_links").select("organization_id").in_("person_id", person_ids).execute()
                 my_org_ids |= {str(r["organization_id"]) for r in (pol_resp.data or [])}
-        all_leads_count = advisory_leads_count + fundraise_leads_count
+        all_leads_count = service_leads_count + product_leads_count
         if all_leads_count > 0:
             owned_leads = sb.table("leads").select("organization_id").eq("aksia_owner_id", str(current_user.id)).eq("is_deleted", False).execute()
             my_org_ids |= {str(l["organization_id"]) for l in (owned_leads.data or []) if l.get("organization_id")}
@@ -488,8 +486,8 @@ async def widget_my_coverage(
             "request": request,
             "org_count": org_count,
             "people_count": people_count,
-            "leads_count": advisory_leads_count,
-            "fundraise_leads_count": fundraise_leads_count,
+            "leads_count": service_leads_count,
+            "product_leads_count": product_leads_count,
         }
         return templates.TemplateResponse("dashboards/_widget_my_coverage.html", context)
     except Exception as e:
@@ -650,7 +648,7 @@ async def widget_stale_contacts(
 # ADVISORY PIPELINE — shared data loader
 # ---------------------------------------------------------------------------
 
-def _resolve_drilldown_value(dimension: str, value: str, stage_scope: str = "advisory") -> str:
+def _resolve_drilldown_value(dimension: str, value: str, stage_scope: str = "service") -> str:
     """Resolve a drilldown value key to its human-readable label."""
     if dimension == "owner":
         resolved = batch_resolve_users([value])
@@ -663,8 +661,8 @@ def _resolve_drilldown_value(dimension: str, value: str, stage_scope: str = "adv
         return value
     if dimension == "stage":
         all_stages = get_reference_data("lead_stage")
-        if stage_scope == "fundraise":
-            stage_labels = {s["value"]: s["label"] for s in all_stages if s.get("parent_value") == "fundraise"}
+        if stage_scope == "product":
+            stage_labels = {s["value"]: s["label"] for s in all_stages if s.get("parent_value") == "product"}
         else:
             stage_labels = {s["value"]: s["label"] for s in all_stages}
         return stage_labels.get(value, value.replace("_", " ").title())
@@ -724,7 +722,7 @@ def _load_advisory_leads(
                 "expected_revenue, expected_yr1_flar, expected_longterm_flar, "
                 "aksia_owner_id, start_date, end_date, relationship, summary, fund_id")
         .eq("is_deleted", False)
-        .or_("lead_type.eq.advisory,lead_type.is.null")
+        .or_("lead_type.eq.service,lead_type.is.null")
     )
     if service:
         query = query.eq("service_type", service)
@@ -1158,7 +1156,7 @@ async def advisory_pipeline_drilldown(
 ):
     """HTMX partial: drill-down table for a specific bar in advisory chart."""
     # Build extra_filters from dashboard context
-    extra_filters = {"lead_type": "advisory"}
+    extra_filters = {"lead_type": "service"}
 
     # Pre-load leads matching dashboard filters to get IDs
     all_leads = _load_advisory_leads(service, asset_class, owner, org_type, date_from, date_to, active_filter, stage)
@@ -1216,7 +1214,7 @@ async def advisory_pipeline_drilldown(
 
     # Add drilldown metadata
     grid_ctx["drilldown_dimension"] = dim_labels.get(dimension, dimension.replace("_", " ").title())
-    grid_ctx["drilldown_value"] = _resolve_drilldown_value(dimension, value, stage_scope="advisory")
+    grid_ctx["drilldown_value"] = _resolve_drilldown_value(dimension, value, stage_scope="service")
     grid_ctx["is_drilldown"] = True
     grid_ctx["hide_column_filters"] = True
     grid_ctx["request"] = request
@@ -1294,7 +1292,7 @@ def _load_capital_raise_prospects(fund_ticker: Optional[str] = None, owner: Opti
                 "soft_circle_mn, hard_circle_mn, probability_pct, share_class, "
                 "decline_reason, aksia_owner_id, lead_type, summary")
         .eq("is_deleted", False)
-        .in_("lead_type", ["fundraise", "product"])
+        .eq("lead_type", "product")
     )
     if current_fund:
         query = query.eq("fund_id", str(current_fund["id"]))
@@ -1333,8 +1331,8 @@ def _build_capital_raise_funnel(prospects: list[dict]) -> list[dict]:
 def _group_capital_raise_prospects(prospects: list[dict], group_by: str) -> list[dict]:
     """Group capital raise prospects by a dimension, returning bar chart data."""
     all_stages = get_reference_data("lead_stage")
-    fundraise_stages = [s for s in all_stages if s.get("parent_value") == "fundraise"]
-    stage_labels = {s["value"]: s["label"] for s in fundraise_stages}
+    product_stages = [s for s in all_stages if s.get("parent_value") == "product"]
+    stage_labels = {s["value"]: s["label"] for s in product_stages}
     org_type_labels = {o["value"]: o["label"] for o in get_reference_data("organization_type")}
 
     groups: dict[str, dict] = defaultdict(lambda: {"count": 0, "total_allocation": 0.0})
@@ -1478,7 +1476,7 @@ async def capital_raise_drilldown(
 ):
     """HTMX partial: drill-down table for a specific bar in capital raise chart."""
     # Build extra_filters from dashboard context
-    extra_filters = {"lead_type": "fundraise"}
+    extra_filters = {"lead_type": "product"}
 
     # Pre-load prospects matching dashboard filters to get IDs
     prospects, funds, funds_by_id, current_fund = _load_capital_raise_prospects(
@@ -1530,13 +1528,13 @@ async def capital_raise_drilldown(
         user=current_user,
         base_url=drilldown_base_url,
         extra_filters=extra_filters,
-        grid_container_id_override="drilldown-fundraise-grid-container",
+        grid_container_id_override="drilldown-product-grid-container",
     )
 
     # Add drilldown metadata
     dim_labels = {"stage": "Stage", "lp_type": "LP Type", "fund": "Fund", "country": "Country"}
     grid_ctx["drilldown_dimension"] = dim_labels.get(dimension, dimension.replace("_", " ").title())
-    grid_ctx["drilldown_value"] = _resolve_drilldown_value(dimension, value, stage_scope="fundraise")
+    grid_ctx["drilldown_value"] = _resolve_drilldown_value(dimension, value, stage_scope="product")
     grid_ctx["is_drilldown"] = True
     grid_ctx["hide_column_filters"] = True
     grid_ctx["request"] = request
@@ -1577,8 +1575,8 @@ async def _render_capital_raise(request: Request, current_user: CurrentUser, fun
 
     # Reference data
     all_stages = get_reference_data("lead_stage")
-    fundraise_stages = [s for s in all_stages if s.get("parent_value") == "fundraise"]
-    stage_labels = {s["value"]: s["label"] for s in fundraise_stages}
+    product_stages = [s for s in all_stages if s.get("parent_value") == "product"]
+    stage_labels = {s["value"]: s["label"] for s in product_stages}
     decline_labels = {d["value"]: d["label"] for d in get_reference_data("decline_reason")}
     org_type_labels = {o["value"]: o["label"] for o in get_reference_data("organization_type")}
 
@@ -1838,12 +1836,12 @@ async def management_dashboard(
     )
     all_contracts = contracts_resp.data or []
 
-    # Fundraise/product leads (replaces fund_prospects query)
+    # Product leads (replaces fund_prospects query)
     fp_resp = (
         sb.table("leads")
         .select("id, fund_id, rating, target_allocation_mn, hard_circle_mn, created_at, lead_type")
         .eq("is_deleted", False)
-        .in_("lead_type", ["fundraise", "product"])
+        .eq("lead_type", "product")
         .execute()
     )
     all_fps = fp_resp.data or []
@@ -1876,8 +1874,8 @@ async def management_dashboard(
     all_users = {str(u["id"]): u["display_name"] for u in (users_resp.data or [])}
 
     # --- 1. Firm-Wide KPI Cards ---
-    # Filter to advisory leads only for pipeline revenue/FLAR
-    advisory_leads = [l for l in all_leads if l.get("lead_type", "advisory") == "advisory"]
+    # Filter to service leads only for pipeline revenue/FLAR
+    advisory_leads = [l for l in all_leads if l.get("lead_type", "service") == "service"]
     active_leads = [l for l in advisory_leads if l.get("rating") not in LEAD_INACTIVE_STAGES]
     advisory_pipeline_rev = sum(_safe_float(l.get("expected_revenue")) for l in active_leads)
     active_fps = [fp for fp in all_fps if fp.get("stage") != "declined"]

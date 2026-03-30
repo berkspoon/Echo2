@@ -19,22 +19,20 @@ from dependencies import CurrentUser, get_current_user, require_role
 router = APIRouter(prefix="/leads", tags=["leads"])
 templates = Jinja2Templates(directory="templates")
 
-# Stage hierarchy for gated field requirements — ADVISORY
+# Stage hierarchy for gated field requirements — SERVICE leads
 STAGE_ORDER = {
     "exploratory": 1,
     "radar": 2,
     "focus": 3,
     "verbal_mandate": 4,
     "won": 5,
-    "lost_dropped_out": 5,
-    "lost_selected_other": 5,
-    "lost_nobody_hired": 5,
+    "did_not_win": 5,
 }
-INACTIVE_STAGES = {"won", "lost_dropped_out", "lost_selected_other", "lost_nobody_hired"}
-LOST_STAGES = {"lost_dropped_out", "lost_selected_other", "lost_nobody_hired"}
+INACTIVE_STAGES = {"won", "did_not_win"}
+LOST_STAGES = {"did_not_win"}
 
-# Stage hierarchy for FUNDRAISE leads
-FUNDRAISE_STAGE_ORDER = {
+# Stage hierarchy for PRODUCT leads
+PRODUCT_STAGE_ORDER = {
     "target_identified": 1,
     "intro_scheduled": 2,
     "initial_meeting_complete": 3,
@@ -46,7 +44,15 @@ FUNDRAISE_STAGE_ORDER = {
     "closed": 9,
     "declined": 10,
 }
-FUNDRAISE_TERMINAL_STAGES = {"closed", "declined"}
+PRODUCT_TERMINAL_STAGES = {"closed", "declined"}
+
+# Engagement status → auto-date mapping
+_ENGAGEMENT_DATE_FIELDS = {
+    "prospect_contacted": "prospect_contacted_date",
+    "prospect_responded": "prospect_responded_date",
+    "initial_meeting": "initial_meeting_date",
+    "ongoing_dialogue": "initial_meeting_complete_date",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -105,11 +111,11 @@ def _batch_get_lead_owners(lead_ids: list[str]) -> dict[str, list[dict]]:
 
 
 def _build_lead_data_from_form(form: dict) -> dict:
-    """Extract lead fields from form data. Handles all lead types."""
+    """Extract lead fields from form data. Handles all lead types (service/product)."""
     data = {}
 
-    # Lead type
-    lead_type = (form.get("lead_type") or "advisory").strip()
+    # Lead type (V17: service or product)
+    lead_type = (form.get("lead_type") or "service").strip()
     data["lead_type"] = lead_type
 
     # Title
@@ -121,13 +127,14 @@ def _build_lead_data_from_form(form: dict) -> dict:
     data["organization_id"] = org_id if org_id else None
 
     # Rating / stage
-    if lead_type in ("fundraise", "product"):
+    if lead_type == "product":
         data["rating"] = (form.get("rating") or "target_identified").strip()
     else:
         data["rating"] = (form.get("rating") or "exploratory").strip()
 
     # Dates (common)
-    for date_field in ("start_date", "end_date", "next_steps_date"):
+    for date_field in ("start_date", "end_date", "next_steps_date",
+                       "expected_contract_start_date"):
         val = (form.get(date_field) or "").strip()
         data[date_field] = val if val else None
 
@@ -142,12 +149,50 @@ def _build_lead_data_from_form(form: dict) -> dict:
     data["aksia_owner_id"] = owner_ids[0] if owner_ids else None
 
     # Text fields (common)
-    for text_field in ("summary", "next_steps"):
+    for text_field in ("summary", "next_steps", "expected_revenue_notes",
+                       "expected_size"):
         val = (form.get(text_field) or "").strip()
         data[text_field] = val if val else None
 
-    if lead_type in ("fundraise", "product"):
-        # --- Fundraise / Product specific fields ---
+    # Common dropdown fields (V17)
+    for dd_field in ("engagement_status", "coverage_office", "service_type",
+                     "service_subtype", "risk_weight", "revenue_currency",
+                     "commitment_status", "waystone_approved", "gp_commitment",
+                     "deployment_period", "expected_fund_close"):
+        val = (form.get(dd_field) or "").strip()
+        data[dd_field] = val if val else None
+
+    # Asset classes (multi-select)
+    asset_classes = form.getlist("asset_classes") if hasattr(form, "getlist") else []
+    data["asset_classes"] = list(asset_classes) if asset_classes else None
+
+    # Common decimal fields (V17)
+    for dec_field in ("expected_yr1_flar", "expected_longterm_flar", "previous_flar",
+                      "expected_fee", "indicative_size_low", "indicative_size_high",
+                      "expected_management_fee", "expected_incentive_fee",
+                      "expected_preferred_return", "expected_catchup_pct"):
+        val = (form.get(dec_field) or "").strip()
+        if val:
+            try:
+                data[dec_field] = float(val)
+            except ValueError:
+                data[dec_field] = None
+        else:
+            data[dec_field] = None
+
+    # Common date fields (V17 timeline — auto-populated but editable)
+    for date_field in ("prospect_contacted_date", "prospect_responded_date",
+                       "initial_meeting_date", "initial_meeting_complete_date",
+                       "rfp_due_date", "rfp_submitted_date"):
+        val = (form.get(date_field) or "").strip()
+        data[date_field] = val if val else None
+
+    # Booleans (V17)
+    data["includes_product_allocation"] = form.get("includes_product_allocation") == "on"
+    data["includes_max_access"] = form.get("includes_max_access") == "on"
+
+    if lead_type == "product":
+        # --- Product-specific fields ---
         fund_id = (form.get("fund_id") or "").strip()
         data["fund_id"] = fund_id if fund_id else None
 
@@ -182,57 +227,37 @@ def _build_lead_data_from_form(form: dict) -> dict:
         else:
             data["probability_pct"] = None
 
-        # Linked lead (optional FK — for fundraise linked to advisory lead)
+        # Linked lead (optional FK)
         linked = (form.get("linked_lead_id") or "").strip()
-        # Only allow linking to advisory leads; store as None if empty
         data["_linked_lead_id"] = linked if linked else None
 
-        # Clear advisory-only fields
-        for f in ("service_type", "relationship", "source", "pricing_proposal",
-                  "pricing_proposal_details", "expected_revenue_notes", "rfp_status",
-                  "risk_weight", "potential_coverage", "legacy_onboarding_holdings"):
+        # Clear service-only fields
+        for f in ("relationship", "potential_coverage", "legacy_onboarding_holdings"):
             data[f] = None
-        data["asset_classes"] = None
         data["legacy_onboarding"] = None
-        for f in ("expected_revenue", "expected_yr1_flar", "expected_longterm_flar",
-                  "previous_flar"):
-            data[f] = None
-        for f in ("expected_decision_date", "rfp_expected_date"):
-            data[f] = None
+        data["decline_reason_code"] = None
+        data["decline_rationale"] = None
 
     else:
-        # --- Advisory specific fields ---
-        for date_field in ("expected_decision_date", "rfp_expected_date"):
-            val = (form.get(date_field) or "").strip()
-            data[date_field] = val if val else None
-
-        for text_field in ("relationship", "source", "service_type",
-                          "pricing_proposal", "pricing_proposal_details",
-                          "expected_revenue_notes", "rfp_status", "risk_weight",
+        # --- Service-specific fields ---
+        for text_field in ("relationship", "source",
                           "potential_coverage", "legacy_onboarding_holdings"):
             val = (form.get(text_field) or "").strip()
             data[text_field] = val if val else None
 
-        # Decimal fields (advisory revenue/FLAR)
-        for dec_field in ("expected_revenue", "expected_yr1_flar",
-                          "expected_longterm_flar", "previous_flar"):
-            val = (form.get(dec_field) or "").strip()
-            if val:
-                try:
-                    data[dec_field] = float(val)
-                except ValueError:
-                    data[dec_field] = None
-            else:
-                data[dec_field] = None
-
-        # Asset classes (multi-select)
-        asset_classes = form.getlist("asset_classes") if hasattr(form, "getlist") else []
-        data["asset_classes"] = list(asset_classes) if asset_classes else None
-
         # Boolean: legacy onboarding
         data["legacy_onboarding"] = form.get("legacy_onboarding") == "on"
 
-        # Clear fundraise-only fields
+        # Decline fields (V17: did_not_win)
+        if data["rating"] == "did_not_win":
+            for f in ("decline_reason_code", "decline_rationale"):
+                val = (form.get(f) or "").strip()
+                data[f] = val if val else None
+        else:
+            data["decline_reason_code"] = None
+            data["decline_rationale"] = None
+
+        # Clear product-only fields
         for f in ("fund_id", "share_class", "decline_reason",
                   "target_allocation_mn", "soft_circle_mn", "hard_circle_mn",
                   "probability_pct", "stage_entry_date"):
@@ -244,7 +269,7 @@ def _build_lead_data_from_form(form: dict) -> dict:
 def _validate_lead_fields(data: dict, rating: str) -> list[str]:
     """Validate fields based on current stage and lead type. Returns list of error strings."""
     errors = []
-    lead_type = data.get("lead_type", "advisory")
+    lead_type = data.get("lead_type", "service")
 
     # Always required
     if not data.get("title"):
@@ -254,8 +279,8 @@ def _validate_lead_fields(data: dict, rating: str) -> list[str]:
     if not data.get("aksia_owner_id"):
         errors.append("Aksia Owner is required.")
 
-    if lead_type in ("fundraise", "product"):
-        # --- Fundraise / Product validation ---
+    if lead_type == "product":
+        # --- Product validation ---
         if not data.get("fund_id"):
             errors.append("Fund is required.")
         if not data.get("share_class"):
@@ -280,7 +305,7 @@ def _validate_lead_fields(data: dict, rating: str) -> list[str]:
                 errors.append(f"{label} cannot be negative.")
 
     else:
-        # --- Advisory validation (stage-gated) ---
+        # --- Service validation (stage-gated, V17) ---
         stage = STAGE_ORDER.get(rating, 1)
 
         # Exploratory+ (stage >= 1)
@@ -294,35 +319,16 @@ def _validate_lead_fields(data: dict, rating: str) -> list[str]:
                 errors.append("Service Type is required at Radar stage and above.")
             if not data.get("asset_classes"):
                 errors.append("At least one Asset Class is required at Radar stage and above.")
-            if not data.get("source"):
-                errors.append("Source is required at Radar stage and above.")
+            # Source is now suggested, not required (V17)
 
-        # Focus+ (stage >= 3)
+        # Focus+ (stage >= 3) — V17: removed pricing_proposal, expected_decision_date, expected_revenue
         if stage >= 3:
-            if not data.get("pricing_proposal"):
-                errors.append("Pricing Proposal is required at Focus stage and above.")
-            if data.get("pricing_proposal") and data["pricing_proposal"] != "no_proposal":
-                if not data.get("pricing_proposal_details"):
-                    errors.append("Pricing Proposal Details required when a proposal has been made.")
-            if not data.get("expected_decision_date"):
-                errors.append("Expected Decision Date is required at Focus stage and above.")
-            if data.get("expected_revenue") is None:
-                errors.append("Expected Revenue is required at Focus stage and above.")
-            if data.get("expected_yr1_flar") is None:
-                errors.append("Expected Yr 1 FLAR is required at Focus stage and above.")
-            if data.get("expected_longterm_flar") is None:
-                errors.append("Expected Long-term FLAR is required at Focus stage and above.")
-            if not data.get("rfp_status"):
-                errors.append("RFP Status is required at Focus stage and above.")
-            if data.get("rfp_status") and data["rfp_status"] != "not_applicable":
-                if not data.get("rfp_expected_date"):
-                    errors.append("RFP Expected Date is required when RFP Status is not N/A.")
             if not data.get("risk_weight"):
-                errors.append("Risk Weight is required at Focus stage and above.")
-            # Previous FLAR for extension/re-up
-            if data.get("relationship") in ("contract_extension", "re_up"):
+                errors.append("Probability of Close is required at Focus stage and above.")
+            # Previous FLAR for contract extension
+            if data.get("relationship") == "existing_client_contract_extension":
                 if data.get("previous_flar") is None:
-                    errors.append("Previous FLAR is required for Extension/Re-Up relationships.")
+                    errors.append("Previous FLAR is required for Contract Extension relationships.")
 
         # Verbal Mandate+ (stage >= 4)
         if stage >= 4:
@@ -331,26 +337,28 @@ def _validate_lead_fields(data: dict, rating: str) -> list[str]:
             if data.get("legacy_onboarding") and not data.get("legacy_onboarding_holdings"):
                 errors.append("Legacy Onboarding Holdings required when Legacy Onboarding is Yes.")
 
-        # Lost stages require end_date
-        if rating in LOST_STAGES:
+        # Did Not Win requires end_date and decline_reason_code
+        if rating == "did_not_win":
             if not data.get("end_date"):
-                errors.append("End Date is required for inactive/lost leads.")
+                errors.append("End Date is required for Did Not Win leads.")
+            if not data.get("decline_reason_code"):
+                errors.append("Decline Reason is required for Did Not Win leads.")
 
     return errors
 
 
 def _create_next_steps_task(lead: dict, org_name: str, changed_by: UUID) -> None:
-    """Auto-generate a Task when next_steps_date is set."""
+    """Auto-generate a Task when next_steps_date (follow-up date) is set."""
     sb = get_supabase()
-    lead_type = lead.get("lead_type", "advisory")
+    lead_type = lead.get("lead_type", "service")
 
-    # Title includes fund ticker for fundraise leads
-    if lead_type in ("fundraise", "product") and lead.get("fund_id"):
+    # Title includes fund ticker for product leads
+    if lead_type == "product" and lead.get("fund_id"):
         fund_ticker = _get_fund_ticker(str(lead["fund_id"]))
-        title = f"Lead next steps: {org_name} ({fund_ticker})"
+        title = f"Lead follow-up: {org_name} ({fund_ticker})"
         source = "lead_next_steps"
     else:
-        title = f"Lead next steps: {org_name}"
+        title = f"Lead follow-up: {org_name}"
         source = "lead_next_steps"
 
     sb.table("tasks").insert({
@@ -395,22 +403,22 @@ def _load_form_context(sb, current_user, lead=None, pre_org=None, errors=None):
     elif lead and lead.get("aksia_owner_id"):
         selected_owner_ids = [str(lead["aksia_owner_id"])]
 
-    lead_type = (lead.get("lead_type") if lead else None) or "advisory"
+    lead_type = (lead.get("lead_type") if lead else None) or "service"
 
     # Stages scoped by lead_type via parent_value
     all_stages = get_reference_data("lead_stage")
-    all_advisory_stages = [s for s in all_stages if s.get("parent_value") == "advisory"]
-    all_fundraise_stages = [s for s in all_stages if s.get("parent_value") == "fundraise"]
-    if lead_type in ("fundraise", "product"):
-        lead_stages = all_fundraise_stages
+    all_service_stages = [s for s in all_stages if s.get("parent_value") == "service"]
+    all_product_stages = [s for s in all_stages if s.get("parent_value") == "product"]
+    if lead_type == "product":
+        lead_stages = all_product_stages
     else:
-        lead_stages = all_advisory_stages
+        lead_stages = all_service_stages
 
-    # Funds for fundraise/product lead types
+    # Funds for product lead types
     funds_resp = sb.table("funds").select("id, fund_name, ticker, brand").eq("is_active", True).order("ticker").execute()
     funds = funds_resp.data or []
 
-    # Decline reasons for fundraise
+    # Decline reasons for product leads
     decline_reasons = get_reference_data("decline_reason")
 
     # Lead type options
@@ -418,14 +426,21 @@ def _load_form_context(sb, current_user, lead=None, pre_org=None, errors=None):
 
     return {
         "lead_stages": lead_stages,
-        "all_advisory_stages": all_advisory_stages,
-        "all_fundraise_stages": all_fundraise_stages,
+        "all_service_stages": all_service_stages,
+        "all_product_stages": all_product_stages,
         "relationship_types": get_reference_data("lead_relationship_type"),
         "service_types": get_reference_data("service_type"),
         "asset_classes": get_reference_data("asset_class"),
-        "pricing_proposals": get_reference_data("pricing_proposal"),
-        "rfp_statuses": get_reference_data("rfp_status"),
+        "engagement_statuses": get_reference_data("engagement_status"),
         "risk_weights": get_reference_data("risk_weight"),
+        "coverage_offices": get_reference_data("coverage_office"),
+        "commitment_statuses": get_reference_data("commitment_status"),
+        "waystone_options": get_reference_data("waystone_approved"),
+        "decline_reason_codes": get_reference_data("decline_reason_code"),
+        "revenue_currencies": get_reference_data("revenue_currency"),
+        "gp_commitment_options": get_reference_data("gp_commitment"),
+        "deployment_periods": get_reference_data("deployment_period"),
+        "fund_close_options": get_reference_data("expected_fund_close"),
         "users": users_resp.data or [],
         "selected_owner_ids": selected_owner_ids,
         "funds": funds,
@@ -564,8 +579,8 @@ async def leads_for_org(
     org_id: str = Query(""),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """HTMX endpoint: return advisory leads for an org as <option> elements
-    (used by fundraise lead form to link to an advisory lead)."""
+    """HTMX endpoint: return service leads for an org as <option> elements
+    (used by product lead form to link to a service lead)."""
     if not org_id:
         return HTMLResponse('<option value="">— None —</option>')
 
@@ -574,7 +589,7 @@ async def leads_for_org(
         sb.table("leads")
         .select("id, rating, summary, service_type")
         .eq("organization_id", org_id)
-        .eq("lead_type", "advisory")
+        .eq("lead_type", "service")
         .eq("is_deleted", False)
         .order("start_date", desc=True)
         .limit(50)
@@ -599,7 +614,7 @@ async def new_lead_form(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     org_id: str = Query("", alias="org"),
-    lead_type_param: str = Query("advisory", alias="type"),
+    lead_type_param: str = Query("service", alias="type"),
 ):
     """Render the new lead form. Optionally pre-fill org and lead_type from query params."""
     require_role(current_user, ["admin", "standard_user", "rfp_team"])
@@ -660,7 +675,7 @@ async def get_lead(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    lead_type = lead.get("lead_type", "advisory")
+    lead_type = lead.get("lead_type", "service")
 
     # Enrich: org name
     org_name = get_org_name(str(lead["organization_id"])) if lead.get("organization_id") else "—"
@@ -682,9 +697,9 @@ async def get_lead(
     else:
         owner_name = get_user_name(str(lead["aksia_owner_id"])) if lead.get("aksia_owner_id") else "—"
 
-    # Fund info for fundraise/product leads
+    # Fund info for product leads
     fund_info = None
-    if lead_type in ("fundraise", "product") and lead.get("fund_id"):
+    if lead_type == "product" and lead.get("fund_id"):
         fund_info = _get_fund_info(str(lead["fund_id"]))
 
     # Related contract (if one exists for this lead)
@@ -734,21 +749,40 @@ async def get_lead(
 
     # Reference data for labels — scoped stages
     all_stages = get_reference_data("lead_stage")
-    if lead_type in ("fundraise", "product"):
-        lead_stages = [s for s in all_stages if s.get("parent_value") == "fundraise"]
-        stage_order = FUNDRAISE_STAGE_ORDER
+    if lead_type == "product":
+        lead_stages = [s for s in all_stages if s.get("parent_value") == "product"]
+        stage_order = PRODUCT_STAGE_ORDER
     else:
-        lead_stages = [s for s in all_stages if s.get("parent_value") == "advisory"]
+        lead_stages = [s for s in all_stages if s.get("parent_value") == "service"]
         stage_order = STAGE_ORDER
     stage_labels = {s["value"]: s["label"] for s in lead_stages}
 
-    # Decline reason labels
+    # Decline reason labels (product leads)
     decline_reasons = get_reference_data("decline_reason")
     decline_labels = {d["value"]: d["label"] for d in decline_reasons}
+
+    # Decline reason code labels (service leads — did_not_win)
+    decline_reason_codes = get_reference_data("decline_reason_code")
+    decline_code_labels = {d["value"]: d["label"] for d in decline_reason_codes}
 
     # Asset class labels
     asset_class_data = get_reference_data("asset_class")
     ac_labels = {a["value"]: a["label"] for a in asset_class_data}
+
+    # Engagement status labels
+    engagement_statuses = get_reference_data("engagement_status")
+    engagement_labels = {e["value"]: e["label"] for e in engagement_statuses}
+
+    # Coverage office labels
+    coverage_offices = get_reference_data("coverage_office")
+    coverage_office_labels = {c["value"]: c["label"] for c in coverage_offices}
+
+    # Risk weight labels
+    risk_weights = get_reference_data("risk_weight")
+    risk_weight_labels = {r["value"]: r["label"] for r in risk_weights}
+
+    # RFP auto-boolean (computed from engagement_status)
+    rfp_active = lead.get("engagement_status") in ("rfp_expected", "rfp_in_progress", "rfp_submitted")
 
     context = {
         "request": request,
@@ -763,8 +797,13 @@ async def get_lead(
         "linked_activities": linked_activities,
         "stage_labels": stage_labels,
         "decline_labels": decline_labels,
+        "decline_code_labels": decline_code_labels,
         "ac_labels": ac_labels,
+        "engagement_labels": engagement_labels,
+        "coverage_office_labels": coverage_office_labels,
+        "risk_weight_labels": risk_weight_labels,
         "stage_order": stage_order,
+        "rfp_active": rfp_active,
     }
     return templates.TemplateResponse("leads/detail.html", context)
 
@@ -800,9 +839,9 @@ async def create_lead(
 
     # Ensure lead_type is captured
     if not lead_data.get("lead_type"):
-        lead_data["lead_type"] = (form.get("lead_type") or "advisory").strip()
+        lead_data["lead_type"] = (form.get("lead_type") or "service").strip()
 
-    # Linked lead (fundraise → advisory FK)
+    # Linked lead (product → service FK)
     linked = (form.get("linked_lead_id") or "").strip()
     lead_data["_linked_lead_id"] = linked if linked else None
 
@@ -811,22 +850,22 @@ async def create_lead(
     # --- Dynamic form service: validate ---
     errors = validate_form_data("lead", lead_data, field_defs)
 
-    # --- Entity-specific validation (fundraise requires fund_id + share_class, lead_owners, etc.) ---
-    lead_type = lead_data.get("lead_type", "advisory")
+    # --- Entity-specific validation (product requires fund_id + share_class, lead_owners, etc.) ---
+    lead_type = lead_data.get("lead_type", "service")
     if not lead_data.get("organization_id"):
         errors.append("Organization is required.")
     if not lead_data.get("aksia_owner_id"):
         errors.append("Aksia Owner is required.")
-    if lead_type in ("fundraise", "product"):
+    if lead_type == "product":
         if not lead_data.get("fund_id"):
             errors.append("Fund is required.")
         if not lead_data.get("share_class"):
             errors.append("Share Class is required.")
         if rating == "declined" and not lead_data.get("decline_reason"):
             errors.append("Decline Reason is required when stage is Declined.")
-    if lead_type == "advisory" and rating in LOST_STAGES:
+    if lead_type == "service" and rating in LOST_STAGES:
         if not lead_data.get("end_date"):
-            errors.append("End Date is required for inactive/lost leads.")
+            errors.append("End Date is required for Did Not Win leads.")
 
     if errors:
         sb = get_supabase()
@@ -859,15 +898,22 @@ async def create_lead(
     if not lead_data.get("start_date"):
         lead_data["start_date"] = str(date_type.today())
 
-    lead_type = lead_data.get("lead_type", "advisory")
+    lead_type = lead_data.get("lead_type", "service")
 
-    # Auto-set end_date for won (advisory only)
-    if rating == "won" and not lead_data.get("end_date"):
+    # Auto-set end_date for won/did_not_win
+    if rating in ("won", "did_not_win") and not lead_data.get("end_date"):
         lead_data["end_date"] = str(date_type.today())
 
-    # Set stage_entry_date for fundraise/product leads
-    if lead_type in ("fundraise", "product"):
+    # Set stage_entry_date for product leads
+    if lead_type == "product":
         lead_data["stage_entry_date"] = str(date_type.today())
+
+    # Auto-set engagement status timeline dates (V17)
+    eng_status = lead_data.get("engagement_status")
+    if eng_status and eng_status in _ENGAGEMENT_DATE_FIELDS:
+        date_field = _ENGAGEMENT_DATE_FIELDS[eng_status]
+        if not lead_data.get(date_field):
+            lead_data[date_field] = str(date_type.today())
 
     # Extract non-DB fields before inserting
     owner_ids = lead_data.pop("_owner_ids", [])
@@ -998,9 +1044,9 @@ async def update_lead(
     lead_data["aksia_owner_id"] = owner_ids[0] if owner_ids else lead_data.get("aksia_owner_id")
 
     # Lock lead_type to existing value on edit (cannot change lead_type after creation)
-    lead_data["lead_type"] = old_lead.get("lead_type", "advisory")
+    lead_data["lead_type"] = old_lead.get("lead_type", "service")
 
-    # Linked lead (fundraise → advisory FK)
+    # Linked lead (product → service FK)
     linked = (form.get("linked_lead_id") or "").strip()
     lead_data["_linked_lead_id"] = linked if linked else None
 
@@ -1009,22 +1055,22 @@ async def update_lead(
     # --- Dynamic form service: validate ---
     errors = validate_form_data("lead", lead_data, field_defs, record=old_lead)
 
-    # --- Entity-specific validation (fundraise requires fund_id + share_class, lead_owners, etc.) ---
-    lead_type_val = lead_data.get("lead_type", "advisory")
+    # --- Entity-specific validation (product requires fund_id + share_class, lead_owners, etc.) ---
+    lead_type_val = lead_data.get("lead_type", "service")
     if not lead_data.get("organization_id"):
         errors.append("Organization is required.")
     if not lead_data.get("aksia_owner_id"):
         errors.append("Aksia Owner is required.")
-    if lead_type_val in ("fundraise", "product"):
+    if lead_type_val == "product":
         if not lead_data.get("fund_id"):
             errors.append("Fund is required.")
         if not lead_data.get("share_class"):
             errors.append("Share Class is required.")
         if rating == "declined" and not lead_data.get("decline_reason"):
             errors.append("Decline Reason is required when stage is Declined.")
-    if lead_type_val == "advisory" and rating in LOST_STAGES:
+    if lead_type_val == "service" and rating in LOST_STAGES:
         if not lead_data.get("end_date"):
-            errors.append("End Date is required for inactive/lost leads.")
+            errors.append("End Date is required for Did Not Win leads.")
 
     if errors:
         pre_org = None
@@ -1052,17 +1098,25 @@ async def update_lead(
         context["field_defs"] = form_ctx["field_defs"]
         return templates.TemplateResponse("leads/form.html", context)
 
-    lead_type = lead_data.get("lead_type", old_lead.get("lead_type", "advisory"))
+    lead_type = lead_data.get("lead_type", old_lead.get("lead_type", "service"))
 
-    # Auto-set end_date for won (advisory only)
-    if lead_type == "advisory" and rating == "won" and not lead_data.get("end_date"):
+    # Auto-set end_date for won/did_not_win
+    if rating in ("won", "did_not_win") and not lead_data.get("end_date"):
         lead_data["end_date"] = str(date_type.today())
 
-    # Auto-set stage_entry_date when stage changes (fundraise/product)
-    if lead_type in ("fundraise", "product"):
+    # Auto-set stage_entry_date when stage changes (product leads)
+    if lead_type == "product":
         old_rating = old_lead.get("rating")
         if old_rating != rating:
             lead_data["stage_entry_date"] = str(date_type.today())
+
+    # Auto-set engagement status timeline dates (V17)
+    old_eng = old_lead.get("engagement_status")
+    new_eng = lead_data.get("engagement_status")
+    if new_eng and new_eng != old_eng and new_eng in _ENGAGEMENT_DATE_FIELDS:
+        date_field = _ENGAGEMENT_DATE_FIELDS[new_eng]
+        if not lead_data.get(date_field) and not old_lead.get(date_field):
+            lead_data[date_field] = str(date_type.today())
 
     # Extract non-DB fields before updating
     owner_ids = lead_data.pop("_owner_ids", [])

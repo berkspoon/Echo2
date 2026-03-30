@@ -56,11 +56,10 @@
         </td>
         <td class="py-1.5 pr-3 whitespace-nowrap">
           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
-            {% if lead.lead_type == 'advisory' %}bg-blue-100 text-blue-800
-            {% elif lead.lead_type == 'fundraise' %}bg-purple-100 text-purple-800
+            {% if lead.lead_type == 'service' %}bg-blue-100 text-blue-800
             {% elif lead.lead_type == 'product' %}bg-orange-100 text-orange-800
             {% else %}bg-gray-100 text-gray-800{% endif %}">
-            {{ (lead.lead_type or 'advisory') | title }}
+            {{ (lead.lead_type or 'service') | title }}
           </span>
         </td>
         <td class="py-1.5 pr-3 whitespace-nowrap text-gray-600">

@@ -456,8 +456,7 @@ async def quick_create_person(
 # ---------------------------------------------------------------------------
 
 INACTIVE_LEAD_STAGES = [
-    "won", "lost_dropped_out", "lost_selected_other", "lost_nobody_hired",
-    "closed", "declined",
+    "won", "did_not_win", "closed", "declined",
 ]
 
 @router.get("/leads-for-org", response_class=HTMLResponse)
@@ -506,7 +505,7 @@ async def leads_for_org(
     for lead in leads:
         stage = stage_labels.get(lead.get("rating"), (lead.get("rating") or "").replace("_", " ").title())
         owner = owner_map.get(str(lead.get("aksia_owner_id", "")), "")
-        lead_type = (lead.get("lead_type") or "advisory").title()
+        lead_type = (lead.get("lead_type") or "service").title()
         summary = lead.get("summary") or lead.get("service_type") or ""
         if summary:
             summary = summary[:60].replace("_", " ").title()

@@ -273,7 +273,7 @@ def _is_field_visible(fd: dict, form_state: dict) -> bool:
 
     # Lead type scoping
     if "lead_type" in rules:
-        current_type = form_state.get("lead_type", "advisory")
+        current_type = form_state.get("lead_type", "service")
         required_type = rules["lead_type"]
         if isinstance(required_type, list):
             if current_type not in required_type:
@@ -323,7 +323,7 @@ def _is_field_suggested(fd: dict, form_state: dict) -> bool:
 
     # Same evaluation logic as _is_field_visible but for suggestion_rules
     if "lead_type" in rules:
-        current_lt = form_state.get("lead_type", "advisory")
+        current_lt = form_state.get("lead_type", "service")
         required_lt = rules["lead_type"]
         if isinstance(required_lt, list):
             if current_lt not in required_lt:
@@ -371,19 +371,17 @@ def _normalize_for_compare(value):
     return value
 
 
-# Stage order mapping for leads
-_ADVISORY_STAGE_ORDER = {
+# Stage order mapping for leads (V17: service/product)
+_SERVICE_STAGE_ORDER = {
     "exploratory": 1,
     "radar": 2,
     "focus": 3,
     "verbal_mandate": 4,
     "won": 5,
-    "lost_dropped_out": 5,
-    "lost_selected_other": 5,
-    "lost_nobody_hired": 5,
+    "did_not_win": 5,
 }
 
-_FUNDRAISE_STAGE_ORDER = {
+_PRODUCT_STAGE_ORDER = {
     "target_identified": 1,
     "intro_scheduled": 2,
     "initial_meeting_complete": 3,
@@ -399,12 +397,12 @@ _FUNDRAISE_STAGE_ORDER = {
 
 def _get_stage_order(form_state: dict) -> int:
     """Get the numeric stage order from form state for visibility gating."""
-    lead_type = form_state.get("lead_type", "advisory")
+    lead_type = form_state.get("lead_type", "service")
     rating = form_state.get("rating", "")
 
-    if lead_type in ("fundraise", "product"):
-        return _FUNDRAISE_STAGE_ORDER.get(rating, 0)
-    return _ADVISORY_STAGE_ORDER.get(rating, 0)
+    if lead_type == "product":
+        return _PRODUCT_STAGE_ORDER.get(rating, 0)
+    return _SERVICE_STAGE_ORDER.get(rating, 0)
 
 
 # ---------------------------------------------------------------------------

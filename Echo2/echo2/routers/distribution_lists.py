@@ -1990,12 +1990,12 @@ async def add_filtered_members(
         filtered_org_ids = [o["id"] for o in (org_resp.data or [])]
 
         if fund and filtered_org_ids:
-            # Check leads with lead_type='fundraise' for fund filter
+            # Check leads with lead_type='product' for fund filter
             fp_resp = (
                 sb.table("leads")
                 .select("organization_id")
                 .eq("fund_id", fund)
-                .eq("lead_type", "fundraise")
+                .eq("lead_type", "product")
                 .eq("is_deleted", False)
                 .execute()
             )
@@ -2015,7 +2015,7 @@ async def add_filtered_members(
                 sb.table("leads")
                 .select("organization_id")
                 .eq("fund_id", fund)
-                .eq("lead_type", "fundraise")
+                .eq("lead_type", "product")
                 .eq("is_deleted", False)
                 .execute()
             )

@@ -72,48 +72,76 @@ PERSON_FIELDS = [
 ]
 
 LEAD_FIELDS = [
-    # Basic Information (all lead types)
+    # === Basic Information (always visible) ===
     {"field_name": "title", "display_name": "Title", "field_type": "text", "is_required": True, "section_name": "Basic Information", "display_order": 0},
     {"field_name": "organization_id", "display_name": "Organization", "field_type": "lookup", "is_required": True, "section_name": "Basic Information", "display_order": 1},
     {"field_name": "lead_type", "display_name": "Lead Type", "field_type": "dropdown", "is_required": True, "dropdown_category": "lead_type", "section_name": "Basic Information", "display_order": 2},
     {"field_name": "rating", "display_name": "Stage", "field_type": "dropdown", "is_required": True, "dropdown_category": "lead_stage", "section_name": "Basic Information", "display_order": 3},
     {"field_name": "start_date", "display_name": "Start Date", "field_type": "date", "section_name": "Basic Information", "display_order": 4},
-    {"field_name": "relationship", "display_name": "Relationship", "field_type": "dropdown", "dropdown_category": "lead_relationship_type", "section_name": "Basic Information", "display_order": 5, "visibility_rules": {"min_stage": 1, "lead_type": "advisory"}},
+    {"field_name": "relationship", "display_name": "Relationship", "field_type": "dropdown", "dropdown_category": "lead_relationship_type", "section_name": "Basic Information", "display_order": 5, "visibility_rules": {"lead_type": "service"}},
     {"field_name": "aksia_owner_id", "display_name": "Aksia Owner", "field_type": "lookup", "section_name": "Basic Information", "display_order": 6},
-    {"field_name": "summary", "display_name": "Summary", "field_type": "textarea", "section_name": "Basic Information", "display_order": 7},
-    # Radar+ Fields
-    {"field_name": "service_type", "display_name": "Service Type", "field_type": "dropdown", "dropdown_category": "service_type", "section_name": "Radar", "display_order": 10, "visibility_rules": {"min_stage": 2}},
-    {"field_name": "asset_classes", "display_name": "Asset Classes", "field_type": "multi_select", "dropdown_category": "asset_class", "section_name": "Radar", "display_order": 11, "visibility_rules": {"min_stage": 2}},
-    {"field_name": "source", "display_name": "Source", "field_type": "text", "section_name": "Radar", "display_order": 12, "visibility_rules": {"min_stage": 2}},
-    # Focus+ Fields
-    {"field_name": "pricing_proposal", "display_name": "Pricing Proposal", "field_type": "dropdown", "dropdown_category": "pricing_proposal", "section_name": "Focus", "display_order": 20, "visibility_rules": {"min_stage": 3}},
-    {"field_name": "pricing_proposal_details", "display_name": "Pricing Proposal Details", "field_type": "textarea", "section_name": "Focus", "display_order": 21, "visibility_rules": {"min_stage": 3, "when": "pricing_proposal", "not_equals": "no_proposal"}},
-    {"field_name": "expected_decision_date", "display_name": "Expected Decision Date", "field_type": "date", "section_name": "Focus", "display_order": 22, "visibility_rules": {"min_stage": 3}},
-    {"field_name": "expected_revenue", "display_name": "Expected Revenue", "field_type": "currency", "section_name": "Focus", "display_order": 23, "visibility_rules": {"min_stage": 3}},
-    {"field_name": "expected_revenue_notes", "display_name": "Revenue Notes", "field_type": "textarea", "section_name": "Focus", "display_order": 24, "visibility_rules": {"min_stage": 3}},
+    {"field_name": "summary", "display_name": "Summary", "field_type": "textarea", "section_name": "Basic Information", "display_order": 7, "validation_rules": {"max": 250}},
+    {"field_name": "engagement_status", "display_name": "Engagement Status", "field_type": "dropdown", "dropdown_category": "engagement_status", "section_name": "Basic Information", "display_order": 8},
+    # === Overview ===
+    {"field_name": "coverage_office", "display_name": "Coverage Office", "field_type": "dropdown", "dropdown_category": "coverage_office", "section_name": "Overview", "display_order": 10},
+    {"field_name": "service_type", "display_name": "Service Type", "field_type": "dropdown", "dropdown_category": "service_type", "section_name": "Overview", "display_order": 11, "visibility_rules": {"min_stage": 2}},
+    {"field_name": "service_subtype", "display_name": "Service Subtype", "field_type": "dropdown", "dropdown_category": "service_subtype", "section_name": "Overview", "display_order": 12, "visibility_rules": {"min_stage": 2}},
+    {"field_name": "asset_classes", "display_name": "Asset Classes", "field_type": "multi_select", "dropdown_category": "asset_class", "section_name": "Overview", "display_order": 13, "visibility_rules": {"min_stage": 2}},
+    {"field_name": "source", "display_name": "Source", "field_type": "text", "section_name": "Overview", "display_order": 14, "visibility_rules": {"min_stage": 2}, "suggestion_rules": {"min_stage": 2}},
+    {"field_name": "includes_product_allocation", "display_name": "Includes Product Allocation", "field_type": "boolean", "section_name": "Overview", "display_order": 15, "visibility_rules": {"lead_type": "service"}},
+    {"field_name": "includes_max_access", "display_name": "Includes MAX Access", "field_type": "boolean", "section_name": "Overview", "display_order": 16, "visibility_rules": {"lead_type": "product"}},
+    # === Timeline (auto-populated engagement status dates) ===
+    {"field_name": "prospect_contacted_date", "display_name": "Prospect Contacted Date", "field_type": "date", "section_name": "Timeline", "display_order": 70},
+    {"field_name": "prospect_responded_date", "display_name": "Prospect Responded Date", "field_type": "date", "section_name": "Timeline", "display_order": 71},
+    {"field_name": "initial_meeting_date", "display_name": "Initial Meeting Date", "field_type": "date", "section_name": "Timeline", "display_order": 72},
+    {"field_name": "initial_meeting_complete_date", "display_name": "Initial Meeting Complete Date", "field_type": "date", "section_name": "Timeline", "display_order": 73},
+    # === Focus+ Fields ===
+    {"field_name": "risk_weight", "display_name": "Probability of Close", "field_type": "dropdown", "dropdown_category": "risk_weight", "section_name": "Focus", "display_order": 20, "visibility_rules": {"min_stage": 3}},
+    {"field_name": "indicative_size_low", "display_name": "Indicative Size (Low)", "field_type": "currency", "section_name": "Focus", "display_order": 21, "visibility_rules": {"min_stage": 3, "when": "service_type", "in": ["product", "investment_management"]}},
+    {"field_name": "indicative_size_high", "display_name": "Indicative Size (High)", "field_type": "currency", "section_name": "Focus", "display_order": 22, "visibility_rules": {"min_stage": 3, "when": "service_type", "in": ["product", "investment_management"]}},
+    {"field_name": "expected_contract_start_date", "display_name": "Expected Contract Start Date", "field_type": "date", "section_name": "Focus", "display_order": 23, "visibility_rules": {"min_stage": 3}},
+    {"field_name": "revenue_currency", "display_name": "Revenue Currency", "field_type": "dropdown", "dropdown_category": "revenue_currency", "section_name": "Focus", "display_order": 24, "visibility_rules": {"min_stage": 3}},
     {"field_name": "expected_yr1_flar", "display_name": "Expected Yr1 FLAR", "field_type": "currency", "section_name": "Focus", "display_order": 25, "visibility_rules": {"min_stage": 3}},
     {"field_name": "expected_longterm_flar", "display_name": "Expected Long-Term FLAR", "field_type": "currency", "section_name": "Focus", "display_order": 26, "visibility_rules": {"min_stage": 3}},
-    {"field_name": "previous_flar", "display_name": "Previous FLAR", "field_type": "currency", "section_name": "Focus", "display_order": 27, "visibility_rules": {"min_stage": 3, "when": "relationship", "in": ["contract_extension", "re_up"]}},
-    {"field_name": "rfp_status", "display_name": "RFP Status", "field_type": "dropdown", "dropdown_category": "rfp_status", "section_name": "Focus", "display_order": 28, "visibility_rules": {"min_stage": 3}},
-    {"field_name": "rfp_expected_date", "display_name": "RFP Expected Date", "field_type": "date", "section_name": "Focus", "display_order": 29, "visibility_rules": {"min_stage": 3, "when": "rfp_status", "not_equals": "not_applicable"}},
-    {"field_name": "risk_weight", "display_name": "Risk Weight", "field_type": "dropdown", "dropdown_category": "risk_weight", "section_name": "Focus", "display_order": 30, "visibility_rules": {"min_stage": 3}},
-    {"field_name": "next_steps", "display_name": "Next Steps", "field_type": "textarea", "section_name": "Focus", "display_order": 31, "visibility_rules": {"min_stage": 3}},
-    {"field_name": "next_steps_date", "display_name": "Next Steps Date", "field_type": "date", "section_name": "Focus", "display_order": 32, "visibility_rules": {"min_stage": 3}},
-    # Verbal Mandate+ Fields
-    {"field_name": "legacy_onboarding", "display_name": "Legacy Onboarding", "field_type": "boolean", "section_name": "Verbal Mandate", "display_order": 40, "visibility_rules": {"min_stage": 4}},
-    {"field_name": "legacy_onboarding_holdings", "display_name": "Legacy Onboarding Holdings", "field_type": "textarea", "section_name": "Verbal Mandate", "display_order": 41, "visibility_rules": {"min_stage": 4, "when": "legacy_onboarding", "equals": True}},
-    {"field_name": "potential_coverage", "display_name": "Potential Coverage", "field_type": "text", "section_name": "Verbal Mandate", "display_order": 42, "visibility_rules": {"min_stage": 4}},
-    # Closure Fields (advisory)
-    {"field_name": "end_date", "display_name": "End Date", "field_type": "date", "section_name": "Closure", "display_order": 50, "visibility_rules": {"when": "rating", "in": ["won", "lost_dropped_out", "lost_selected_other", "lost_nobody_hired"]}},
-    # Fundraise-specific Fields
-    {"field_name": "fund_id", "display_name": "Fund", "field_type": "lookup", "is_required": True, "section_name": "Fund & Allocation", "display_order": 60, "visibility_rules": {"lead_type": "fundraise"}},
-    {"field_name": "share_class", "display_name": "Share Class", "field_type": "dropdown", "is_required": True, "dropdown_category": "share_class", "section_name": "Fund & Allocation", "display_order": 61, "visibility_rules": {"lead_type": "fundraise"}},
-    {"field_name": "target_allocation_mn", "display_name": "Target Allocation ($M)", "field_type": "currency", "section_name": "Fund & Allocation", "display_order": 62, "visibility_rules": {"lead_type": "fundraise"}},
-    {"field_name": "soft_circle_mn", "display_name": "Soft Circle ($M)", "field_type": "currency", "section_name": "Fund & Allocation", "display_order": 63, "visibility_rules": {"lead_type": "fundraise"}},
-    {"field_name": "hard_circle_mn", "display_name": "Hard Circle ($M)", "field_type": "currency", "section_name": "Fund & Allocation", "display_order": 64, "visibility_rules": {"lead_type": "fundraise"}},
-    {"field_name": "probability_pct", "display_name": "Probability %", "field_type": "number", "section_name": "Fund & Allocation", "display_order": 65, "visibility_rules": {"lead_type": "fundraise"}, "validation_rules": {"min": 0, "max": 100}},
-    {"field_name": "stage_entry_date", "display_name": "Stage Entry Date", "field_type": "date", "section_name": "Fund & Allocation", "display_order": 66, "visibility_rules": {"lead_type": "fundraise"}},
-    {"field_name": "decline_reason", "display_name": "Decline Reason", "field_type": "dropdown", "dropdown_category": "decline_reason", "section_name": "Fund & Allocation", "display_order": 67, "visibility_rules": {"lead_type": "fundraise", "when": "rating", "equals": "declined"}},
+    {"field_name": "previous_flar", "display_name": "Previous FLAR", "field_type": "currency", "section_name": "Focus", "display_order": 27, "visibility_rules": {"min_stage": 3, "when": "relationship", "in": ["existing_client_contract_extension"]}},
+    # === Service Details (non-IM service types at Focus+) ===
+    {"field_name": "expected_fee", "display_name": "Expected Fee", "field_type": "currency", "section_name": "Service Details", "display_order": 30, "visibility_rules": {"min_stage": 3, "when": "service_type", "in": ["advisory", "advisory_bps", "research", "project", "reporting"]}},
+    {"field_name": "expected_revenue_notes", "display_name": "Revenue Notes", "field_type": "textarea", "section_name": "Service Details", "display_order": 31, "visibility_rules": {"min_stage": 3}},
+    # === IM Details (service_type=investment_management at Focus+) ===
+    {"field_name": "expected_management_fee", "display_name": "Expected Management Fee (%)", "field_type": "number", "section_name": "IM Details", "display_order": 35, "visibility_rules": {"min_stage": 3, "when": "service_type", "equals": "investment_management"}},
+    {"field_name": "expected_incentive_fee", "display_name": "Expected Incentive Fee (%)", "field_type": "number", "section_name": "IM Details", "display_order": 36, "visibility_rules": {"min_stage": 3, "when": "service_type", "equals": "investment_management"}},
+    {"field_name": "expected_preferred_return", "display_name": "Expected Preferred Return (%)", "field_type": "number", "section_name": "IM Details", "display_order": 37, "visibility_rules": {"min_stage": 3, "when": "service_type", "equals": "investment_management"}},
+    {"field_name": "expected_catchup_pct", "display_name": "Expected Catch-Up (%)", "field_type": "number", "section_name": "IM Details", "display_order": 38, "visibility_rules": {"min_stage": 3, "when": "service_type", "equals": "investment_management"}},
+    {"field_name": "expected_size", "display_name": "Expected Size", "field_type": "text", "section_name": "IM Details", "display_order": 39, "visibility_rules": {"min_stage": 3, "when": "service_type", "in": ["investment_management", "product"]}},
+    {"field_name": "gp_commitment", "display_name": "GP Commitment", "field_type": "dropdown", "dropdown_category": "gp_commitment", "section_name": "IM Details", "display_order": 40, "visibility_rules": {"when": "service_type", "equals": "investment_management"}},
+    {"field_name": "deployment_period", "display_name": "Deployment Period", "field_type": "dropdown", "dropdown_category": "deployment_period", "section_name": "IM Details", "display_order": 41, "visibility_rules": {"when": "service_type", "equals": "investment_management"}},
+    # === Product Details (service_type=product at Focus+) ===
+    {"field_name": "commitment_status", "display_name": "Commitment Status", "field_type": "dropdown", "dropdown_category": "commitment_status", "section_name": "Product Details", "display_order": 45, "visibility_rules": {"min_stage": 3, "when": "service_type", "equals": "product"}},
+    {"field_name": "waystone_approved", "display_name": "Waystone Approved", "field_type": "dropdown", "dropdown_category": "waystone_approved", "section_name": "Product Details", "display_order": 46, "visibility_rules": {"when": "service_type", "equals": "product"}},
+    {"field_name": "expected_fund_close", "display_name": "Expected Fund Close", "field_type": "dropdown", "dropdown_category": "expected_fund_close", "section_name": "Product Details", "display_order": 47, "visibility_rules": {"min_stage": 3, "when": "service_type", "equals": "product"}},
+    # === RFP (visible based on engagement_status) ===
+    {"field_name": "rfp_due_date", "display_name": "RFP Due Date", "field_type": "date", "section_name": "RFP", "display_order": 50, "visibility_rules": {"when": "engagement_status", "in": ["rfp_expected", "rfp_in_progress", "rfp_submitted"]}},
+    {"field_name": "rfp_submitted_date", "display_name": "RFP Submitted Date", "field_type": "date", "section_name": "RFP", "display_order": 51, "visibility_rules": {"when": "engagement_status", "in": ["rfp_submitted"]}},
+    # === Follow-Up (always visible) ===
+    {"field_name": "next_steps", "display_name": "Follow-Up Notes", "field_type": "textarea", "section_name": "Follow-Up", "display_order": 55},
+    {"field_name": "next_steps_date", "display_name": "Follow-Up Date", "field_type": "date", "section_name": "Follow-Up", "display_order": 56},
+    # === Verbal Mandate+ ===
+    {"field_name": "legacy_onboarding", "display_name": "Legacy Onboarding", "field_type": "boolean", "section_name": "Verbal Mandate", "display_order": 60, "visibility_rules": {"min_stage": 4}},
+    {"field_name": "legacy_onboarding_holdings", "display_name": "Legacy Onboarding Holdings", "field_type": "textarea", "section_name": "Verbal Mandate", "display_order": 61, "visibility_rules": {"min_stage": 4, "when": "legacy_onboarding", "equals": True}},
+    {"field_name": "potential_coverage", "display_name": "Potential Coverage", "field_type": "text", "section_name": "Verbal Mandate", "display_order": 62, "visibility_rules": {"min_stage": 4}},
+    # === Fund & Allocation (product leads only) ===
+    {"field_name": "fund_id", "display_name": "Fund", "field_type": "lookup", "is_required": True, "section_name": "Fund & Allocation", "display_order": 80, "visibility_rules": {"lead_type": "product"}},
+    {"field_name": "share_class", "display_name": "Share Class", "field_type": "dropdown", "is_required": True, "dropdown_category": "share_class", "section_name": "Fund & Allocation", "display_order": 81, "visibility_rules": {"lead_type": "product"}},
+    {"field_name": "target_allocation_mn", "display_name": "Target Allocation ($M)", "field_type": "currency", "section_name": "Fund & Allocation", "display_order": 82, "visibility_rules": {"lead_type": "product"}},
+    {"field_name": "soft_circle_mn", "display_name": "Soft Circle ($M)", "field_type": "currency", "section_name": "Fund & Allocation", "display_order": 83, "visibility_rules": {"lead_type": "product"}},
+    {"field_name": "hard_circle_mn", "display_name": "Hard Circle ($M)", "field_type": "currency", "section_name": "Fund & Allocation", "display_order": 84, "visibility_rules": {"lead_type": "product"}},
+    {"field_name": "probability_pct", "display_name": "Probability %", "field_type": "number", "section_name": "Fund & Allocation", "display_order": 85, "visibility_rules": {"lead_type": "product"}, "validation_rules": {"min": 0, "max": 100}},
+    {"field_name": "stage_entry_date", "display_name": "Stage Entry Date", "field_type": "date", "section_name": "Fund & Allocation", "display_order": 86, "visibility_rules": {"lead_type": "product"}},
+    {"field_name": "decline_reason", "display_name": "Decline Reason", "field_type": "dropdown", "dropdown_category": "decline_reason", "section_name": "Fund & Allocation", "display_order": 87, "visibility_rules": {"lead_type": "product", "when": "rating", "equals": "declined"}},
+    # === Closure / Declined (service leads) ===
+    {"field_name": "end_date", "display_name": "End Date", "field_type": "date", "section_name": "Closure", "display_order": 90, "visibility_rules": {"when": "rating", "in": ["won", "did_not_win", "closed", "declined"]}},
+    {"field_name": "decline_reason_code", "display_name": "Decline Reason", "field_type": "dropdown", "dropdown_category": "decline_reason_code", "section_name": "Closure", "display_order": 91, "visibility_rules": {"when": "rating", "equals": "did_not_win"}},
+    {"field_name": "decline_rationale", "display_name": "Decline Rationale", "field_type": "textarea", "section_name": "Closure", "display_order": 92, "visibility_rules": {"when": "rating", "equals": "did_not_win"}, "validation_rules": {"max": 500}},
 ]
 
 ACTIVITY_FIELDS = [

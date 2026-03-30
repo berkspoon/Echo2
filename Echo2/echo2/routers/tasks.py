@@ -374,7 +374,7 @@ async def search_records(
                 sb.table("leads")
                 .select("id, organization_id, fund_id, lead_type")
                 .eq("is_deleted", False)
-                .in_("lead_type", ["fundraise", "product"])
+                .eq("lead_type", "product")
                 .in_("organization_id", list(org_map.keys()))
                 .limit(10)
                 .execute()

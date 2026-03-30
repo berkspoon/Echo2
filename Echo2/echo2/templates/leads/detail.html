@@ -2,7 +2,7 @@
 {% block title %}{{ lead.title or 'Lead' }} — {{ org_name }} — Echo 2.0{% endblock %}
 {% block page_title %}{{ lead.title or 'Lead Detail' }}{% endblock %}
 
-{% set is_fundraise = lead_type in ('fundraise', 'product') %}
+{% set is_fundraise = lead_type in ('product',) %}
 {% set current_stage = stage_order.get(lead.rating, 1) %}
 
 {% block content %}
@@ -17,8 +17,7 @@
                         <h2 class="text-xl font-bold text-gray-900">{{ lead.title or 'Untitled Lead' }}</h2>
                         <!-- Lead type badge -->
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
-                            {% if lead_type == 'advisory' %}bg-blue-100 text-blue-800
-                            {% elif lead_type == 'fundraise' %}bg-purple-100 text-purple-800
+                            {% if lead_type == 'service' %}bg-blue-100 text-blue-800
                             {% elif lead_type == 'product' %}bg-orange-100 text-orange-800
                             {% endif %}">
                             {{ lead_type | title }}
@@ -30,7 +29,7 @@
                             {% elif lead.rating == 'focus' %}bg-yellow-100 text-yellow-800
                             {% elif lead.rating == 'verbal_mandate' %}bg-purple-100 text-purple-800
                             {% elif lead.rating == 'won' %}bg-green-100 text-green-800
-                            {% elif lead.rating and lead.rating.startswith('lost') %}bg-red-100 text-red-800
+                            {% elif lead.rating == 'did_not_win' %}bg-red-100 text-red-800
                             {% elif lead.rating == 'target_identified' %}bg-gray-100 text-gray-800
                             {% elif lead.rating == 'intro_scheduled' %}bg-blue-100 text-blue-800
                             {% elif lead.rating == 'initial_meeting_complete' %}bg-indigo-100 text-indigo-800
@@ -70,7 +69,7 @@
             <!-- Stage Progress Bar -->
             <div class="mt-6">
                 {% if is_fundraise %}
-                {# Fundraise stage progress bar #}
+                {# Product stage progress bar #}
                 {% set fr_stages = [('target_identified', 'Target', 1), ('intro_scheduled', 'Intro', 2), ('initial_meeting_complete', 'Initial Mtg', 3), ('ddq_materials_sent', 'DDQ', 4), ('due_diligence', 'DD', 5), ('ic_review', 'IC', 6), ('soft_circle', 'Soft Circle', 7), ('legal_docs', 'Legal', 8)] %}
                 <div class="flex items-center gap-1">
                     {% for val, label, order in fr_stages %}
@@ -93,7 +92,7 @@
                     </div>
                 </div>
                 {% else %}
-                {# Advisory stage progress bar #}
+                {# Service stage progress bar #}
                 {% set stages = [('exploratory', 'Exploratory', 1), ('radar', 'Radar', 2), ('focus', 'Focus', 3), ('verbal_mandate', 'Verbal Mandate', 4)] %}
                 <div class="flex items-center gap-1">
                     {% for val, label, order in stages %}
@@ -106,9 +105,9 @@
                         {% if lead.rating == 'won' %}
                         <div class="h-2 rounded-full bg-green-500"></div>
                         <p class="mt-1 text-xs text-green-600 font-medium">Won</p>
-                        {% elif lead.rating in ('lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired') %}
+                        {% elif lead.rating == 'did_not_win' %}
                         <div class="h-2 rounded-full bg-red-500"></div>
-                        <p class="mt-1 text-xs text-red-600 font-medium">Lost</p>
+                        <p class="mt-1 text-xs text-red-600 font-medium">Did Not Win</p>
                         {% else %}
                         <div class="h-2 rounded-full bg-gray-200"></div>
                         <p class="mt-1 text-xs text-gray-400">Outcome</p>
@@ -158,7 +157,7 @@
                 </div>
             </div>
 
-            <!-- Asset Classes (advisory only) -->
+            <!-- Asset Classes (service only) -->
             {% if not is_fundraise and lead.asset_classes %}
             <div class="mt-4">
                 <dt class="text-xs font-medium text-gray-500 uppercase mb-2">Asset Classes</dt>
@@ -175,7 +174,7 @@
     </div>
 
     {% if is_fundraise %}
-    <!-- Fund & Allocation Details (fundraise/product only) -->
+    <!-- Fund & Allocation Details (product only) -->
     <div class="bg-white rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200">
             <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Fund & Allocation</h3>
@@ -211,7 +210,7 @@
                 {% if lead.rating == 'declined' and lead.decline_reason %}
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Decline Reason</dt>
-                    <dd class="mt-1 text-sm text-red-600 font-medium">{{ decline_labels.get(lead.decline_reason, lead.decline_reason | replace('_', ' ') | title) }}</dd>
+                    <dd class="mt-1 text-sm text-red-600 font-medium">{{ (decline_code_labels or {}).get(lead.decline_reason, lead.decline_reason | replace('_', ' ') | title) }}</dd>
                 </div>
                 {% endif %}
             </div>
@@ -261,7 +260,7 @@
     </div>
 
     {% else %}
-    <!-- Advisory: Focus+ Fields -->
+    <!-- Service: Focus+ Fields -->
     {% if current_stage >= 3 %}
     <div class="bg-white rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200">
@@ -269,26 +268,6 @@
         </div>
         <div class="p-6">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div>
-                    <dt class="text-xs font-medium text-gray-500 uppercase">Pricing Proposal</dt>
-                    <dd class="mt-1 text-sm text-gray-900">{{ (lead.pricing_proposal or '—') | replace('_', ' ') | title }}</dd>
-                </div>
-                {% if lead.pricing_proposal_details %}
-                <div class="lg:col-span-2">
-                    <dt class="text-xs font-medium text-gray-500 uppercase">Pricing Details</dt>
-                    <dd class="mt-1 text-sm text-gray-900">{{ lead.pricing_proposal_details }}</dd>
-                </div>
-                {% endif %}
-                <div>
-                    <dt class="text-xs font-medium text-gray-500 uppercase">Expected Decision Date</dt>
-                    <dd class="mt-1 text-sm text-gray-900">{{ lead.expected_decision_date or '—' }}</dd>
-                </div>
-                <div>
-                    <dt class="text-xs font-medium text-gray-500 uppercase">Expected Revenue</dt>
-                    <dd class="mt-1 text-sm text-gray-900 font-medium">
-                        {% if lead.expected_revenue is not none %}${{ '{:,.0f}'.format(lead.expected_revenue) }}{% else %}—{% endif %}
-                    </dd>
-                </div>
                 {% if lead.expected_revenue_notes %}
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Revenue Notes</dt>
@@ -331,7 +310,7 @@
                 {% endif %}
                 <div>
                     <dt class="text-xs font-medium text-gray-500 uppercase">Risk Weight</dt>
-                    <dd class="mt-1 text-sm text-gray-900">{{ (lead.risk_weight or '—') | replace('_', ' ') | title }}</dd>
+                    <dd class="mt-1 text-sm text-gray-900">{{ (risk_weight_labels or {}).get(lead.risk_weight, (lead.risk_weight or '—') | replace('_', ' ') | title) }}</dd>
                 </div>
             </div>
 
@@ -351,7 +330,7 @@
     </div>
     {% endif %}
 
-    <!-- Advisory: Verbal Mandate+ Fields -->
+    <!-- Service: Verbal Mandate+ Fields -->
     {% if current_stage >= 4 %}
     <div class="bg-white rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200">
@@ -531,9 +510,9 @@
     <!-- Back link -->
     <div>
         {% if is_fundraise %}
-        <a href="/leads?lead_type=fundraise" class="text-sm text-brand-600 hover:underline">&larr; Back to Fundraise Pipeline</a>
+        <a href="/leads?lead_type=product" class="text-sm text-brand-600 hover:underline">&larr; Back to Product Pipeline</a>
         {% else %}
-        <a href="/leads?lead_type=advisory" class="text-sm text-brand-600 hover:underline">&larr; Back to Advisory Pipeline</a>
+        <a href="/leads?lead_type=service" class="text-sm text-brand-600 hover:underline">&larr; Back to Service Pipeline</a>
         {% endif %}
     </div>
 

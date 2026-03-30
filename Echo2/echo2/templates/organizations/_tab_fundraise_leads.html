@@ -1,9 +1,9 @@
-<!-- Fundraise Leads tab partial (replaces fund_prospects tab) -->
+<!-- Product Leads tab partial -->
 <div class="flex items-center justify-between mb-4">
-    <h3 class="text-sm font-medium text-gray-500">Fundraise Leads</h3>
-    <a href="/leads/new?org={{ org.id }}&type=fundraise"
+    <h3 class="text-sm font-medium text-gray-500">Product Leads</h3>
+    <a href="/leads/new?org={{ org.id }}&type=product"
        class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600">
-        + New Fundraise Lead
+        + New Product Lead
     </a>
 </div>
 {% if fundraise_leads %}
@@ -47,5 +47,5 @@
     </tbody>
 </table>
 {% else %}
-<p class="text-sm text-gray-500">No fundraise leads for this organization.</p>
+<p class="text-sm text-gray-500">No product leads for this organization.</p>
 {% endif %}

@@ -1,9 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Leads — Echo 2.0{% endblock %}
 {% block page_title %}
-{% if lead_type_filter == 'fundraise' %}Fundraise Pipeline
-{% elif lead_type_filter == 'product' %}Product Pipeline
-{% elif lead_type_filter == 'advisory' %}Advisory Pipeline
+{% if lead_type_filter == 'product' %}Product Pipeline
+{% elif lead_type_filter == 'service' %}Service Pipeline
 {% else %}All Leads{% endif %}
 {% endblock %}
 
@@ -19,7 +18,7 @@
             <p class="text-sm text-gray-500">{{ total_count }} lead{{ 's' if total_count != 1 else '' }}</p>
         </div>
         <div class="flex items-center gap-2">
-            {% if lead_type_filter in ('fundraise', 'product') %}
+            {% if lead_type_filter == 'product' %}
             <a href="/leads/new?type={{ lead_type_filter }}"
                class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-md hover:bg-brand-600 shadow-sm">
                 <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>

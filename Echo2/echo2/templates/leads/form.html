@@ -2,8 +2,8 @@
 {% block title %}{{ 'Edit' if lead and lead.id is defined else 'New' }} Lead — Echo 2.0{% endblock %}
 {% block page_title %}{{ 'Edit Lead' if lead and lead.id is defined else 'New Lead' }}{% endblock %}
 
-{% set current_lead_type = lead_type | default('advisory') %}
-{% set is_fundraise = current_lead_type in ('fundraise', 'product') %}
+{% set current_lead_type = lead_type | default('service') %}
+{% set is_fundraise = current_lead_type in ('product',) %}
 {% set is_editing = lead and lead.id is defined %}
 
 {% block content %}
@@ -106,7 +106,7 @@
                 </select>
             </div>
 
-            <!-- Relationship (advisory only) -->
+            <!-- Relationship (service only) -->
             <div id="field-relationship" class="{{ 'hidden' if is_fundraise else '' }}">
                 <label for="relationship" class="block text-sm font-medium text-gray-700">Relationship <span class="text-red-500">*</span></label>
                 <select name="relationship" id="relationship"
@@ -147,7 +147,7 @@
         </div>
     </div>
 
-    <!-- ===== FUNDRAISE-SPECIFIC: Fund & Allocation Section ===== -->
+    <!-- ===== PRODUCT-SPECIFIC: Fund & Allocation Section ===== -->
     <div id="section-fundraise" class="bg-white rounded-lg shadow p-6 {{ '' if is_fundraise else 'hidden' }}">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Fund & Allocation</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -220,7 +220,7 @@
             </div>
         </div>
 
-        <!-- Next Steps (fundraise) -->
+        <!-- Next Steps (product) -->
         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label for="next_steps_fr" class="block text-sm font-medium text-gray-700">Next Steps</label>
@@ -237,7 +237,7 @@
         </div>
     </div>
 
-    <!-- ===== ADVISORY: Radar+ Fields ===== -->
+    <!-- ===== SERVICE: Radar+ Fields ===== -->
     <div id="section-radar" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-min="2">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Service & Classification
             <span class="text-xs text-gray-400 font-normal ml-2">Radar+</span>
@@ -283,50 +283,12 @@
         </div>
     </div>
 
-    <!-- ===== ADVISORY: Focus+ Fields ===== -->
+    <!-- ===== SERVICE: Focus+ Fields ===== -->
     <div id="section-focus" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-min="3">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Pipeline Details
             <span class="text-xs text-gray-400 font-normal ml-2">Focus+</span>
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-
-            <!-- Pricing Proposal -->
-            <div>
-                <label for="pricing_proposal" class="block text-sm font-medium text-gray-700">Pricing Proposal <span class="text-red-500">*</span></label>
-                <select name="pricing_proposal" id="pricing_proposal"
-                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                        onchange="updateConditionalFields()">
-                    <option value="">— Select —</option>
-                    {% for pp in pricing_proposals %}
-                    <option value="{{ pp.value }}" {{ 'selected' if lead and lead.pricing_proposal == pp.value else '' }}>{{ pp.label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <!-- Pricing Proposal Details (conditional) -->
-            <div id="pricing-details-wrapper" class="lg:col-span-2 {{ '' if lead and lead.pricing_proposal and lead.pricing_proposal != 'no_proposal' else 'hidden' }}">
-                <label for="pricing_proposal_details" class="block text-sm font-medium text-gray-700">Pricing Proposal Details <span class="text-red-500">*</span></label>
-                <input type="text" name="pricing_proposal_details" id="pricing_proposal_details"
-                       value="{{ lead.pricing_proposal_details if lead and lead.pricing_proposal_details else '' }}"
-                       placeholder="Details on the pricing proposal"
-                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
-            </div>
-
-            <!-- Expected Decision Date -->
-            <div>
-                <label for="expected_decision_date" class="block text-sm font-medium text-gray-700">Expected Decision Date <span class="text-red-500">*</span></label>
-                <input type="date" name="expected_decision_date" id="expected_decision_date"
-                       value="{{ lead.expected_decision_date if lead and lead.expected_decision_date else '' }}"
-                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
-            </div>
-
-            <!-- Expected Revenue -->
-            <div>
-                <label for="expected_revenue" class="block text-sm font-medium text-gray-700">Expected Revenue ($) <span class="text-red-500">*</span></label>
-                <input type="number" name="expected_revenue" id="expected_revenue" step="0.01" min="0"
-                       value="{{ lead.expected_revenue if lead and lead.expected_revenue is not none else '' }}"
-                       class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
-            </div>
 
             <!-- Expected Revenue Notes -->
             <div>
@@ -395,7 +357,7 @@
             </div>
         </div>
 
-        <!-- Next Steps (advisory) -->
+        <!-- Next Steps (service) -->
         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label for="next_steps" class="block text-sm font-medium text-gray-700">Next Steps</label>
@@ -412,7 +374,7 @@
         </div>
     </div>
 
-    <!-- ===== ADVISORY: Verbal Mandate+ Fields ===== -->
+    <!-- ===== SERVICE: Verbal Mandate+ Fields ===== -->
     <div id="section-verbal" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-min="4">
         <h3 class="text-base font-semibold text-gray-900 mb-4">Verbal Mandate Details
             <span class="text-xs text-gray-400 font-normal ml-2">Verbal Mandate+</span>
@@ -449,7 +411,7 @@
         </div>
     </div>
 
-    <!-- ===== ADVISORY: Closure Fields (Inactive stages) ===== -->
+    <!-- ===== SERVICE: Closure Fields (Inactive stages) ===== -->
     <div id="section-inactive" class="bg-white rounded-lg shadow p-6 {{ 'hidden' if is_fundraise else '' }}" data-stage-inactive>
         <h3 class="text-base font-semibold text-gray-900 mb-4">Closure</h3>
 
@@ -527,29 +489,29 @@
 {% block scripts %}
 <script>
 /* --- Lead type toggle --- */
-const isFundraise = {{ 'true' if is_fundraise else 'false' }};
+const isProduct = {{ 'true' if is_fundraise else 'false' }};
 
-const ADVISORY_STAGE_ORDER = {
+const SERVICE_STAGE_ORDER = {
     exploratory: 1, radar: 2, focus: 3, verbal_mandate: 4,
-    won: 5, lost_dropped_out: 5, lost_selected_other: 5, lost_nobody_hired: 5
+    won: 5, did_not_win: 5
 };
-const ADVISORY_INACTIVE = ['won', 'lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired'];
-const ADVISORY_LOST = ['lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired'];
+const SERVICE_INACTIVE = ['won', 'did_not_win'];
+const SERVICE_LOST = ['did_not_win'];
 
 /* --- Stage data for client-side swapping --- */
-const ADVISORY_STAGES = [
-    {% for s in all_advisory_stages %}
+const SERVICE_STAGES = [
+    {% for s in all_service_stages %}
     {value: "{{ s.value }}", label: "{{ s.label }}"},
     {% endfor %}
 ];
-const FUNDRAISE_STAGES = [
-    {% for s in all_fundraise_stages %}
+const PRODUCT_STAGES = [
+    {% for s in all_product_stages %}
     {value: "{{ s.value }}", label: "{{ s.label }}"},
     {% endfor %}
 ];
 
 function toggleLeadType(val) {
-    const fr = (val === 'fundraise' || val === 'product');
+    const fr = (val === 'product');
     document.getElementById('section-fundraise').classList.toggle('hidden', !fr);
     document.getElementById('section-radar').classList.toggle('hidden', fr);
     document.getElementById('section-focus').classList.toggle('hidden', fr);
@@ -559,7 +521,7 @@ function toggleLeadType(val) {
 
     // Swap stage dropdown options based on lead type
     const ratingSelect = document.getElementById('rating');
-    const stages = fr ? FUNDRAISE_STAGES : ADVISORY_STAGES;
+    const stages = fr ? PRODUCT_STAGES : SERVICE_STAGES;
     ratingSelect.innerHTML = '<option value="">— Select —</option>';
     stages.forEach(function(s) {
         const opt = document.createElement('option');
@@ -568,7 +530,7 @@ function toggleLeadType(val) {
         ratingSelect.appendChild(opt);
     });
 
-    // Update decline reason visibility for fundraise
+    // Update decline reason visibility for product
     if (fr) {
         const rating = document.getElementById('rating').value;
         const drw = document.getElementById('decline-reason-wrapper');
@@ -577,17 +539,17 @@ function toggleLeadType(val) {
 }
 
 function updateStageVisibility(rating) {
-    if (isFundraise) {
-        // Fundraise: show decline reason when declined
+    if (isProduct) {
+        // Product: show decline reason when declined
         const drw = document.getElementById('decline-reason-wrapper');
         if (drw) drw.classList.toggle('hidden', rating !== 'declined');
         return;
     }
 
-    const stage = ADVISORY_STAGE_ORDER[rating] || 1;
-    const isInactive = ADVISORY_INACTIVE.includes(rating);
+    const stage = SERVICE_STAGE_ORDER[rating] || 1;
+    const isInactive = SERVICE_INACTIVE.includes(rating);
     const isWon = rating === 'won';
-    const isLost = ADVISORY_LOST.includes(rating);
+    const isLost = SERVICE_LOST.includes(rating);
 
     // Show/hide stage-gated sections
     document.getElementById('section-radar').classList.toggle('hidden', stage < 2);
@@ -604,20 +566,13 @@ function updateStageVisibility(rating) {
 }
 
 function updateConditionalFields() {
-    if (isFundraise) return;
+    if (isProduct) return;
 
     // Previous FLAR: show when relationship is extension or re-up
     const rel = document.getElementById('relationship');
     if (rel) {
         const pw = document.getElementById('previous-flar-wrapper');
         if (pw) pw.classList.toggle('hidden', rel.value !== 'contract_extension' && rel.value !== 're_up');
-    }
-
-    // Pricing Proposal Details
-    const pp = document.getElementById('pricing_proposal');
-    if (pp) {
-        const pdw = document.getElementById('pricing-details-wrapper');
-        if (pdw) pdw.classList.toggle('hidden', !pp.value || pp.value === 'no_proposal');
     }
 
     // RFP Expected Date

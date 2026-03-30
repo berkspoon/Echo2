@@ -455,12 +455,215 @@ INSERT INTO reference_data (category, value, label, display_order) VALUES
 ON CONFLICT (category, value) DO NOTHING;
 
 -- =====================================================================
+-- Phase 8: V17 Lead Schema — new columns, reference_data, data migration
+-- =====================================================================
+
+-- --- New columns on leads table ---
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS engagement_status TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS commitment_status TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS waystone_approved TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS decline_reason_code TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS decline_rationale TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS indicative_size_low NUMERIC(15, 2);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS indicative_size_high NUMERIC(15, 2);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS coverage_office TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS prospect_contacted_date DATE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS prospect_responded_date DATE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS initial_meeting_date DATE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS initial_meeting_complete_date DATE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS revenue_currency TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_management_fee NUMERIC(8, 4);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_incentive_fee NUMERIC(8, 4);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_preferred_return NUMERIC(8, 4);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_catchup_pct NUMERIC(8, 4);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_size TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_fee NUMERIC(15, 2);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS gp_commitment TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS deployment_period TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_contract_start_date DATE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_fund_close TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS rfp_due_date DATE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS rfp_submitted_date DATE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS service_subtype TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS includes_product_allocation BOOLEAN DEFAULT FALSE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS includes_max_access BOOLEAN DEFAULT FALSE;
+
+-- --- lead_type: advisory→service, remove fundraise (merged into product) ---
+UPDATE reference_data SET value = 'service', label = 'Service'
+    WHERE category = 'lead_type' AND value = 'advisory';
+DELETE FROM reference_data
+    WHERE category = 'lead_type' AND value = 'fundraise';
+UPDATE reference_data SET display_order = 2
+    WHERE category = 'lead_type' AND value = 'product';
+
+-- --- lead_stage: update parent_values, merge lost stages → did_not_win ---
+UPDATE reference_data SET parent_value = 'service'
+    WHERE category = 'lead_stage' AND parent_value = 'advisory';
+UPDATE reference_data SET parent_value = 'product'
+    WHERE category = 'lead_stage' AND parent_value = 'fundraise';
+DELETE FROM reference_data
+    WHERE category = 'lead_stage'
+    AND value IN ('lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired');
+INSERT INTO reference_data (category, value, label, parent_value, display_order)
+VALUES ('lead_stage', 'did_not_win', 'Did Not Win', 'service', 6)
+ON CONFLICT (category, value) DO UPDATE SET label = EXCLUDED.label, parent_value = EXCLUDED.parent_value;
+
+-- --- lead_relationship_type: rename values ---
+DO $$
+BEGIN
+    UPDATE reference_data SET value = 'new_client', label = 'New Client'
+        WHERE category = 'lead_relationship_type' AND value = 'new';
+EXCEPTION WHEN unique_violation THEN NULL;
+END $$;
+DO $$
+BEGIN
+    UPDATE reference_data SET value = 'existing_client_new_business', label = 'Existing Client - New Business'
+        WHERE category = 'lead_relationship_type' AND value = 'cross_sell';
+EXCEPTION WHEN unique_violation THEN NULL;
+END $$;
+DO $$
+BEGIN
+    UPDATE reference_data SET value = 'existing_client_contract_extension', label = 'Existing Client - Contract Extension'
+        WHERE category = 'lead_relationship_type' AND value = 'contract_extension';
+EXCEPTION WHEN unique_violation THEN NULL;
+END $$;
+DELETE FROM reference_data
+    WHERE category = 'lead_relationship_type' AND value IN ('upsell', 're_up');
+INSERT INTO reference_data (category, value, label, display_order)
+VALUES ('lead_relationship_type', 'platform_relationship_approval', 'Platform Relationship Approval', 5)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- --- service_type: rename discretionary→investment_management, add advisory_bps ---
+DO $$
+BEGIN
+    UPDATE reference_data SET value = 'investment_management', label = 'Investment Management'
+        WHERE category = 'service_type' AND value = 'discretionary';
+EXCEPTION WHEN unique_violation THEN NULL;
+END $$;
+INSERT INTO reference_data (category, value, label, display_order)
+VALUES ('service_type', 'advisory_bps', 'Advisory BPS', 7)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- --- risk_weight: replace high/medium/low with percentage ranges ---
+DELETE FROM reference_data WHERE category = 'risk_weight';
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('risk_weight', '0_25', '0-25%', 1),
+    ('risk_weight', '25_50', '25-50%', 2),
+    ('risk_weight', '50_75', '50-75%', 3),
+    ('risk_weight', '75_100', '75-100%', 4)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- --- NEW reference_data categories ---
+
+-- engagement_status (10 values)
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('engagement_status', 'not_yet_contacted', 'Not Yet Contacted', 1),
+    ('engagement_status', 'prospect_contacted', 'Prospect Contacted', 2),
+    ('engagement_status', 'prospect_responded', 'Prospect Responded', 3),
+    ('engagement_status', 'initial_meeting', 'Initial Meeting', 4),
+    ('engagement_status', 'ongoing_dialogue', 'Ongoing Dialogue', 5),
+    ('engagement_status', 'pricing_proposal_submitted', 'Pricing Proposal Submitted', 6),
+    ('engagement_status', 'rfp_expected', 'RFP Expected', 7),
+    ('engagement_status', 'rfp_in_progress', 'RFP In Progress', 8),
+    ('engagement_status', 'rfp_submitted', 'RFP Submitted', 9),
+    ('engagement_status', 'approved_by_client', 'Approved by Client', 10)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- commitment_status (5 values)
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('commitment_status', 'initial_review', 'Initial Review', 1),
+    ('commitment_status', 'in_diligence', 'In Diligence', 2),
+    ('commitment_status', 'ic_approved', 'IC Approved', 3),
+    ('commitment_status', 'on_hold', 'On Hold', 4),
+    ('commitment_status', 'legal_approved', 'Legal Approved', 5)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- waystone_approved (3 values)
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('waystone_approved', 'yes', 'Yes', 1),
+    ('waystone_approved', 'no', 'No', 2),
+    ('waystone_approved', 'not_applicable', 'N/A', 3)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- decline_reason_code (11 values — for service leads at did_not_win stage)
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('decline_reason_code', 'strategy_fit', 'Strategy Fit', 1),
+    ('decline_reason_code', 'timing', 'Timing', 2),
+    ('decline_reason_code', 'fees_too_high', 'Fees Too High', 3),
+    ('decline_reason_code', 'competitive_loss', 'Competitive Loss', 4),
+    ('decline_reason_code', 'no_response', 'No Response', 5),
+    ('decline_reason_code', 'internal_constraints', 'Internal Constraints', 6),
+    ('decline_reason_code', 'budget_constraints', 'Budget Constraints', 7),
+    ('decline_reason_code', 'portfolio_overlap', 'Portfolio Overlap', 8),
+    ('decline_reason_code', 'regulatory', 'Regulatory', 9),
+    ('decline_reason_code', 'client_restructuring', 'Client Restructuring', 10),
+    ('decline_reason_code', 'other', 'Other', 11)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- coverage_office (4 values)
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('coverage_office', 'us', 'US', 1),
+    ('coverage_office', 'emea', 'EMEA', 2),
+    ('coverage_office', 'tokyo', 'Tokyo', 3),
+    ('coverage_office', 'hk', 'HK', 4)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- gp_commitment (yes/no)
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('gp_commitment', 'yes', 'Yes', 1),
+    ('gp_commitment', 'no', 'No', 2)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- deployment_period
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('deployment_period', 'immediate', 'Immediate', 1),
+    ('deployment_period', '1_3_months', '1-3 Months', 2),
+    ('deployment_period', '3_6_months', '3-6 Months', 3),
+    ('deployment_period', '6_12_months', '6-12 Months', 4),
+    ('deployment_period', '12_plus_months', '12+ Months', 5)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- expected_fund_close
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('expected_fund_close', 'first_close', 'First Close', 1),
+    ('expected_fund_close', 'subsequent_close', 'Subsequent Close', 2),
+    ('expected_fund_close', 'final_close', 'Final Close', 3),
+    ('expected_fund_close', 'rolling', 'Rolling', 4)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- revenue_currency
+INSERT INTO reference_data (category, value, label, display_order) VALUES
+    ('revenue_currency', 'usd', 'USD', 1),
+    ('revenue_currency', 'eur', 'EUR', 2),
+    ('revenue_currency', 'gbp', 'GBP', 3),
+    ('revenue_currency', 'jpy', 'JPY', 4),
+    ('revenue_currency', 'aud', 'AUD', 5),
+    ('revenue_currency', 'chf', 'CHF', 6),
+    ('revenue_currency', 'cad', 'CAD', 7),
+    ('revenue_currency', 'hkd', 'HKD', 8),
+    ('revenue_currency', 'sgd', 'SGD', 9)
+ON CONFLICT (category, value) DO NOTHING;
+
+-- --- Migrate existing lead data to new values ---
+UPDATE leads SET lead_type = 'service' WHERE lead_type = 'advisory';
+UPDATE leads SET lead_type = 'product' WHERE lead_type = 'fundraise';
+UPDATE leads SET rating = 'did_not_win'
+    WHERE rating IN ('lost_dropped_out', 'lost_selected_other', 'lost_nobody_hired');
+UPDATE leads SET relationship = 'new_client' WHERE relationship = 'new';
+UPDATE leads SET relationship = 'existing_client_new_business' WHERE relationship = 'cross_sell';
+UPDATE leads SET relationship = 'existing_client_contract_extension' WHERE relationship = 'contract_extension';
+UPDATE leads SET service_type = 'investment_management' WHERE service_type = 'discretionary';
+UPDATE leads SET risk_weight = '0_25' WHERE risk_weight = 'low';
+UPDATE leads SET risk_weight = '25_50' WHERE risk_weight = 'medium';
+UPDATE leads SET risk_weight = '75_100' WHERE risk_weight = 'high';
+-- Also update contracts service_type
+UPDATE contracts SET service_type = 'investment_management' WHERE service_type = 'discretionary';
+
+-- =====================================================================
 -- Done! Verify with:
---   SELECT column_name FROM information_schema.columns WHERE table_name = 'people' AND column_name = 'is_deleted';
---   SELECT count(*) FROM field_definitions;
---   SELECT column_name FROM information_schema.columns WHERE table_name = 'field_definitions' AND column_name = 'linked_config';
---   SELECT count(*) FROM information_schema.tables WHERE table_name = 'activity_lead_links';
---   SELECT column_name FROM information_schema.columns WHERE table_name = 'leads' AND column_name = 'title';
---   SELECT count(*) FROM reference_data WHERE category = 'lead_stage';
---   SELECT column_name FROM information_schema.columns WHERE table_name = 'organizations' AND column_name = 'asset_class';
+--   SELECT column_name FROM information_schema.columns WHERE table_name = 'leads' AND column_name = 'engagement_status';
+--   SELECT count(*) FROM reference_data WHERE category = 'engagement_status';
+--   SELECT count(*) FROM reference_data WHERE category = 'lead_type';
+--   SELECT DISTINCT lead_type FROM leads;
+--   SELECT DISTINCT rating FROM leads;
 -- =====================================================================

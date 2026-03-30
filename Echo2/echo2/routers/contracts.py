@@ -302,8 +302,8 @@ async def new_contract_form(
 
     # Check lead is in a Won stage
     rating = lead.get("rating", "")
-    lead_type = lead.get("lead_type", "advisory")
-    won_stages = {"won"} if lead_type == "advisory" else {"closed"}
+    lead_type = lead.get("lead_type", "service")
+    won_stages = {"won"} if lead_type == "service" else {"closed"}
     if rating not in won_stages:
         raise HTTPException(status_code=400, detail="Lead must be in a Won/Closed stage to create a contract")
 
@@ -330,7 +330,7 @@ async def new_contract_form(
         "start_date": str(date_type.today()),
         "service_type": lead.get("service_type") or "",
         "asset_classes": lead.get("asset_classes") or [],
-        "actual_revenue": lead.get("expected_revenue"),
+        "actual_revenue": lead.get("expected_fee"),
         "client_coverage": lead.get("potential_coverage") or "",
         "summary": lead.get("summary") or "",
         "inflation_provision": "",
@@ -392,8 +392,8 @@ async def create_contract(
         raise HTTPException(status_code=404, detail="Lead not found")
 
     rating = lead.get("rating", "")
-    lead_type = lead.get("lead_type", "advisory")
-    won_stages = {"won"} if lead_type == "advisory" else {"closed"}
+    lead_type = lead.get("lead_type", "service")
+    won_stages = {"won"} if lead_type == "service" else {"closed"}
     if rating not in won_stages:
         raise HTTPException(status_code=400, detail="Lead must be in a Won/Closed stage to create a contract")
 

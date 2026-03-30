@@ -358,11 +358,10 @@
           {# Lead: lead_type badge #}
           {% elif entity_type == 'lead' and fname == 'lead_type' %}
             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
-              {% if val == 'advisory' %}bg-blue-100 text-blue-800
-              {% elif val == 'fundraise' %}bg-purple-100 text-purple-800
+              {% if val == 'service' %}bg-blue-100 text-blue-800
               {% elif val == 'product' %}bg-orange-100 text-orange-800
               {% else %}bg-gray-100 text-gray-800{% endif %}">
-              {{ (val or 'advisory') | title }}
+              {{ (val or 'service') | title }}
             </span>
 
           {# Lead: aksia_owner_id -> owner name #}
