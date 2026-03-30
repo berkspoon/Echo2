@@ -520,3 +520,40 @@ _Use this section to track decisions made during Claude Code sessions:_
 - Templates (8 files): form.html, detail.html, list.html, _grid.html, _org_leads_panel.html, _tab_fundraise_leads.html, _widget_my_coverage.html, capital_raise/advisory templates.
 
 **DB migration required:** Run Phase 8 block at end of `migrate_schema.sql` in Supabase SQL Editor, then `python -m scripts.seed_field_definitions`.
+
+### Session 30 — March 30, 2026
+**Steps 2 + 3: Product merger cleanup, multi-coverage, prospect→client workflow**
+
+**Step 2 — Fundraise→Product Cleanup (15 files):**
+- Renamed all remaining `fundraise` references to `product` across variables, templates, labels, seed data.
+- schema.sql: lead_stage parent_values updated (advisory→service, fundraise→product), removed lead_type='fundraise'.
+- seed_data.py: seed_fundraise_leads()→seed_product_leads(), lead_type='product'.
+- Template renamed: _tab_fundraise_leads.html → _tab_product_leads.html.
+- is_fundraise→is_product, section-fundraise→section-product in lead templates.
+- Task/grid labels: "Fundraise Lead Next Steps" → "Product Lead Next Steps".
+- distribution_lists.py: fund-based DL queries now check leads table (lead_type='product') alongside legacy fund_prospects.
+
+**Step 3B — Prospect→Client Workflow:**
+- `_transition_prospect_to_client()` in leads.py: when lead rating set to "won" and linked org is "prospect", auto-updates org to "client" with audit log.
+- Fires on both create_lead and update_lead (only when rating changes to won).
+- 5 `client_team_coverage` EAV lookup fields added to org field_definitions: visible + amber suggested when relationship_type='client'.
+
+**Step 3A — Multi-Coverage Junction Table:**
+- Phase 9 migration: `person_coverage_owners` table (person_id, user_id, is_primary, UNIQUE constraint). Data migration from existing coverage_owner column.
+- Dual-write: `_sync_coverage_owners()` updates both junction table AND legacy coverage_owner column for backward compat.
+- People form: HTMX typeahead autocomplete (`/people/search-users`) with chip UI. Prefix match on first/last name. Selected users as removable chips with primary badge.
+- People detail: coverage owners displayed as badge chips.
+- Grid enrichment: `_enrich_people()` queries junction table, resolves names, replaces coverage_owner display value.
+- Dashboards: my-coverage widget, missing-info alerts, stale contacts all query junction table.
+- Org detail: coverage rollup queries junction table for people at org.
+- Activities: "My Activities" coverage filter uses junction table.
+- Tasks: suggested assignees query junction table.
+- Quick-create person in activities creates junction table entry.
+- Seed data: `seed_person_coverage_owners()` creates primary + 25% secondary owners.
+
+**DB migration required:** Run Phase 9 block in `migrate_schema.sql`, then `python -m scripts.seed_field_definitions --force`. ✅ Done.
+
+**Pending for next session:**
+- Typeahead conversion for lead_owners (leads/form.html) and task assignee — currently checkbox grids, should use same pattern as coverage owners.
+- Step 0: Create Users — active employee list received (463 employees in `aksia - Data Sheet - 2026-03-30.csv`). Cross-reference against ~201 CRM names.
+- Steps 4-7: Data Import — unblocked once Step 0 complete.

@@ -462,10 +462,10 @@ When modifying lead-related values (types, stages, field names, reference_data c
 
 Each step is self-contained (can clear session between). After each step: update SESSION_LOG.md + this file, commit.
 
-### Step 0: Create Users (NEEDS ACTIVE EMPLOYEE LIST)
-Extract ~201 unique names from CRM data (org coverage, lead owners, activity authors). Cross-reference against active employee list provided by Miles. Active employees → create user records (standard_user role, email=[firstinitial][lastname]@aksia.com). Former employees → flag as inactive, preserve coverage references as text. Handle deduplication (name variants like Tim/Timothy, Joe/Joseph), multi-author entries (semicolon-separated), edge cases (apostrophes, multi-word surnames), and non-person entries (RFP Team, AksiaLegacy Author). ~160 estimated real users after cleanup.
+### Step 0: Create Users (READY — employee list received)
+Extract ~201 unique names from CRM data (org coverage, lead owners, activity authors). Cross-reference against active employee list (463 employees in `aksia - Data Sheet - 2026-03-30.csv`, columns: Name, Work email). Active employees → create user records (standard_user role). Former employees → flag as inactive, preserve coverage references as text. Handle deduplication (name variants like Tim/Timothy, Joe/Joseph), multi-author entries (semicolon-separated), edge cases (apostrophes, multi-word surnames), and non-person entries (RFP Team, AksiaLegacy Author). ~160 estimated real users after cleanup.
 
-**Blocked on:** Active employee list from Miles.
+**Employee list received:** March 30, 2026.
 
 ### Step 1: Lead Schema + V17 Fields ✅ COMPLETE (March 30, 2026)
 Add all V17 fields to schema, reference_data, field_definitions. Rename lead_type values (advisory→service, fundraise/product→product). Update rating stages. Add engagement_status cascading logic. Restructure asset classes. Remove deprecated fields from UI. Update form + detail templates.
@@ -479,11 +479,12 @@ Add all V17 fields to schema, reference_data, field_definitions. Rename lead_typ
 - **Templates:** form.html, detail.html, list.html — all updated for service/product, did_not_win, removed pricing_proposal/expected_revenue/expected_decision_date sections. _grid.html, _org_leads_panel.html, _tab_fundraise_leads.html, _widget_my_coverage.html — updated.
 - **Other routers:** dashboards.py, activities.py, contracts.py, organizations.py, tasks.py, distribution_lists.py — all updated for V17 stage/type values.
 
-### Step 2: Fundraise → Product Merger + Dashboard Updates
-Merge fundraise into product lead_type. Update Capital Raise dashboard. Update grid_service.py.
+### Step 2: Fundraise → Product Merger + Dashboard Updates ✅ COMPLETE (March 30, 2026)
+Renamed all remaining fundraise→product references across 15 files (variables, templates, labels, seed data, DL fund queries). Template renamed _tab_fundraise_leads.html → _tab_product_leads.html. schema.sql baseline updated.
 
-### Step 3: Multi-Coverage + Prospect→Client Workflow
-New person_coverage_owners junction table. Update people forms/grids. Build prospect→client transition on lead won.
+### Step 3: Multi-Coverage + Prospect→Client Workflow ✅ COMPLETE (March 30, 2026)
+- **3A:** person_coverage_owners junction table (Phase 9 migration). Dual-write to legacy column. Typeahead autocomplete UI on people form. All queries (dashboard, grid, org rollup, activities, tasks) updated to junction table.
+- **3B:** Prospect→client auto-transition when lead rating=won. 5 client_team_coverage EAV fields on orgs (visible+suggested when client).
 
 ### Step 4: Import Script — Core Entities (NEEDS STEP 0)
 Build scripts/import_echo_data.py. Import orgs → people → person-org links → leads → lead owners → contracts. Delete dummy data first. All ID→text mappings complete.
