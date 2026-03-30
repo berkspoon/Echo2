@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+
+# Data files (too large / sensitive for git)
+Echo2/cr932_crmactivities.csv
+Echo2/EchoData.xlsx
+Echo2/Echo Mappings.xlsx
+Echo2/Lead Fields Page V17.xlsx
+Echo2/~$*
+
+# Interval Fund Data Extractor (separate tool)
+Echo2/Interval Fund Data Extractor/
+
+# Office temp files
+~$*
+
+# OS
+.DS_Store
+Thumbs.db
