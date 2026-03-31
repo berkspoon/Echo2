@@ -2,7 +2,7 @@
 
 **Created:** March 29, 2026
 **Updated:** March 30, 2026
-**Status:** Steps 0-5 COMPLETE. Step 6 (DLs + coverage), 7 (validation) ready to implement.
+**Status:** Steps 0-7 ALL COMPLETE. Full CRM data import and validation done.
 
 ---
 
@@ -521,11 +521,48 @@ Import 27.4K activities from CSV + create org/person links from ActivityEntities
 - **Phase 10:** Activity links from ActivityEntities Excel sheet (76,964 rows). `build_pa_entity_maps()` rebuilds PA→Echo UUID maps from EAV table (for standalone runs). `import_activity_links()` resolves entity type (1=org, 2=person), deduplicates, creates `activity_organization_links` and `activity_people_links`. Batch size = 50.
 - `activity_lead_links` added to `CLEANUP_TABLES` for re-runnable imports.
 
-### Step 6: Import Script — Distribution Lists + Coverage (READY)
-DL membership from People publication columns (L1=value 4, L2=value 2, L1-downgraded=value 5). Coverage from org coverage fields → person_coverage_owners.
+### Step 6: Import Script — Distribution Lists + Coverage ✅ COMPLETE (March 31, 2026)
+DL membership from People publication columns + coverage from org coverage fields.
 
-### Step 7: Post-Import Validation
-Count verification, FK integrity, dashboard rendering, Excel export comparison.
+**Changes made:**
+- **import_echo_data.py:** Phase 11 (create 18 publication DLs + 10,717 memberships) + Phase 12 (17,152 person_coverage_owners from 3,561 orgs). Added `--start-phase`/`--end-phase` flags. `_batch_insert()` retry logic for timeout/502 errors.
+- **dashboards.py:** `_get_covered_person_ids()` paginates past 1000-row limit. `_batched_in_query()` chunks .in_() to 200 per batch. All 3 coverage widgets fixed.
+- **grid_service.py:** `_execute_batched_query()` for large ID filters — batched execution with in-Python sort/pagination.
+- **organizations.py, people.py:** Paginated pco queries + batched .in_() for My Organizations/My People views.
+
+**Results:** 18 DLs (9 categories × L1+L2), 10,717 memberships (4,412 L1 + 6,305 L2), 17,152 coverage owners (9,425 primary + 7,727 secondary, 106 unique users).
+
+### Step 7: Post-Import Validation ✅ COMPLETE (March 31, 2026)
+
+**Row Counts — ALL MATCH:**
+| Table | Count |
+|---|---|
+| organizations | 5,384 (+1 dev org) |
+| people | 12,912 |
+| person_organization_links | 11,986 |
+| leads | 2,804 (2,451 real + 353 placeholders) |
+| lead_owners | 2,441 |
+| contracts | 404 |
+| activities | 27,371 |
+| activity_organization_links | 31,173 |
+| activity_people_links | 45,069 |
+| distribution_lists | 18 |
+| distribution_list_members | 10,717 |
+| person_coverage_owners | 17,152 |
+| entity_custom_values | 20,746 |
+
+**FK Integrity — ALL PASS (0 orphans):**
+All 12 FK checks pass with zero orphaned references (lead_owners, person_org_links, DL members, coverage owners, activity org/people links, contracts).
+
+**Page Rendering — ALL PASS:**
+Dashboard, Organizations, People, Leads, Activities, Contracts, Distribution Lists, Advisory Pipeline, Capital Raise — all return 200.
+
+**Data Quality — GOOD:**
+- Lead types: 962 service, 654 product
+- Ratings: 816 exploratory, 305 radar, 125 focus, 17 verbal_mandate, 353 won
+- Activities: 12,991 calls, 7,151 meetings, 7,226 notes, 3 emails
+- DL membership largest: PANALTS L1 (2,113), PC L2 (1,542), PE L2 (1,337)
+- Coverage: top user Harry Seplowitz (1,788 people), 106 unique coverage users
 
 ---
 
