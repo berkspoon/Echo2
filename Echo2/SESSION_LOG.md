@@ -555,5 +555,41 @@ _Use this section to track decisions made during Claude Code sessions:_
 
 **Pending for next session:**
 - Typeahead conversion for lead_owners (leads/form.html) and task assignee — currently checkbox grids, should use same pattern as coverage owners.
-- Step 0: Create Users — active employee list received (463 employees in `aksia - Data Sheet - 2026-03-30.csv`). Cross-reference against ~201 CRM names.
-- Steps 4-7: Data Import — unblocked once Step 0 complete.
+
+---
+
+## Session 30 — March 30, 2026 (afternoon)
+
+**Focus:** Step 0 — Create Users from employee list + admin user management enhancements.
+
+**Step 0 — Create Users:**
+- New `scripts/create_users.py` with `--dry-run` (default) and `--apply` modes.
+- Loads 434 active employees from `aksia - Data Sheet - 2026-03-30.csv` (2 skipped — no email: Sangmin Kim, Michael Brunner).
+- Extracts 176 unique CRM names from EchoData.xlsx (115 org coverage names, 87 lead owners) + cr932_crmactivities.csv (157 activity authors). Filters out "RFP Team" and "AksiaLegacy Author".
+- 3-tier name matching: exact (134 matches), nickname expansion via alias map (0 — all former employees), prefix match (1: "Alejandro Guerra" → "Alejandro Guerra A").
+- 131 unique active employees matched to CRM data. 41 unmatched names created as inactive former employees (`@aksia.former` email domain).
+- Total: 475 users inserted (434 active + 41 inactive).
+- `build_name_to_uuid_map()` returns 537 name→UUID entries (includes nickname variants + prefix variants for downstream import).
+- 5 admins: Miles Greenspoon, Aggeliki Charalampopoulou, Antouella Santikai, Clifton Ramsundar, Thalia Panopoulou.
+- Dev user (00000000-...-0001) retained — FK constraints from audit_log, saved_views, duplicate_suppressions.
+- Fixed `seed_data.py`: added `person_coverage_owners` and `user_roles` to `tables_to_clean` in `cleanup_seed_data()`.
+
+**Admin Panel — User Management Enhancements:**
+- `POST /admin/users/create` — create new user form with auto-generated entra_id placeholder, email uniqueness validation.
+- `POST /admin/users/{user_id}/edit` — edit display_name, email, first_name, last_name. Audit-logged per field.
+- `POST /admin/users/{user_id}/view-as` — admin impersonation. Stores `view_as_user_id` in session.
+- `POST /admin/view-as/exit` — clears impersonation session.
+- `dependencies.py`: `get_current_user()` checks session for `view_as_user_id` and returns target user's identity.
+- `base.html`: yellow "Viewing as [Name] — Exit" banner when impersonating.
+- `admin/users.html`: search/filter bar, create user modal, edit user modal, view-as buttons, status filter (All/Active/Inactive).
+
+**Commits:**
+- `c6c29f4` — Step 0: create real users from employee list + admin user management
+- `15a6ac8` — update data import plan: Step 0 complete, add next session prompt
+
+**Pending for next session:**
+- Step 4: Import Core Entities (orgs → people → leads → contracts) from EchoData.xlsx
+- Step 5: Import Activities (27.4K from CSV)
+- Step 6: Import Distribution Lists + Coverage
+- Step 7: Post-import validation
+- Future: User Profile Page (each user gets a page showing coverage + latest activities)
