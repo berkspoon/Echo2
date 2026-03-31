@@ -458,6 +458,9 @@ def build_grid_context(
 # Query execution
 # ═══════════════════════════════════════════════════════════════════════════
 
+_MAX_IN_SIZE = 200  # Max IDs for a single .in_() call (PostgREST URL limit)
+
+
 def _execute_query(
     entity_type: str,
     filters: dict,
@@ -470,6 +473,21 @@ def _execute_query(
     field_defs: Optional[list[dict]] = None,
 ) -> tuple[list[dict], int]:
     """Run the Supabase query with filters, sort, pagination. Returns (rows, total)."""
+
+    # Check for large ID filters that need batched execution
+    large_id_filter = None
+    for key in ("_org_ids", "_activity_ids"):
+        if filters.get(key) and len(filters[key]) > _MAX_IN_SIZE:
+            large_id_filter = (key, filters[key])
+            break
+
+    if large_id_filter:
+        return _execute_batched_query(
+            entity_type, filters, sort_by, sort_dir, page, page_size,
+            large_id_filter=large_id_filter,
+            col_filters=col_filters, field_defs=field_defs,
+        )
+
     sb = get_supabase()
     table = _ENTITY_TABLES[entity_type]
     select_cols = _BASE_SELECT[entity_type]
@@ -605,6 +623,74 @@ def _execute_query(
 
     resp = query.execute()
     return resp.data or [], resp.count or 0
+
+
+def _execute_batched_query(
+    entity_type: str,
+    filters: dict,
+    sort_by: str,
+    sort_dir: str,
+    page: int,
+    page_size: int,
+    *,
+    large_id_filter: tuple[str, list[str]],
+    col_filters: Optional[dict] = None,
+    field_defs: Optional[list[dict]] = None,
+) -> tuple[list[dict], int]:
+    """Execute query in batches when ID filter list exceeds PostgREST URL limit.
+
+    Fetches all matching rows across batched .in_() calls, then sorts and
+    paginates in Python.
+    """
+    sb = get_supabase()
+    table = _ENTITY_TABLES[entity_type]
+    select_cols = _BASE_SELECT[entity_type]
+    filter_key, id_list = large_id_filter
+
+    all_rows: list[dict] = []
+    seen_ids: set[str] = set()
+
+    for i in range(0, len(id_list), _MAX_IN_SIZE):
+        chunk = id_list[i:i + _MAX_IN_SIZE]
+        query = sb.table(table).select(select_cols)
+
+        # Soft-delete filter
+        if entity_type == "distribution_list":
+            query = query.eq("is_active", True)
+        else:
+            query = query.eq("is_deleted", False)
+
+        # Apply the batched ID filter
+        query = query.in_("id", chunk)
+
+        # Apply other filters (the large ID filter is skipped in _apply_filters
+        # because it exceeds _MAX_IN_SIZE)
+        query = _apply_filters(entity_type, query, filters)
+
+        # Apply column filters
+        if col_filters:
+            query = _apply_column_filters(query, col_filters.copy(), entity_type)
+
+        # Fetch up to 1000 rows per batch (no pagination — we paginate in Python)
+        query = query.limit(1000)
+        resp = query.execute()
+
+        for row in (resp.data or []):
+            rid = str(row["id"])
+            if rid not in seen_ids:
+                seen_ids.add(rid)
+                all_rows.append(row)
+
+    # Sort in Python
+    total = len(all_rows)
+    desc = sort_dir.lower() == "desc"
+    all_rows.sort(key=lambda r: (r.get(sort_by) is None, r.get(sort_by) or ""), reverse=desc)
+
+    # Paginate in Python
+    offset = (page - 1) * page_size
+    page_rows = all_rows[offset:offset + page_size]
+
+    return page_rows, total
 
 
 def _apply_filters(entity_type: str, query, filters: dict):
@@ -755,12 +841,14 @@ def _apply_filters(entity_type: str, query, filters: dict):
         if filters.get("to"):
             query = query.lte(date_field, filters["to"])
 
-    # ── Org-scoped filter (for "My Organizations" via pre-computed IDs) ──
-    if filters.get("_org_ids"):
+    # ── Org-scoped filter (for "My Organizations" / "My People" via pre-computed IDs) ──
+    # Large ID lists are handled via batching in _execute_query; only apply .in_() for small lists
+    _MAX_IN_SIZE = 200
+    if filters.get("_org_ids") and len(filters["_org_ids"]) <= _MAX_IN_SIZE:
         query = query.in_("id", filters["_org_ids"])
 
     # ── Activity ID filter (for "My Activities") ──
-    if filters.get("_activity_ids"):
+    if filters.get("_activity_ids") and len(filters["_activity_ids"]) <= _MAX_IN_SIZE:
         query = query.in_("id", filters["_activity_ids"])
 
     return query

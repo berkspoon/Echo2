@@ -159,22 +159,35 @@ async def my_organizations(
     sb = get_supabase()
 
     # Find orgs where user is coverage owner (via junction table)
-    pco_resp = (
-        sb.table("person_coverage_owners")
-        .select("person_id")
-        .eq("user_id", str(current_user.id))
-        .execute()
-    )
-    person_ids = [str(p["person_id"]) for p in (pco_resp.data or [])]
-    my_org_ids = set()
-    if person_ids:
-        pol_resp = (
-            sb.table("person_organization_links")
-            .select("organization_id")
-            .in_("person_id", person_ids)
+    # Paginate to handle >1000 covered people
+    person_ids: list[str] = []
+    offset = 0
+    while True:
+        pco_resp = (
+            sb.table("person_coverage_owners")
+            .select("person_id")
+            .eq("user_id", str(current_user.id))
+            .range(offset, offset + 999)
             .execute()
         )
-        my_org_ids |= {str(r["organization_id"]) for r in (pol_resp.data or [])}
+        person_ids.extend(str(p["person_id"]) for p in (pco_resp.data or []))
+        if len(pco_resp.data or []) < 1000:
+            break
+        offset += 1000
+    person_ids = list(set(person_ids))
+
+    my_org_ids = set()
+    if person_ids:
+        # Batch to avoid PostgREST URL limit
+        for i in range(0, len(person_ids), 200):
+            chunk = person_ids[i:i + 200]
+            pol_resp = (
+                sb.table("person_organization_links")
+                .select("organization_id")
+                .in_("person_id", chunk)
+                .execute()
+            )
+            my_org_ids |= {str(r["organization_id"]) for r in (pol_resp.data or [])}
 
     # Find orgs where user is aksia_owner on leads
     owned_leads = (

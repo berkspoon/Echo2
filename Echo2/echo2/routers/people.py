@@ -396,13 +396,22 @@ async def my_people(
 ):
     """List people where the current user is coverage owner."""
     sb = get_supabase()
-    my_resp = (
-        sb.table("person_coverage_owners")
-        .select("person_id")
-        .eq("user_id", str(current_user.id))
-        .execute()
-    )
-    my_ids = [str(p["person_id"]) for p in (my_resp.data or [])]
+    # Paginate to handle >1000 covered people
+    my_ids: list[str] = []
+    offset = 0
+    while True:
+        my_resp = (
+            sb.table("person_coverage_owners")
+            .select("person_id")
+            .eq("user_id", str(current_user.id))
+            .range(offset, offset + 999)
+            .execute()
+        )
+        my_ids.extend(str(p["person_id"]) for p in (my_resp.data or []))
+        if len(my_resp.data or []) < 1000:
+            break
+        offset += 1000
+    my_ids = list(set(my_ids))
     if not my_ids:
         my_ids = ["00000000-0000-0000-0000-000000000000"]
 

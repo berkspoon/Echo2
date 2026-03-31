@@ -17,6 +17,25 @@ router = APIRouter(prefix="/dashboards", tags=["dashboards"])
 templates = Jinja2Templates(directory="templates")
 
 
+def _get_covered_person_ids(sb, user_id: str) -> list[str]:
+    """Get all person_ids where user is coverage owner. Paginates past 1000-row limit."""
+    person_ids: list[str] = []
+    offset = 0
+    while True:
+        resp = (
+            sb.table("person_coverage_owners")
+            .select("person_id")
+            .eq("user_id", user_id)
+            .range(offset, offset + 999)
+            .execute()
+        )
+        person_ids.extend(str(p["person_id"]) for p in (resp.data or []))
+        if len(resp.data or []) < 1000:
+            break
+        offset += 1000
+    return list(set(person_ids))
+
+
 def _batched_in_query(sb, table: str, select: str, in_col: str, values: list[str],
                       extra_filters: dict | None = None, count: str | None = None,
                       batch_size: int = 200) -> list[dict]:
@@ -474,8 +493,7 @@ async def widget_my_coverage(
         sb = get_supabase()
 
         # Count people where current user is coverage owner (junction table)
-        pco_resp = sb.table("person_coverage_owners").select("person_id").eq("user_id", str(current_user.id)).execute()
-        my_person_ids = list({str(p["person_id"]) for p in (pco_resp.data or [])})
+        my_person_ids = _get_covered_person_ids(sb, str(current_user.id))
         people_count = len(my_person_ids)
 
         # Count service leads where aksia_owner = current user
@@ -524,8 +542,7 @@ async def widget_missing_info(
         sb = get_supabase()
 
         # People missing email or phone (via junction table) — batch to avoid URL limit
-        pco_resp = sb.table("person_coverage_owners").select("person_id").eq("user_id", str(current_user.id)).execute()
-        my_pids = list({str(p["person_id"]) for p in (pco_resp.data or [])})
+        my_pids = _get_covered_person_ids(sb, str(current_user.id))
         if my_pids:
             all_people = _batched_in_query(sb, "people", "id, first_name, last_name, email, phone", "id", my_pids, extra_filters={"is_deleted": False})
         else:
@@ -576,8 +593,7 @@ async def widget_stale_contacts(
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
         # Get all covered people (via junction table) — batch to avoid URL limit
-        pco_resp = sb.table("person_coverage_owners").select("person_id").eq("user_id", str(current_user.id)).execute()
-        my_pids = list({str(p["person_id"]) for p in (pco_resp.data or [])})
+        my_pids = _get_covered_person_ids(sb, str(current_user.id))
         if my_pids:
             covered_people = _batched_in_query(sb, "people", "id, first_name, last_name, email", "id", my_pids, extra_filters={"is_deleted": False})
         else:
