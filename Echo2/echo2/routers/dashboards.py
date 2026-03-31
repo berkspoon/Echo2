@@ -16,6 +16,23 @@ from dependencies import CurrentUser, get_current_user, require_role
 router = APIRouter(prefix="/dashboards", tags=["dashboards"])
 templates = Jinja2Templates(directory="templates")
 
+
+def _batched_in_query(sb, table: str, select: str, in_col: str, values: list[str],
+                      extra_filters: dict | None = None, count: str | None = None,
+                      batch_size: int = 200) -> list[dict]:
+    """Run .in_() queries in batches to avoid Supabase URL length limits."""
+    all_results: list[dict] = []
+    for i in range(0, len(values), batch_size):
+        chunk = values[i:i + batch_size]
+        q = sb.table(table).select(select, count=count) if count else sb.table(table).select(select)
+        q = q.in_(in_col, chunk)
+        if extra_filters:
+            for k, v in extra_filters.items():
+                q = q.eq(k, v)
+        resp = q.execute()
+        all_results.extend(resp.data or [])
+    return all_results
+
 # Lead stage ordering (mirrored from leads.py — each router is self-contained)
 LEAD_STAGE_ORDER = ["exploratory", "radar", "focus", "verbal_mandate"]
 LEAD_INACTIVE_STAGES = {"won", "did_not_win"}
@@ -458,7 +475,7 @@ async def widget_my_coverage(
 
         # Count people where current user is coverage owner (junction table)
         pco_resp = sb.table("person_coverage_owners").select("person_id").eq("user_id", str(current_user.id)).execute()
-        my_person_ids = [str(p["person_id"]) for p in (pco_resp.data or [])]
+        my_person_ids = list({str(p["person_id"]) for p in (pco_resp.data or [])})
         people_count = len(my_person_ids)
 
         # Count service leads where aksia_owner = current user
@@ -469,13 +486,11 @@ async def widget_my_coverage(
         product_leads_resp = sb.table("leads").select("id", count="exact").eq("is_deleted", False).eq("aksia_owner_id", str(current_user.id)).eq("lead_type", "product").execute()
         product_leads_count = product_leads_resp.count or 0
 
-        # Count orgs (via coverage on people + leads)
+        # Count orgs (via coverage on people + leads) — batch to avoid URL limit
         my_org_ids = set()
-        if people_count > 0:
-            person_ids = my_person_ids
-            if person_ids:
-                pol_resp = sb.table("person_organization_links").select("organization_id").in_("person_id", person_ids).execute()
-                my_org_ids |= {str(r["organization_id"]) for r in (pol_resp.data or [])}
+        if my_person_ids:
+            pol_results = _batched_in_query(sb, "person_organization_links", "organization_id", "person_id", my_person_ids)
+            my_org_ids |= {str(r["organization_id"]) for r in pol_results}
         all_leads_count = service_leads_count + product_leads_count
         if all_leads_count > 0:
             owned_leads = sb.table("leads").select("organization_id").eq("aksia_owner_id", str(current_user.id)).eq("is_deleted", False).execute()
@@ -508,12 +523,11 @@ async def widget_missing_info(
     try:
         sb = get_supabase()
 
-        # People missing email or phone (via junction table)
+        # People missing email or phone (via junction table) — batch to avoid URL limit
         pco_resp = sb.table("person_coverage_owners").select("person_id").eq("user_id", str(current_user.id)).execute()
-        my_pids = [str(p["person_id"]) for p in (pco_resp.data or [])]
+        my_pids = list({str(p["person_id"]) for p in (pco_resp.data or [])})
         if my_pids:
-            people_resp = sb.table("people").select("id, first_name, last_name, email, phone").eq("is_deleted", False).in_("id", my_pids).execute()
-            all_people = people_resp.data or []
+            all_people = _batched_in_query(sb, "people", "id, first_name, last_name, email, phone", "id", my_pids, extra_filters={"is_deleted": False})
         else:
             all_people = []
         people_missing = [p for p in all_people if not p.get("email") or not p.get("phone")]
@@ -561,12 +575,11 @@ async def widget_stale_contacts(
         sb = get_supabase()
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
-        # Get all covered people (via junction table)
+        # Get all covered people (via junction table) — batch to avoid URL limit
         pco_resp = sb.table("person_coverage_owners").select("person_id").eq("user_id", str(current_user.id)).execute()
-        my_pids = [str(p["person_id"]) for p in (pco_resp.data or [])]
+        my_pids = list({str(p["person_id"]) for p in (pco_resp.data or [])})
         if my_pids:
-            people_resp = sb.table("people").select("id, first_name, last_name, email").eq("is_deleted", False).in_("id", my_pids).execute()
-            covered_people = people_resp.data or []
+            covered_people = _batched_in_query(sb, "people", "id, first_name, last_name, email", "id", my_pids, extra_filters={"is_deleted": False})
         else:
             covered_people = []
 
@@ -577,10 +590,10 @@ async def widget_stale_contacts(
 
         person_ids = [str(p["id"]) for p in covered_people]
 
-        # Get all activity links for these people
-        apl_resp = sb.table("activity_people_links").select("person_id, activity_id").in_("person_id", person_ids).execute()
+        # Get all activity links for these people — batch to avoid URL limit
+        apl_results = _batched_in_query(sb, "activity_people_links", "person_id, activity_id", "person_id", person_ids)
         person_activity_ids = {}
-        for link in (apl_resp.data or []):
+        for link in apl_results:
             pid = str(link["person_id"])
             if pid not in person_activity_ids:
                 person_activity_ids[pid] = []
