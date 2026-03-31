@@ -91,6 +91,23 @@ PRICING_PROPOSAL_MAP = {1: "formal", 2: "informal", 3: "no_proposal"}
 
 ACTIVITY_TYPE_MAP = {1: "call", 2: "meeting", 3: "note", 4: "email"}
 
+# Publication column → (display_label, asset_class_code)
+# subscribedpublications is a derived text summary — excluded
+PUBLICATION_COL_MAP = {
+    "hedgefundspublications":     ("HF", "hf"),
+    "privatecreditpublications":  ("PC", "pc"),
+    "privateequitypublications":  ("PE", "pe"),
+    "realassetspublications":     ("RA", "ra"),
+    "realestatepublications":     ("RE", "re"),
+    "coinvestmentspublications":  ("Co-Investments", "coinv"),
+    "oddpublications":            ("ODD", "odd"),
+    "panaltspublications":        ("PANALTS", "panalts"),
+    "ripublications":             ("RI", "ri"),
+}
+
+PUB_VALUE_L2 = {2}       # L2 member
+PUB_VALUE_L1 = {4, 5}    # 4=L1, 5=L1 (unsubscribed from L2)
+
 # Currency mapping — will be finalized after inspecting data
 CURRENCY_MAP = {
     1: "usd", 2: "eur", 3: "gbp", 4: "jpy", 5: "aud",
@@ -1422,18 +1439,312 @@ def import_activity_links(
 
 
 # ---------------------------------------------------------------------------
+# Phase 11: Distribution Lists + Memberships
+# ---------------------------------------------------------------------------
+
+def create_distribution_lists(
+    user_map: dict[str, str],
+    *,
+    dry_run: bool = True,
+) -> dict[str, dict[str, str]]:
+    """Create L1+L2 publication distribution lists for each publication category.
+
+    Returns: {col_name: {"l1": list_uuid, "l2": list_uuid}, ...}
+    """
+    # Find a system owner (first user in map)
+    system_owner_id = next(iter(user_map.values()))
+
+    # Build 18 rows: L1 + L2 for each of 9 categories
+    dl_rows = []
+    for col_name, (label, code) in PUBLICATION_COL_MAP.items():
+        for level in ("L1", "L2"):
+            dl_rows.append({
+                "list_name": f"{label} {level}",
+                "list_type": "publication",
+                "brand": "aksia",
+                "asset_class": code,
+                "is_official": True,
+                "is_private": False,
+                "owner_id": system_owner_id,
+                "created_by": system_owner_id,
+            })
+
+    if dry_run:
+        print(f"  [DRY-RUN] Would create {len(dl_rows)} distribution lists ({len(PUBLICATION_COL_MAP)} categories x L1+L2)")
+        return {}
+
+    print(f"  Creating {len(dl_rows)} publication distribution lists...")
+    results = _batch_insert("distribution_lists", dl_rows)
+
+    # Build return mapping and set L2 → L1 superset links
+    sb = get_supabase()
+    dl_map: dict[str, dict[str, str]] = {}
+
+    # Index results by (asset_class, level_suffix)
+    by_key: dict[tuple[str, str], str] = {}
+    for dl in results:
+        name = dl["list_name"]
+        ac = dl["asset_class"]
+        if name.endswith(" L1"):
+            by_key[(ac, "l1")] = dl["id"]
+        elif name.endswith(" L2"):
+            by_key[(ac, "l2")] = dl["id"]
+
+    # Build dl_map and set l2_superset_of
+    for col_name, (label, code) in PUBLICATION_COL_MAP.items():
+        l1_id = by_key.get((code, "l1"))
+        l2_id = by_key.get((code, "l2"))
+        dl_map[col_name] = {"l1": l1_id, "l2": l2_id}
+
+        # Set L2 superset of L1
+        if l1_id and l2_id:
+            sb.table("distribution_lists").update(
+                {"l2_superset_of": l1_id}
+            ).eq("id", l2_id).execute()
+
+    print(f"  -> {len(results)} lists created, {len(PUBLICATION_COL_MAP)} L2->L1 superset links set")
+    return dl_map
+
+
+def import_dl_memberships(
+    people_rows: list[dict],
+    pa_person_map: dict[str, str],
+    dl_map: dict[str, dict[str, str]],
+    *,
+    dry_run: bool = True,
+) -> int:
+    """Import distribution list memberships from People publication columns.
+
+    Returns count of memberships created.
+    """
+    member_rows: list[dict] = []
+    seen: set[tuple[str, str]] = set()  # (list_id, person_id)
+    skipped_no_person = 0
+    by_level = {"l1": 0, "l2": 0}
+
+    for row in people_rows:
+        pa_uuid = clean_uuid(row.get("peopleid"))
+        if not pa_uuid:
+            continue
+        echo_person_id = pa_person_map.get(pa_uuid)
+        if not echo_person_id:
+            skipped_no_person += 1
+            continue
+
+        for col_name, list_ids in dl_map.items():
+            val = safe_int(row.get(col_name))
+            if val is None:
+                continue
+
+            if val in PUB_VALUE_L2:
+                target_id = list_ids.get("l2")
+                level = "l2"
+            elif val in PUB_VALUE_L1:
+                target_id = list_ids.get("l1")
+                level = "l1"
+            else:
+                continue
+
+            if not target_id:
+                continue
+            key = (target_id, echo_person_id)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            member_rows.append({
+                "distribution_list_id": target_id,
+                "person_id": echo_person_id,
+                "is_active": True,
+            })
+            by_level[level] += 1
+
+    if dry_run:
+        # In dry-run, pa_person_map is empty — estimate from raw data instead
+        if not pa_person_map:
+            est_l1 = 0
+            est_l2 = 0
+            for row in people_rows:
+                for col_name in dl_map if dl_map else PUBLICATION_COL_MAP:
+                    val = safe_int(row.get(col_name))
+                    if val in PUB_VALUE_L2:
+                        est_l2 += 1
+                    elif val in PUB_VALUE_L1:
+                        est_l1 += 1
+            print(f"  [DRY-RUN] Would create ~{est_l1 + est_l2} DL memberships (~{est_l1} L1, ~{est_l2} L2)")
+        else:
+            print(f"  [DRY-RUN] Would create {len(member_rows)} DL memberships ({by_level['l1']} L1, {by_level['l2']} L2)")
+            if skipped_no_person:
+                print(f"    Skipped {skipped_no_person} people not in pa_person_map")
+        return 0
+
+    if not member_rows:
+        print("  No DL memberships to create")
+        return 0
+
+    print(f"  Inserting {len(member_rows)} DL memberships ({by_level['l1']} L1, {by_level['l2']} L2)...")
+    results = _batch_insert("distribution_list_members", member_rows, batch_size=50)
+    print(f"  -> {len(results)} memberships created")
+    if skipped_no_person:
+        print(f"    Skipped {skipped_no_person} people not in pa_person_map")
+    return len(results)
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: Coverage Owners
+# ---------------------------------------------------------------------------
+
+COVERAGE_COLUMNS = [
+    ("coverage", True),     # is_primary
+    ("coverage2", False),
+    ("coverage3", False),
+    ("coverage4", False),
+    ("coverage5", False),
+]
+
+
+def import_coverage_owners(
+    org_rows: list[dict],
+    pa_org_map: dict[str, str],
+    people_rows: list[dict],
+    pa_person_map: dict[str, str],
+    user_map: dict[str, str],
+    *,
+    dry_run: bool = True,
+) -> int:
+    """Import coverage owners from org coverage columns → person_coverage_owners.
+
+    For each org's coverage users, assigns them as coverage owners to all
+    people linked to that org.
+
+    Returns count of person_coverage_owners rows created.
+    """
+    # Step 1: Build org_coverage map: echo_org_id → [(user_id, is_primary)]
+    org_coverage: dict[str, list[tuple[str, bool]]] = {}
+    unresolved_names: dict[str, int] = {}
+    orgs_with_coverage = 0
+
+    for row in org_rows:
+        pa_org_uuid = clean_uuid(row.get("organizationid"))
+        if not pa_org_uuid:
+            continue
+        echo_org_id = pa_org_map.get(pa_org_uuid)
+        if not echo_org_id:
+            continue
+
+        cov_users: list[tuple[str, bool]] = []
+        for col_name, is_primary in COVERAGE_COLUMNS:
+            raw = safe_str(row.get(col_name))
+            if not raw:
+                continue
+            # Handle potential semicolon-separated names
+            for name in raw.split(";"):
+                name = name.strip().rstrip(",")
+                if not name:
+                    continue
+                uid = resolve_user(name, user_map)
+                if uid:
+                    cov_users.append((uid, is_primary))
+                else:
+                    unresolved_names[name] = unresolved_names.get(name, 0) + 1
+
+        if cov_users:
+            org_coverage[echo_org_id] = cov_users
+            orgs_with_coverage += 1
+
+    # Step 2: Build org→people map from in-memory People data
+    org_people: dict[str, list[str]] = {}
+    for row in people_rows:
+        pa_person_uuid = clean_uuid(row.get("peopleid"))
+        pa_org_uuid = clean_uuid(row.get("orgid"))
+        if not pa_person_uuid or not pa_org_uuid:
+            continue
+        echo_org_id = pa_org_map.get(pa_org_uuid)
+        echo_person_id = pa_person_map.get(pa_person_uuid)
+        if not echo_org_id or not echo_person_id:
+            continue
+        org_people.setdefault(echo_org_id, []).append(echo_person_id)
+
+    # Step 3: Generate person_coverage_owners rows
+    pco_rows: list[dict] = []
+    seen: set[tuple[str, str]] = set()  # (person_id, user_id)
+
+    for echo_org_id, cov_users in org_coverage.items():
+        people_ids = org_people.get(echo_org_id, [])
+        if not people_ids:
+            continue
+        for pid in people_ids:
+            for uid, is_primary in cov_users:
+                key = (pid, uid)
+                if key in seen:
+                    continue
+                seen.add(key)
+                pco_rows.append({
+                    "person_id": pid,
+                    "user_id": uid,
+                    "is_primary": is_primary,
+                })
+
+    if dry_run:
+        # In dry-run, pa_org_map/pa_person_map may be empty — estimate from raw data
+        if not pco_rows and org_rows:
+            est_orgs = 0
+            est_cov_people = 0
+            for row in org_rows:
+                has_cov = False
+                for col_name, _ in COVERAGE_COLUMNS:
+                    if safe_str(row.get(col_name)):
+                        has_cov = True
+                        break
+                if has_cov:
+                    est_orgs += 1
+            # Estimate: orgs_with_coverage * avg_people_per_org * avg_coverage_users
+            est_people_per_org = len(people_rows) / max(len(org_rows), 1)
+            est_cov_users = sum(
+                1 for row in org_rows
+                for col, _ in COVERAGE_COLUMNS
+                if safe_str(row.get(col))
+            ) / max(est_orgs, 1)
+            est_total = int(est_orgs * est_people_per_org * est_cov_users)
+            print(f"  [DRY-RUN] Would create ~{est_total} person_coverage_owners rows (estimated)")
+            print(f"    {est_orgs} orgs with coverage data")
+        else:
+            print(f"  [DRY-RUN] Would create {len(pco_rows)} person_coverage_owners rows")
+            print(f"    {orgs_with_coverage} orgs with coverage -> {len(org_people)} orgs with linked people")
+        if unresolved_names:
+            top = sorted(unresolved_names.items(), key=lambda x: -x[1])[:10]
+            print(f"    {len(unresolved_names)} unresolved coverage names (top: {top})")
+        return 0
+
+    if not pco_rows:
+        print("  No coverage owners to create")
+        return 0
+
+    print(f"  Inserting {len(pco_rows)} person_coverage_owners rows...")
+    results = _batch_insert("person_coverage_owners", pco_rows, batch_size=50)
+    print(f"  -> {len(results)} coverage owners created ({orgs_with_coverage} orgs with coverage)")
+    if unresolved_names:
+        top = sorted(unresolved_names.items(), key=lambda x: -x[1])[:10]
+        print(f"    {len(unresolved_names)} unresolved coverage names (top: {top})")
+    return len(results)
+
+
+# ---------------------------------------------------------------------------
 # Main orchestrator
 # ---------------------------------------------------------------------------
 
-def import_echo_data(*, dry_run: bool = True) -> None:
+def import_echo_data(*, dry_run: bool = True, start_phase: int = 0) -> None:
     """Main entry point for CRM data import."""
     print("\n" + "=" * 60)
-    print("Echo 2.0 — Steps 4-5: Import Core Entities + Activities")
+    print("Echo 2.0 -- Steps 4-6: Import Core Entities + Activities + DLs + Coverage")
     print("=" * 60)
     mode = "DRY-RUN" if dry_run else "APPLY"
-    print(f"Mode: {mode}\n")
+    if start_phase > 0:
+        print(f"Mode: {mode} (starting at Phase {start_phase})\n")
+    else:
+        print(f"Mode: {mode}\n")
 
-    # Phase 0: Setup
+    # Phase 0: Setup (always runs — loads data + user map)
     print("Phase 0: Loading data...")
     data = load_excel_data(ECHO_DATA_XLSX)
 
@@ -1441,107 +1752,161 @@ def import_echo_data(*, dry_run: bool = True) -> None:
     user_map = build_name_to_uuid_map()
     print(f"  {len(user_map)} name->UUID entries\n")
 
-    # Print currency values for investigation
-    currency_ids = set()
-    for row in data.get("Leads", []):
-        cid = safe_int(row.get("aksiallc_currency"))
-        if cid is not None:
-            currency_ids.add(cid)
-    if currency_ids:
-        print(f"  Currency IDs in leads data: {sorted(currency_ids)}")
-        unmapped = currency_ids - set(CURRENCY_MAP.keys())
-        if unmapped:
-            print(f"  WARNING: Unmapped currency IDs: {sorted(unmapped)}")
-    print()
-
-    # Phase 1: Ensure reference_data
-    print("Phase 1: Ensuring reference_data...")
-    ensure_reference_data(dry_run=dry_run)
-
-    # Collect all country codes we'll need
-    all_countries = set()
-    for row in data.get("Organizations", []):
-        c = normalize_country(safe_str(row.get("country")))
-        if c:
-            all_countries.add(c)
-    ensure_country_reference_data(all_countries, dry_run=dry_run)
-    print()
-
-    # Phase 2: Ensure field_definitions
-    print("Phase 2: Ensuring power_apps_id field_definitions...")
-    fd_ids = ensure_power_apps_field_defs(dry_run=dry_run)
-    print()
-
-    # Phase 3: Cleanup
-    print("Phase 3: Cleaning up existing entity data...")
-    cleanup_entity_data(dry_run=dry_run)
-    print()
-
-    # Phase 4: Import Organizations
-    print(f"Phase 4: Importing Organizations ({len(data.get('Organizations', []))} rows)...")
-    pa_org_map = import_organizations(data["Organizations"], user_map, dry_run=dry_run)
-    print()
-
-    # Phase 5: Import People
-    print(f"Phase 5: Importing People ({len(data.get('People', []))} rows)...")
-    pa_person_map = import_people(data["People"], pa_org_map, dry_run=dry_run)
-    print()
-
-    # Phase 6: Import Leads
-    print(f"Phase 6: Importing Leads ({len(data.get('Leads', []))} rows)...")
-    pa_lead_map = import_leads(data["Leads"], pa_org_map, user_map, dry_run=dry_run)
-    print()
-
-    # Phase 7: Import Contracts
-    print(f"Phase 7: Importing Contracts ({len(data.get('Contracts', []))} rows)...")
-    contracts_count = import_contracts(data["Contracts"], pa_org_map, pa_lead_map, dry_run=dry_run)
-    print()
-
-    # Phase 8: Store EAV power_apps_id values
-    print("Phase 8: Storing EAV power_apps_id values...")
+    # Initialize maps — rebuilt from EAV if skipping phases
+    pa_org_map: dict[str, str] = {}
+    pa_person_map: dict[str, str] = {}
+    pa_lead_map: dict[str, str] = {}
+    pa_activity_map: dict[str, str] = {}
+    contracts_count = 0
     eav_total = 0
-    if not dry_run:
-        for et, pa_map in [
-            ("organization", pa_org_map),
-            ("person", pa_person_map),
-            ("lead", pa_lead_map),
-        ]:
-            count = store_eav_power_apps_ids(et, pa_map, fd_ids[et], dry_run=False)
-            print(f"  {et}: {count} EAV values stored")
-            eav_total += count
-        # Contracts don't have a pa_contract_map built — build it now
-        # (we didn't track pa_uuid→echo_uuid for contracts, but we can skip
-        # since contracts are the leaf entity and not FK-referenced)
-        print(f"  -> {eav_total} total EAV values stored")
-    else:
-        est = len(data.get("Organizations", [])) + len(data.get("People", [])) + len(data.get("Leads", [])) + len(data.get("Contracts", []))
-        print(f"  [DRY-RUN] Would store ~{est} EAV power_apps_id values")
+    fd_ids: dict[str, str] = {}
+
+    if start_phase > 4 and not dry_run:
+        print("  Rebuilding PA->Echo maps from EAV...")
+        pa_org_map, pa_person_map = build_pa_entity_maps()
+        # Also rebuild lead map using same paginated pattern
+        sb = get_supabase()
+        lead_fd = sb.table("field_definitions").select("id").eq("field_name", "power_apps_id").eq("entity_type", "lead").maybe_single().execute()
+        if lead_fd.data:
+            fd_id = lead_fd.data["id"]
+            offset = 0
+            while True:
+                page = sb.table("entity_custom_values").select("entity_id, value_text").eq("field_definition_id", fd_id).range(offset, offset + 999).execute()
+                for r in page.data:
+                    pa_lead_map[r["value_text"].strip().lower()] = r["entity_id"]
+                if len(page.data) < 1000:
+                    break
+                offset += 1000
+        print(f"  Rebuilt: {len(pa_org_map)} orgs, {len(pa_person_map)} people, {len(pa_lead_map)} leads\n")
+
+    if start_phase <= 0:
+        # Print currency values for investigation
+        currency_ids = set()
+        for row in data.get("Leads", []):
+            cid = safe_int(row.get("aksiallc_currency"))
+            if cid is not None:
+                currency_ids.add(cid)
+        if currency_ids:
+            print(f"  Currency IDs in leads data: {sorted(currency_ids)}")
+            unmapped = currency_ids - set(CURRENCY_MAP.keys())
+            if unmapped:
+                print(f"  WARNING: Unmapped currency IDs: {sorted(unmapped)}")
+        print()
+
+    if start_phase <= 1:
+        # Phase 1: Ensure reference_data
+        print("Phase 1: Ensuring reference_data...")
+        ensure_reference_data(dry_run=dry_run)
+
+        # Collect all country codes we'll need
+        all_countries = set()
+        for row in data.get("Organizations", []):
+            c = normalize_country(safe_str(row.get("country")))
+            if c:
+                all_countries.add(c)
+        ensure_country_reference_data(all_countries, dry_run=dry_run)
+        print()
+
+    if start_phase <= 2:
+        # Phase 2: Ensure field_definitions
+        print("Phase 2: Ensuring power_apps_id field_definitions...")
+        fd_ids = ensure_power_apps_field_defs(dry_run=dry_run)
+        print()
+
+    if start_phase <= 3:
+        # Phase 3: Cleanup
+        print("Phase 3: Cleaning up existing entity data...")
+        cleanup_entity_data(dry_run=dry_run)
+        print()
+
+    if start_phase <= 4:
+        # Phase 4: Import Organizations
+        print(f"Phase 4: Importing Organizations ({len(data.get('Organizations', []))} rows)...")
+        pa_org_map = import_organizations(data["Organizations"], user_map, dry_run=dry_run)
+        print()
+
+    if start_phase <= 5:
+        # Phase 5: Import People
+        print(f"Phase 5: Importing People ({len(data.get('People', []))} rows)...")
+        pa_person_map = import_people(data["People"], pa_org_map, dry_run=dry_run)
+        print()
+
+    if start_phase <= 6:
+        # Phase 6: Import Leads
+        print(f"Phase 6: Importing Leads ({len(data.get('Leads', []))} rows)...")
+        pa_lead_map = import_leads(data["Leads"], pa_org_map, user_map, dry_run=dry_run)
+        print()
+
+    if start_phase <= 7:
+        # Phase 7: Import Contracts
+        print(f"Phase 7: Importing Contracts ({len(data.get('Contracts', []))} rows)...")
+        contracts_count = import_contracts(data["Contracts"], pa_org_map, pa_lead_map, dry_run=dry_run)
+        print()
+
+    if start_phase <= 8:
+        # Phase 8: Store EAV power_apps_id values
+        print("Phase 8: Storing EAV power_apps_id values...")
+        eav_total = 0
+        if not dry_run:
+            if not fd_ids:
+                fd_ids = ensure_power_apps_field_defs(dry_run=False)
+            for et, pa_map in [
+                ("organization", pa_org_map),
+                ("person", pa_person_map),
+                ("lead", pa_lead_map),
+            ]:
+                count = store_eav_power_apps_ids(et, pa_map, fd_ids[et], dry_run=False)
+                print(f"  {et}: {count} EAV values stored")
+                eav_total += count
+            print(f"  -> {eav_total} total EAV values stored")
+        else:
+            est = len(data.get("Organizations", [])) + len(data.get("People", [])) + len(data.get("Leads", [])) + len(data.get("Contracts", []))
+            print(f"  [DRY-RUN] Would store ~{est} EAV power_apps_id values")
+        print()
+
+    if start_phase <= 9:
+        # Phase 9: Import Activities from CSV
+        print("Phase 9: Importing Activities from CSV...")
+        user_map = ensure_legacy_author(user_map, dry_run=dry_run)
+        pa_activity_map = import_activities(user_map, dry_run=dry_run)
+        print()
+
+    org_links = 0
+    person_links = 0
+    if start_phase <= 10:
+        # Phase 10: Create Activity Links
+        print(f"Phase 10: Creating Activity Links ({len(data.get('ActivityEntities', []))} rows)...")
+        # Use in-memory maps when available; fall back to EAV query
+        if pa_org_map and pa_person_map:
+            pa_org_map_for_links = pa_org_map
+            pa_person_map_for_links = pa_person_map
+        elif not dry_run:
+            print("  (Rebuilding PA maps from EAV...)")
+            pa_org_map_for_links, pa_person_map_for_links = build_pa_entity_maps()
+        else:
+            pa_org_map_for_links = {}
+            pa_person_map_for_links = {}
+
+        org_links, person_links = import_activity_links(
+            data.get("ActivityEntities", []),
+            pa_activity_map,
+            pa_org_map_for_links,
+            pa_person_map_for_links,
+            dry_run=dry_run,
+        )
+        print()
+
+    # Phase 11: Distribution Lists + Memberships
+    print("Phase 11: Creating Distribution Lists + Memberships...")
+    dl_map = create_distribution_lists(user_map, dry_run=dry_run)
+    dl_count = import_dl_memberships(data["People"], pa_person_map, dl_map, dry_run=dry_run)
     print()
 
-    # Phase 9: Import Activities from CSV
-    print("Phase 9: Importing Activities from CSV...")
-    user_map = ensure_legacy_author(user_map, dry_run=dry_run)
-    pa_activity_map = import_activities(user_map, dry_run=dry_run)
-    print()
-
-    # Phase 10: Create Activity Links
-    print(f"Phase 10: Creating Activity Links ({len(data.get('ActivityEntities', []))} rows)...")
-    # Use in-memory maps when available; fall back to EAV query
-    if pa_org_map and pa_person_map:
-        pa_org_map_for_links = pa_org_map
-        pa_person_map_for_links = pa_person_map
-    elif not dry_run:
-        print("  (Rebuilding PA maps from EAV...)")
-        pa_org_map_for_links, pa_person_map_for_links = build_pa_entity_maps()
-    else:
-        pa_org_map_for_links = {}
-        pa_person_map_for_links = {}
-
-    org_links, person_links = import_activity_links(
-        data.get("ActivityEntities", []),
-        pa_activity_map,
-        pa_org_map_for_links,
-        pa_person_map_for_links,
+    # Phase 12: Coverage Owners
+    print("Phase 12: Importing Coverage Owners...")
+    cov_count = import_coverage_owners(
+        data["Organizations"], pa_org_map,
+        data["People"], pa_person_map, user_map,
         dry_run=dry_run,
     )
     print()
@@ -1560,6 +1925,9 @@ def import_echo_data(*, dry_run: bool = True) -> None:
         print(f"  Activities: {len(pa_activity_map)}")
         print(f"  Activity org links: {org_links}")
         print(f"  Activity person links: {person_links}")
+        print(f"  Distribution lists: {len(PUBLICATION_COL_MAP) * 2}")
+        print(f"  DL memberships: {dl_count}")
+        print(f"  Coverage owners: {cov_count}")
     print("=" * 60 + "\n")
 
 
@@ -1576,6 +1944,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Actually import data (default is dry-run)",
     )
+    parser.add_argument(
+        "--start-phase",
+        type=int,
+        default=0,
+        help="Skip to this phase number (rebuilds maps from EAV if needed)",
+    )
     args = parser.parse_args()
 
-    import_echo_data(dry_run=not args.apply)
+    import_echo_data(dry_run=not args.apply, start_phase=args.start_phase)

@@ -618,4 +618,58 @@ _Use this section to track decisions made during Claude Code sessions:_
 **Pending for next session:**
 - Step 5: Import Activities (27.4K from CSV + org/person links from ActivityEntities sheet)
 - Step 6: Import Distribution Lists + Coverage
+
+### Session 32 — March 31, 2026
+**Goal:** Step 5 — Import activities from CSV + create org/person links
+
+**Changes made:**
+- **scripts/import_echo_data.py:** +370 lines. Added 4 new functions + extended main orchestrator with Phases 9-10.
+  - `ensure_legacy_author()`: Creates inactive "AksiaLegacy Author" system user for activities with placeholder author names
+  - `import_activities()`: Streams `cr932_crmactivities.csv` (258MB, 27K+ rows) in batches of 10. Maps activity types (1→call, 2→meeting, 3→note, 4→email), resolves authors via `build_name_to_uuid_map()`, caps description text at 100K chars (tsvector index has 1MB limit). Skips deleted activities and those with unresolvable authors.
+  - `build_pa_entity_maps()`: Rebuilds Power Apps UUID→Echo UUID maps from `entity_custom_values` (for standalone activity import without re-running entity import). Paginates in 1K pages.
+  - `import_activity_links()`: Creates `activity_organization_links` and `activity_people_links` from `ActivityEntities` Excel sheet (76,964 link rows). Resolves entity_type (1=org, 2=person), deduplicates, skips removed links. Batch inserts of 50.
+  - Phase 9: Import activities from CSV
+  - Phase 10: Create activity org/person links from ActivityEntities sheet
+
+**Commit:** `61d222b` — imported activities data
+
+**Known issue identified:**
+- **Product lead stages:** Capital Raise dashboard shows 654 product prospects but Pipeline Analysis is empty. Root cause: all imported leads (service AND product) have service-stage ratings (`exploratory`, `radar`, `focus`, etc.) because old Power Apps CRM used a single stage set for all leads. Product stages (`target_identified`, `intro_scheduled`, `due_diligence`, etc.) are new to Echo 2.0. Need crosswalk mapping — Miles working with Melissa on how to handle.
+
+**Pending for next session:**
+- Product lead stage crosswalk (awaiting decision from Miles + Melissa)
+- Step 6: Import Distribution Lists + Coverage (publication subscriptions from People sheet + org coverage → person_coverage_owners)
+- Step 7: Post-import validation
+- Session log update for activities import (this entry) was not committed in Session 32 — written retroactively
+- Step 7: Post-import validation
+
+### Session 32 — March 31, 2026
+**Goal:** Step 5 — Import Activities from CSV + create activity links from ActivityEntities sheet.
+
+**Changes made:**
+- **scripts/import_echo_data.py:** Extended with ~370 lines for activities import (Phases 9-10). Script header updated to "Steps 4-5".
+
+**Phase 9 — Import Activities from CSV (`cr932_crmactivities.csv`):**
+- Streaming CSV reader with `csv.field_size_limit(sys.maxsize)` for large description fields.
+- `ACTIVITY_TYPE_MAP`: 1→call, 2→meeting, 3→note, 4→email.
+- `ensure_legacy_author()`: creates inactive "AksiaLegacy Author" system user (`legacy-import@aksia.com`) for activities authored by the PA legacy placeholder. Checks for existing user first to support re-runs.
+- Author matching via `resolve_user()` + `build_name_to_uuid_map()`. Activities with unresolvable authors skipped.
+- Details field capped at 100K chars (tsvector index has 1MB limit; large texts caused statement timeouts during index computation).
+- `safe_date()` updated to strip fractional seconds (e.g. `2026-03-25 00:00:00.0000000`) from CSV date values.
+- Batch insert size = 10 rows (small batches due to large `details` text fields).
+- `activity_lead_links` added to `CLEANUP_TABLES` for re-runnable imports.
+
+**Phase 10 — Create Activity Links (from ActivityEntities Excel sheet):**
+- `load_excel_data()` now loads `ActivityEntities` sheet (76,964 rows) alongside the 4 entity sheets.
+- `build_pa_entity_maps()`: rebuilds PA UUID→Echo UUID maps by paginating through `entity_custom_values` EAV table. Used when activity import runs standalone (not after entity import which has maps in memory).
+- `import_activity_links()`: iterates ActivityEntities rows, resolves `entity` type (1=org, 2=person), matches PA UUIDs to Echo UUIDs via EAV maps. Deduplicates via seen-set. Creates `activity_organization_links` and `activity_people_links` rows.
+- Skips removed links (`isremoved` flag).
+- Batch insert size = 50 for link rows.
+
+**Results:**
+- Activities imported from 27K+ row CSV with org/person link resolution from ActivityEntities sheet.
+- Script now covers full pipeline: core entities (Phase 0-8) + activities (Phase 9-10).
+
+**Pending for next session:**
+- Step 6: Import Distribution Lists + Coverage (publication subscriptions from People sheet + org coverage → person_coverage_owners)
 - Step 7: Post-import validation

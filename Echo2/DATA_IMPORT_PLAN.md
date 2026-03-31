@@ -2,7 +2,7 @@
 
 **Created:** March 29, 2026
 **Updated:** March 30, 2026
-**Status:** Steps 0-4 COMPLETE. Step 5 (activities), 6 (DLs + coverage), 7 (validation) ready to implement.
+**Status:** Steps 0-5 COMPLETE. Step 6 (DLs + coverage), 7 (validation) ready to implement.
 
 ---
 
@@ -512,8 +512,14 @@ Built `scripts/import_echo_data.py` — 8-phase import with `--dry-run` (default
 
 **Currency mapping resolved:** IDs [1, 2, 7] → [USD, EUR, CAD].
 
-### Step 5: Import Script — Activities (READY)
+### Step 5: Import Script — Activities ✅ COMPLETE (March 31, 2026)
 Import 27.4K activities from CSV + create org/person links from ActivityEntities.xlsx.
+
+**Changes made:**
+- **import_echo_data.py:** Extended with Phases 9-10 (~370 lines added).
+- **Phase 9:** Streaming CSV import of 27K+ activities. `ACTIVITY_TYPE_MAP` (1-4→call/meeting/note/email). `ensure_legacy_author()` creates system user for PA legacy placeholder. Author matching via `build_name_to_uuid_map()`. Details capped at 100K chars (tsvector index limit). `safe_date()` updated for fractional seconds. Batch size = 10 (large text fields).
+- **Phase 10:** Activity links from ActivityEntities Excel sheet (76,964 rows). `build_pa_entity_maps()` rebuilds PA→Echo UUID maps from EAV table (for standalone runs). `import_activity_links()` resolves entity type (1=org, 2=person), deduplicates, creates `activity_organization_links` and `activity_people_links`. Batch size = 50.
+- `activity_lead_links` added to `CLEANUP_TABLES` for re-runnable imports.
 
 ### Step 6: Import Script — Distribution Lists + Coverage (READY)
 DL membership from People publication columns (L1=value 4, L2=value 2, L1-downgraded=value 5). Coverage from org coverage fields → person_coverage_owners.
@@ -534,28 +540,33 @@ We are continuing work on Echo 2.0 data import. Read these files to get full con
 2. `@DATA_IMPORT_PLAN.md` — the comprehensive plan with all decisions, field mappings, implementation steps
 3. `@feedback.md` — testing feedback history
 
-**Where we left off:** Steps 0-4 are COMPLETE. Core entities imported into database:
+**Where we left off:** Steps 0-5 are COMPLETE. All core entities + activities imported:
 - 475 users (434 active + 41 inactive former employees)
 - 5,383 organizations with country normalization (55 new country codes, 14 new org types)
 - 12,912 people with 11,986 person_organization_links
 - 2,451 real leads + 353 placeholder leads (for contracts without linked leads)
 - 404 contracts, 2,441 lead_owners, 20,746 EAV power_apps_id values
+- 27K+ activities imported from CSV with org/person links from ActivityEntities sheet (76,964 link rows)
 
 **Key scripts:**
 - `scripts/create_users.py` — user creation + `build_name_to_uuid_map()` (538 entries)
-- `scripts/import_echo_data.py` — core entity import (orgs, people, leads, contracts)
+- `scripts/import_echo_data.py` — full import pipeline (Phases 0-10: core entities + activities)
 
-**What to work on next — Step 5: Import Activities:**
-Build activity import into `scripts/import_echo_data.py` (or new script):
-1. Import 27,373 activities from `cr932_crmactivities.csv` — columns: cr932_crmactivityid (GUID), cr932_title, cr932_type (1-4 ID→text), cr932_author (display name→user UUID), cr932_effectivedate, cr932_descriptionplaintext, cr932_isdeleted
-2. Create activity_organization_links and activity_people_links from `ActivityEntities` sheet in EchoData.xlsx — 76,964 link rows mapping activity GUIDs to org/person GUIDs
-3. Activity type mapping: 1→call, 2→meeting, 3→note, 4→email
-4. Match authors via `build_name_to_uuid_map()`
-5. Match orgs/people via power_apps_id EAV values (query entity_custom_values to build PA UUID→Echo UUID maps)
+**What to work on next — Step 6: Import Distribution Lists + Coverage:**
+Build DL membership + coverage import into `scripts/import_echo_data.py`:
 
-**Important:** Activities CSV is 258MB with 27K+ rows. cr932_descriptionplaintext can be very large. Use streaming/batched approach.
+1. **Distribution List Membership** (from People sheet in EchoData.xlsx):
+   - 11 publication columns on People rows (e.g. `hedgefunds_publications`, `privatecredit_publications`, etc.)
+   - Import logic per column: Value=2 → L2 member. Value=4 → L1 member. Value=5 → L1 member (was L2, downgraded). Values 0, 1, 3 → skip.
+   - Need to match publication columns → existing distribution_lists by name/category
+   - Create `distribution_list_members` rows linking person_id to list_id
 
-**After Step 5:**
-- Step 6: Import Distribution Lists + Coverage (publication subscriptions from People sheet + org coverage → person_coverage_owners)
-- Step 7: Post-import validation
+2. **Coverage Import** (from Organizations sheet in EchoData.xlsx):
+   - `coverage`, `coverage2`, `coverage3`, `coverage4`, `coverage5` columns contain user display names
+   - Match via `build_name_to_uuid_map()` → user UUIDs
+   - For each org, find all linked people (via `person_organization_links`)
+   - Create `person_coverage_owners` rows: coverage → is_primary=true, coverage2-5 → is_primary=false
+
+**After Step 6:**
+- Step 7: Post-import validation (count verification, FK integrity, dashboard rendering, Excel export comparison)
 ```
