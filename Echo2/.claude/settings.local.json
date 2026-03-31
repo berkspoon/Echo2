@@ -18,7 +18,9 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/dashboards/capital-raise/APC)",
       "Bash(netstat -ano)",
       "Bash(taskkill //F //PID 97100)",
-      "Bash(taskkill //F //PID 82476)"
+      "Bash(taskkill //F //PID 82476)",
+      "Bash(grep -l \"Multi-Coverage\\\\|multi.*coverage\\\\|person_coverage\" /y/VibeCode/Echo2/*.md)",
+      "Bash(timeout 5)"
     ]
   }
 }

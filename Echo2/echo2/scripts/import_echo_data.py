@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import csv
 import os
 import sys
 from datetime import datetime, date
@@ -21,13 +22,14 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.client import get_supabase
-from scripts.create_users import build_name_to_uuid_map, normalize_name
+from scripts.create_users import build_name_to_uuid_map, normalize_name, generate_entra_id
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 _ROOT = Path(__file__).resolve().parent.parent.parent  # Echo2/
 ECHO_DATA_XLSX = _ROOT / "EchoData.xlsx"
+ACTIVITIES_CSV = _ROOT / "cr932_crmactivities.csv"
 
 # ---------------------------------------------------------------------------
 # ID → Text Mapping Constants
@@ -86,6 +88,8 @@ COMMITMENT_STATUS_MAP = {
 }
 
 PRICING_PROPOSAL_MAP = {1: "formal", 2: "informal", 3: "no_proposal"}
+
+ACTIVITY_TYPE_MAP = {1: "call", 2: "meeting", 3: "note", 4: "email"}
 
 # Currency mapping — will be finalized after inspecting data
 CURRENCY_MAP = {
@@ -200,6 +204,7 @@ CLEANUP_TABLES = [
     "leads",
     "activity_people_links",
     "activity_organization_links",
+    "activity_lead_links",
     "activities",
     "person_coverage_owners",
     "person_organization_links",
@@ -248,6 +253,9 @@ def safe_date(val) -> str | None:
     s = str(val).strip()
     if not s:
         return None
+    # Strip fractional seconds (e.g. "2026-03-25 00:00:00.0000000")
+    if "." in s:
+        s = s.split(".")[0]
     # Try common date formats
     for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%dT%H:%M:%S",
                 "%Y-%m-%d %H:%M:%S", "%m/%d/%Y %H:%M:%S"):
@@ -372,10 +380,11 @@ def load_excel_data(xlsx_path: Path) -> dict[str, list[dict]]:
     wb = openpyxl.load_workbook(str(xlsx_path), read_only=True, data_only=True)
 
     sheet_configs = {
-        "Organizations": {"header_row": 2, "data_start": 3},
-        "People":        {"header_row": 2, "data_start": 3},
-        "Leads":         {"header_row": 1, "data_start": 2},
-        "Contracts":     {"header_row": 2, "data_start": 3},
+        "Organizations":    {"header_row": 2, "data_start": 3},
+        "People":           {"header_row": 2, "data_start": 3},
+        "Leads":            {"header_row": 1, "data_start": 2},
+        "Contracts":        {"header_row": 2, "data_start": 3},
+        "ActivityEntities": {"header_row": 1, "data_start": 2},
     }
 
     result = {}
@@ -1093,13 +1102,333 @@ def store_eav_power_apps_ids(
 
 
 # ---------------------------------------------------------------------------
+# Phase 9: Import Activities from CSV
+# ---------------------------------------------------------------------------
+
+def ensure_legacy_author(user_map: dict[str, str], *, dry_run: bool = True) -> dict[str, str]:
+    """Ensure 'AksiaLegacy Author' maps to a system user.
+
+    Many imported activities use this placeholder author name.
+    Creates a system user if needed and adds it to the user map.
+    """
+    legacy_name = normalize_name("AksiaLegacy Author")
+    if legacy_name in user_map:
+        return user_map
+
+    sb = get_supabase()
+
+    # Check if user already exists
+    existing = (
+        sb.table("users")
+        .select("id")
+        .eq("display_name", "AksiaLegacy Author")
+        .execute()
+    )
+    if existing.data:
+        user_map[legacy_name] = existing.data[0]["id"]
+        print(f"  Legacy author user exists: {existing.data[0]['id'][:8]}...")
+        return user_map
+
+    if dry_run:
+        print("  [DRY-RUN] Would create 'AksiaLegacy Author' system user")
+        user_map[legacy_name] = "dry-run-legacy-placeholder"
+        return user_map
+
+    legacy_email = "legacy-import@aksia.com"
+    result = sb.table("users").insert({
+        "entra_id": generate_entra_id(legacy_email),
+        "display_name": "AksiaLegacy Author",
+        "email": legacy_email,
+        "is_active": False,
+    }).execute()
+    uid = result.data[0]["id"]
+    user_map[legacy_name] = uid
+    print(f"  Created legacy author user: {uid[:8]}...")
+    return user_map
+
+
+def import_activities(
+    user_map: dict[str, str],
+    *,
+    dry_run: bool = True,
+) -> dict[str, str]:
+    """Stream activities CSV, import into activities table.
+
+    Returns: {pa_activity_uuid: echo_activity_uuid} mapping.
+    """
+    csv.field_size_limit(sys.maxsize)
+
+    pa_activity_map: dict[str, str] = {}
+    batch_rows: list[dict] = []
+    batch_pa_uuids: list[str] = []
+    total_parsed = 0
+    skipped_deleted = 0
+    skipped_no_author = 0
+    unmatched_authors: dict[str, int] = {}
+
+    with open(ACTIVITIES_CSV, "r", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            total_parsed += 1
+
+            pa_uuid = clean_uuid(row.get("cr932_crmactivityid"))
+            if not pa_uuid:
+                continue
+
+            # Skip deleted
+            if safe_bool(row.get("cr932_isdeleted")):
+                skipped_deleted += 1
+                continue
+
+            # Type mapping
+            type_id = safe_int(row.get("cr932_type"))
+            activity_type = ACTIVITY_TYPE_MAP.get(type_id, "note")
+
+            # Date
+            effective_date = safe_date(row.get("cr932_effectivedate"))
+            if not effective_date:
+                effective_date = date.today().isoformat()
+
+            # Author (NOT NULL FK)
+            author_name = row.get("cr932_author", "").strip()
+            author_id = resolve_user(author_name, user_map)
+            if not author_id:
+                skipped_no_author += 1
+                unmatched_authors[author_name] = unmatched_authors.get(author_name, 0) + 1
+                continue
+
+            # Details (NOT NULL — empty string OK)
+            # Cap at 100K chars — tsvector index has 1MB limit and large
+            # texts cause statement timeouts during index computation
+            details = (row.get("cr932_descriptionplaintext") or "").strip()
+            if len(details) > 100_000:
+                details = details[:100_000]
+
+            # Title
+            title = safe_str(row.get("cr932_title"))
+
+            activity_row = {
+                "title": title,
+                "effective_date": effective_date,
+                "activity_type": activity_type,
+                "author_id": author_id,
+                "details": details,
+                "is_deleted": False,
+                "created_by": author_id,
+            }
+
+            batch_rows.append(activity_row)
+            batch_pa_uuids.append(pa_uuid)
+
+            # Flush batch
+            if len(batch_rows) >= 10:
+                if not dry_run:
+                    results = _batch_insert("activities", batch_rows, batch_size=10)
+                    for i, result in enumerate(results):
+                        pa_activity_map[batch_pa_uuids[i]] = result["id"]
+                batch_rows.clear()
+                batch_pa_uuids.clear()
+
+            if total_parsed % 5000 == 0:
+                print(f"    ... processed {total_parsed} rows")
+
+    # Flush remaining
+    if batch_rows and not dry_run:
+        results = _batch_insert("activities", batch_rows, batch_size=10)
+        for i, result in enumerate(results):
+            pa_activity_map[batch_pa_uuids[i]] = result["id"]
+
+    # Report
+    imported = len(pa_activity_map)
+    would_import = total_parsed - skipped_deleted - skipped_no_author
+
+    if dry_run:
+        print(f"  [DRY-RUN] Would import {would_import} activities (total {total_parsed}, deleted {skipped_deleted}, no author {skipped_no_author})")
+    else:
+        print(f"  -> {imported} activities imported (total {total_parsed}, deleted {skipped_deleted}, no author {skipped_no_author})")
+
+    if unmatched_authors:
+        top = sorted(unmatched_authors.items(), key=lambda x: -x[1])[:10]
+        print(f"    Unmatched authors ({len(unmatched_authors)} unique): {top}")
+
+    return pa_activity_map
+
+
+# ---------------------------------------------------------------------------
+# EAV map rebuild (for standalone activity import)
+# ---------------------------------------------------------------------------
+
+def build_pa_entity_maps() -> tuple[dict[str, str], dict[str, str]]:
+    """Rebuild PA UUID→Echo UUID maps from entity_custom_values.
+
+    Used when activity import runs separately from entity import.
+    Returns: (pa_org_map, pa_person_map)
+    """
+    sb = get_supabase()
+
+    def _load_map(entity_type: str) -> dict[str, str]:
+        # Find field_definition_id for power_apps_id
+        fd = (
+            sb.table("field_definitions")
+            .select("id")
+            .eq("entity_type", entity_type)
+            .eq("field_name", "power_apps_id")
+            .execute()
+        )
+        if not fd.data:
+            print(f"    WARNING: No power_apps_id field_definition for {entity_type}")
+            return {}
+        fd_id = fd.data[0]["id"]
+
+        # Paginate through EAV values
+        result_map: dict[str, str] = {}
+        offset = 0
+        page_size = 1000
+        while True:
+            page = (
+                sb.table("entity_custom_values")
+                .select("entity_id, value_text")
+                .eq("field_definition_id", fd_id)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            for row in page.data:
+                pa_uuid = row["value_text"].strip().lower()
+                result_map[pa_uuid] = row["entity_id"]
+            if len(page.data) < page_size:
+                break
+            offset += page_size
+
+        return result_map
+
+    print("  Loading org PA map...")
+    pa_org_map = _load_map("organization")
+    print(f"    {len(pa_org_map)} entries")
+
+    print("  Loading person PA map...")
+    pa_person_map = _load_map("person")
+    print(f"    {len(pa_person_map)} entries")
+
+    return pa_org_map, pa_person_map
+
+
+# ---------------------------------------------------------------------------
+# Phase 10: Create Activity Links
+# ---------------------------------------------------------------------------
+
+def import_activity_links(
+    activity_entities: list[dict],
+    pa_activity_map: dict[str, str],
+    pa_org_map: dict[str, str],
+    pa_person_map: dict[str, str],
+    *,
+    dry_run: bool = True,
+) -> tuple[int, int]:
+    """Create activity_organization_links and activity_people_links.
+
+    Returns: (org_link_count, person_link_count)
+    """
+    org_link_rows: list[dict] = []
+    person_link_rows: list[dict] = []
+    seen_org_links: set[tuple[str, str]] = set()
+    seen_person_links: set[tuple[str, str]] = set()
+
+    skipped_removed = 0
+    skipped_no_activity = 0
+    skipped_no_org = 0
+    skipped_no_person = 0
+    skipped_dup = 0
+
+    for row in activity_entities:
+        # Skip removed links
+        if safe_bool(row.get("isremoved")):
+            skipped_removed += 1
+            continue
+
+        # Resolve activity
+        pa_activity_uuid = clean_uuid(row.get("activity"))
+        if not pa_activity_uuid:
+            continue
+        echo_activity_id = pa_activity_map.get(pa_activity_uuid)
+        if not echo_activity_id:
+            skipped_no_activity += 1
+            continue
+
+        entity_type = safe_int(row.get("entity"))
+
+        if entity_type == 1:
+            # Org link
+            pa_org_uuid = clean_uuid(row.get("organization"))
+            if not pa_org_uuid:
+                skipped_no_org += 1
+                continue
+            echo_org_id = pa_org_map.get(pa_org_uuid)
+            if not echo_org_id:
+                skipped_no_org += 1
+                continue
+            key = (echo_activity_id, echo_org_id)
+            if key in seen_org_links:
+                skipped_dup += 1
+                continue
+            seen_org_links.add(key)
+            org_link_rows.append({
+                "activity_id": echo_activity_id,
+                "organization_id": echo_org_id,
+            })
+
+        elif entity_type == 2:
+            # Person link
+            pa_person_uuid = clean_uuid(row.get("person"))
+            if not pa_person_uuid:
+                skipped_no_person += 1
+                continue
+            echo_person_id = pa_person_map.get(pa_person_uuid)
+            if not echo_person_id:
+                skipped_no_person += 1
+                continue
+            key = (echo_activity_id, echo_person_id)
+            if key in seen_person_links:
+                skipped_dup += 1
+                continue
+            seen_person_links.add(key)
+            person_link_rows.append({
+                "activity_id": echo_activity_id,
+                "person_id": echo_person_id,
+            })
+
+    if dry_run:
+        print(f"  [DRY-RUN] Would create {len(org_link_rows)} org links, {len(person_link_rows)} person links")
+        print(f"    Skipped: {skipped_removed} removed, {skipped_no_activity} no activity, {skipped_no_org} no org, {skipped_no_person} no person, {skipped_dup} duplicate")
+        return (0, 0)
+
+    # Insert org links
+    org_count = 0
+    if org_link_rows:
+        print(f"  Inserting {len(org_link_rows)} activity_organization_links...")
+        results = _batch_insert("activity_organization_links", org_link_rows, batch_size=50)
+        org_count = len(results)
+
+    # Insert person links
+    person_count = 0
+    if person_link_rows:
+        print(f"  Inserting {len(person_link_rows)} activity_people_links...")
+        results = _batch_insert("activity_people_links", person_link_rows, batch_size=50)
+        person_count = len(results)
+
+    print(f"  -> {org_count} org links, {person_count} person links created")
+    print(f"    Skipped: {skipped_removed} removed, {skipped_no_activity} no activity, {skipped_no_org} no org, {skipped_no_person} no person, {skipped_dup} duplicate")
+
+    return (org_count, person_count)
+
+
+# ---------------------------------------------------------------------------
 # Main orchestrator
 # ---------------------------------------------------------------------------
 
 def import_echo_data(*, dry_run: bool = True) -> None:
     """Main entry point for CRM data import."""
     print("\n" + "=" * 60)
-    print("Echo 2.0 — Step 4: Import Core Entities")
+    print("Echo 2.0 — Steps 4-5: Import Core Entities + Activities")
     print("=" * 60)
     mode = "DRY-RUN" if dry_run else "APPLY"
     print(f"Mode: {mode}\n")
@@ -1189,6 +1518,34 @@ def import_echo_data(*, dry_run: bool = True) -> None:
         print(f"  [DRY-RUN] Would store ~{est} EAV power_apps_id values")
     print()
 
+    # Phase 9: Import Activities from CSV
+    print("Phase 9: Importing Activities from CSV...")
+    user_map = ensure_legacy_author(user_map, dry_run=dry_run)
+    pa_activity_map = import_activities(user_map, dry_run=dry_run)
+    print()
+
+    # Phase 10: Create Activity Links
+    print(f"Phase 10: Creating Activity Links ({len(data.get('ActivityEntities', []))} rows)...")
+    # Use in-memory maps when available; fall back to EAV query
+    if pa_org_map and pa_person_map:
+        pa_org_map_for_links = pa_org_map
+        pa_person_map_for_links = pa_person_map
+    elif not dry_run:
+        print("  (Rebuilding PA maps from EAV...)")
+        pa_org_map_for_links, pa_person_map_for_links = build_pa_entity_maps()
+    else:
+        pa_org_map_for_links = {}
+        pa_person_map_for_links = {}
+
+    org_links, person_links = import_activity_links(
+        data.get("ActivityEntities", []),
+        pa_activity_map,
+        pa_org_map_for_links,
+        pa_person_map_for_links,
+        dry_run=dry_run,
+    )
+    print()
+
     # Summary
     print("=" * 60)
     if dry_run:
@@ -1200,6 +1557,9 @@ def import_echo_data(*, dry_run: bool = True) -> None:
         print(f"  Leads: {len(pa_lead_map)}")
         print(f"  Contracts: {contracts_count}")
         print(f"  EAV values: {eav_total}")
+        print(f"  Activities: {len(pa_activity_map)}")
+        print(f"  Activity org links: {org_links}")
+        print(f"  Activity person links: {person_links}")
     print("=" * 60 + "\n")
 
 
