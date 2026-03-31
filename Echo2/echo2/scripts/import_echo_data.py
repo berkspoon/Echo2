@@ -372,13 +372,36 @@ def parse_lead_owners(owner_str, user_map: dict[str, str]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _batch_insert(table_name: str, rows: list[dict], batch_size: int = 50) -> list[dict]:
-    """Insert rows in batches, return all inserted records with their IDs."""
+    """Insert rows in batches, return all inserted records with their IDs.
+
+    On timeout/502, retries failed batch one row at a time with delays.
+    """
+    import time
     sb = get_supabase()
     all_results: list[dict] = []
     for i in range(0, len(rows), batch_size):
         batch = rows[i:i + batch_size]
-        result = sb.table(table_name).insert(batch).execute()
-        all_results.extend(result.data)
+        try:
+            result = sb.table(table_name).insert(batch).execute()
+            all_results.extend(result.data)
+        except Exception as e:
+            err_str = str(e)
+            if "57014" in err_str or "timeout" in err_str.lower() or "502" in err_str or "Bad gateway" in err_str:
+                # Timeout or server overload — retry one row at a time with delay
+                time.sleep(2)
+                for row in batch:
+                    for attempt in range(3):
+                        try:
+                            result = sb.table(table_name).insert([row]).execute()
+                            all_results.extend(result.data)
+                            break
+                        except Exception as e2:
+                            if attempt < 2:
+                                time.sleep(2)
+                            else:
+                                print(f"    WARNING: skipped 1 row in {table_name} ({e2})")
+            else:
+                raise
     return all_results
 
 
@@ -1733,7 +1756,7 @@ def import_coverage_owners(
 # Main orchestrator
 # ---------------------------------------------------------------------------
 
-def import_echo_data(*, dry_run: bool = True, start_phase: int = 0) -> None:
+def import_echo_data(*, dry_run: bool = True, start_phase: int = 0, end_phase: int = 99) -> None:
     """Main entry point for CRM data import."""
     print("\n" + "=" * 60)
     print("Echo 2.0 -- Steps 4-6: Import Core Entities + Activities + DLs + Coverage")
@@ -1779,7 +1802,7 @@ def import_echo_data(*, dry_run: bool = True, start_phase: int = 0) -> None:
                 offset += 1000
         print(f"  Rebuilt: {len(pa_org_map)} orgs, {len(pa_person_map)} people, {len(pa_lead_map)} leads\n")
 
-    if start_phase <= 0:
+    if start_phase <= 0 and end_phase >= 0:
         # Print currency values for investigation
         currency_ids = set()
         for row in data.get("Leads", []):
@@ -1793,7 +1816,7 @@ def import_echo_data(*, dry_run: bool = True, start_phase: int = 0) -> None:
                 print(f"  WARNING: Unmapped currency IDs: {sorted(unmapped)}")
         print()
 
-    if start_phase <= 1:
+    if start_phase <= 1 and end_phase >= 1:
         # Phase 1: Ensure reference_data
         print("Phase 1: Ensuring reference_data...")
         ensure_reference_data(dry_run=dry_run)
@@ -1807,43 +1830,43 @@ def import_echo_data(*, dry_run: bool = True, start_phase: int = 0) -> None:
         ensure_country_reference_data(all_countries, dry_run=dry_run)
         print()
 
-    if start_phase <= 2:
+    if start_phase <= 2 and end_phase >= 2:
         # Phase 2: Ensure field_definitions
         print("Phase 2: Ensuring power_apps_id field_definitions...")
         fd_ids = ensure_power_apps_field_defs(dry_run=dry_run)
         print()
 
-    if start_phase <= 3:
+    if start_phase <= 3 and end_phase >= 3:
         # Phase 3: Cleanup
         print("Phase 3: Cleaning up existing entity data...")
         cleanup_entity_data(dry_run=dry_run)
         print()
 
-    if start_phase <= 4:
+    if start_phase <= 4 and end_phase >= 4:
         # Phase 4: Import Organizations
         print(f"Phase 4: Importing Organizations ({len(data.get('Organizations', []))} rows)...")
         pa_org_map = import_organizations(data["Organizations"], user_map, dry_run=dry_run)
         print()
 
-    if start_phase <= 5:
+    if start_phase <= 5 and end_phase >= 5:
         # Phase 5: Import People
         print(f"Phase 5: Importing People ({len(data.get('People', []))} rows)...")
         pa_person_map = import_people(data["People"], pa_org_map, dry_run=dry_run)
         print()
 
-    if start_phase <= 6:
+    if start_phase <= 6 and end_phase >= 6:
         # Phase 6: Import Leads
         print(f"Phase 6: Importing Leads ({len(data.get('Leads', []))} rows)...")
         pa_lead_map = import_leads(data["Leads"], pa_org_map, user_map, dry_run=dry_run)
         print()
 
-    if start_phase <= 7:
+    if start_phase <= 7 and end_phase >= 7:
         # Phase 7: Import Contracts
         print(f"Phase 7: Importing Contracts ({len(data.get('Contracts', []))} rows)...")
         contracts_count = import_contracts(data["Contracts"], pa_org_map, pa_lead_map, dry_run=dry_run)
         print()
 
-    if start_phase <= 8:
+    if start_phase <= 8 and end_phase >= 8:
         # Phase 8: Store EAV power_apps_id values
         print("Phase 8: Storing EAV power_apps_id values...")
         eav_total = 0
@@ -1864,7 +1887,7 @@ def import_echo_data(*, dry_run: bool = True, start_phase: int = 0) -> None:
             print(f"  [DRY-RUN] Would store ~{est} EAV power_apps_id values")
         print()
 
-    if start_phase <= 9:
+    if start_phase <= 9 and end_phase >= 9:
         # Phase 9: Import Activities from CSV
         print("Phase 9: Importing Activities from CSV...")
         user_map = ensure_legacy_author(user_map, dry_run=dry_run)
@@ -1873,7 +1896,7 @@ def import_echo_data(*, dry_run: bool = True, start_phase: int = 0) -> None:
 
     org_links = 0
     person_links = 0
-    if start_phase <= 10:
+    if start_phase <= 10 and end_phase >= 10:
         # Phase 10: Create Activity Links
         print(f"Phase 10: Creating Activity Links ({len(data.get('ActivityEntities', []))} rows)...")
         # Use in-memory maps when available; fall back to EAV query
@@ -1896,20 +1919,24 @@ def import_echo_data(*, dry_run: bool = True, start_phase: int = 0) -> None:
         )
         print()
 
-    # Phase 11: Distribution Lists + Memberships
-    print("Phase 11: Creating Distribution Lists + Memberships...")
-    dl_map = create_distribution_lists(user_map, dry_run=dry_run)
-    dl_count = import_dl_memberships(data["People"], pa_person_map, dl_map, dry_run=dry_run)
-    print()
+    dl_count = 0
+    cov_count = 0
+    if start_phase <= 11 and end_phase >= 11:
+        # Phase 11: Distribution Lists + Memberships
+        print("Phase 11: Creating Distribution Lists + Memberships...")
+        dl_map = create_distribution_lists(user_map, dry_run=dry_run)
+        dl_count = import_dl_memberships(data["People"], pa_person_map, dl_map, dry_run=dry_run)
+        print()
 
-    # Phase 12: Coverage Owners
-    print("Phase 12: Importing Coverage Owners...")
-    cov_count = import_coverage_owners(
-        data["Organizations"], pa_org_map,
-        data["People"], pa_person_map, user_map,
-        dry_run=dry_run,
-    )
-    print()
+    if start_phase <= 12 and end_phase >= 12:
+        # Phase 12: Coverage Owners
+        print("Phase 12: Importing Coverage Owners...")
+        cov_count = import_coverage_owners(
+            data["Organizations"], pa_org_map,
+            data["People"], pa_person_map, user_map,
+            dry_run=dry_run,
+        )
+        print()
 
     # Summary
     print("=" * 60)
@@ -1950,6 +1977,12 @@ if __name__ == "__main__":
         default=0,
         help="Skip to this phase number (rebuilds maps from EAV if needed)",
     )
+    parser.add_argument(
+        "--end-phase",
+        type=int,
+        default=99,
+        help="Stop after this phase number",
+    )
     args = parser.parse_args()
 
-    import_echo_data(dry_run=not args.apply, start_phase=args.start_phase)
+    import_echo_data(dry_run=not args.apply, start_phase=args.start_phase, end_phase=args.end_phase)
