@@ -1,6 +1,7 @@
 """Admin router — field management, page layouts, role management, user management, reference data."""
 
 import re
+import uuid
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -11,6 +12,9 @@ from fastapi.templating import Jinja2Templates
 
 from db.client import get_supabase
 from db.helpers import get_reference_data, log_field_change, audit_changes, batch_resolve_users
+
+# Namespace for generating placeholder entra_ids
+_ENTRA_NAMESPACE = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 from db.field_service import get_field_definitions, get_field_definitions_grouped, enrich_field_definitions
 from db.view_config_service import get_all_view_configs, get_view_config, save_view_config, validate_config
 from services.grid_service import _VIRTUAL_COLUMNS
@@ -1116,6 +1120,141 @@ async def activate_user(
     sb.table("users").update({"is_active": True}).eq("id", user_id).execute()
 
     log_field_change("user", user_id, "is_active", False, True, current_user.id)
+
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+@router.post("/users/create")
+async def create_user(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Create a new user."""
+    require_role(current_user, ["admin"])
+
+    form = await request.form()
+    display_name = (form.get("display_name") or "").strip()
+    email = (form.get("email") or "").strip().lower()
+    first_name = (form.get("first_name") or "").strip()
+    last_name = (form.get("last_name") or "").strip()
+
+    if not display_name or not email:
+        raise HTTPException(status_code=400, detail="Display name and email are required.")
+
+    sb = get_supabase()
+
+    # Check email uniqueness
+    existing = sb.table("users").select("id").eq("email", email).execute()
+    if existing.data:
+        raise HTTPException(status_code=400, detail=f"A user with email '{email}' already exists.")
+
+    # Auto-split name if first/last not provided
+    if not first_name and not last_name:
+        parts = display_name.split()
+        first_name = parts[0] if parts else ""
+        last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
+
+    entra_id = f"placeholder-{uuid.uuid5(_ENTRA_NAMESPACE, email)}"
+
+    user_data = {
+        "entra_id": entra_id,
+        "email": email,
+        "display_name": display_name,
+        "first_name": first_name,
+        "last_name": last_name,
+        "role": "standard_user",
+        "is_active": True,
+    }
+
+    result = sb.table("users").insert(user_data).execute()
+
+    if result.data:
+        log_field_change("user", result.data[0]["id"], "created", None, display_name, current_user.id)
+
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+@router.post("/users/{user_id}/edit")
+async def edit_user(
+    request: Request,
+    user_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Edit user details (display name, email, first/last name)."""
+    require_role(current_user, ["admin"])
+
+    form = await request.form()
+    display_name = (form.get("display_name") or "").strip()
+    email = (form.get("email") or "").strip().lower()
+    first_name = (form.get("first_name") or "").strip()
+    last_name = (form.get("last_name") or "").strip()
+
+    if not display_name or not email:
+        raise HTTPException(status_code=400, detail="Display name and email are required.")
+
+    sb = get_supabase()
+
+    # Get current user data for audit
+    old = sb.table("users").select("*").eq("id", user_id).maybe_single().execute()
+    if not old or not old.data:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Check email uniqueness if changed
+    if email != old.data.get("email"):
+        existing = sb.table("users").select("id").eq("email", email).execute()
+        if existing.data:
+            raise HTTPException(status_code=400, detail=f"A user with email '{email}' already exists.")
+
+    update_data = {
+        "display_name": display_name,
+        "email": email,
+        "first_name": first_name,
+        "last_name": last_name,
+    }
+
+    sb.table("users").update(update_data).eq("id", user_id).execute()
+
+    # Audit each changed field
+    for field in ["display_name", "email", "first_name", "last_name"]:
+        old_val = old.data.get(field)
+        new_val = update_data[field]
+        if old_val != new_val:
+            log_field_change("user", user_id, field, old_val, new_val, current_user.id)
+
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+@router.post("/users/{user_id}/view-as")
+async def view_as_user(
+    request: Request,
+    user_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Start viewing the CRM as another user (admin impersonation)."""
+    require_role(current_user, ["admin"])
+
+    sb = get_supabase()
+    target = sb.table("users").select("id, display_name").eq("id", user_id).maybe_single().execute()
+    if not target or not target.data:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Store the view-as user ID in the session
+    request.session["view_as_user_id"] = str(target.data["id"])
+    request.session["view_as_user_name"] = target.data["display_name"]
+    request.session["real_admin_id"] = str(current_user.id)
+
+    return RedirectResponse("/", status_code=303)
+
+
+@router.post("/view-as/exit")
+async def exit_view_as(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Stop viewing as another user."""
+    request.session.pop("view_as_user_id", None)
+    request.session.pop("view_as_user_name", None)
+    request.session.pop("real_admin_id", None)
 
     return RedirectResponse("/admin/users", status_code=303)
 

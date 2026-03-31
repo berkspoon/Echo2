@@ -906,9 +906,11 @@ def cleanup_seed_data():
         "activity_people_links",
         "activity_organization_links",
         "activities",
+        "person_coverage_owners",
         "person_organization_links",
         "people",
         "organizations",
+        "user_roles",
     ]
 
     for table in tables_to_clean:

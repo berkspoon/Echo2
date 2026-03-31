@@ -97,7 +97,27 @@ async def get_current_user(request: Request) -> CurrentUser:
     1. Read user info from request.session["user"]
     2. Query user_roles JOIN roles to build the roles list
     3. Aggregate permissions across all roles
+
+    Supports "View As" impersonation: if an admin has set view_as_user_id
+    in the session, returns that user's identity for read operations.
     """
+    # Check for "View As" impersonation
+    view_as_id = request.session.get("view_as_user_id") if hasattr(request, "session") else None
+    if view_as_id:
+        from db.client import get_supabase
+        sb = get_supabase()
+        target = sb.table("users").select("*").eq("id", view_as_id).maybe_single().execute()
+        if target and target.data:
+            t = target.data
+            return CurrentUser(
+                id=UUID(str(t["id"])),
+                email=t.get("email", ""),
+                display_name=t.get("display_name", "Unknown"),
+                role=t.get("role", "standard_user"),
+                # Keep admin permissions so impersonator can still navigate
+                permissions=_DEV_USER._permissions,
+            )
+
     # When SSO is live, this will read from request.session["user"]
     return _DEV_USER
 

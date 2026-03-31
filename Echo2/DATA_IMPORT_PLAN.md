@@ -2,7 +2,7 @@
 
 **Created:** March 29, 2026
 **Updated:** March 30, 2026
-**Status:** ALL MAPPINGS COMPLETE — ready for implementation
+**Status:** Steps 0-3 COMPLETE. Steps 4-7 (data import) ready to implement.
 
 ---
 
@@ -462,8 +462,16 @@ When modifying lead-related values (types, stages, field names, reference_data c
 
 Each step is self-contained (can clear session between). After each step: update SESSION_LOG.md + this file, commit.
 
-### Step 0: Create Users (READY — employee list received)
-Extract ~201 unique names from CRM data (org coverage, lead owners, activity authors). Cross-reference against active employee list (463 employees in `aksia - Data Sheet - 2026-03-30.csv`, columns: Name, Work email). Active employees → create user records (standard_user role). Former employees → flag as inactive, preserve coverage references as text. Handle deduplication (name variants like Tim/Timothy, Joe/Joseph), multi-author entries (semicolon-separated), edge cases (apostrophes, multi-word surnames), and non-person entries (RFP Team, AksiaLegacy Author). ~160 estimated real users after cleanup.
+### Step 0: Create Users ✅ COMPLETE (March 30, 2026)
+Created real user records from employee list + CRM data. Script: `scripts/create_users.py`.
+
+**Changes made:**
+- **create_users.py (NEW):** Loads 434 employees from CSV, extracts 176 unique CRM names from EchoData.xlsx (org coverage, lead owners) + activities CSV (authors). 3-tier matching: exact (134), nickname expansion (0 — all were exact or former), prefix (1: "Alejandro Guerra" → "Alejandro Guerra A"). 41 unmatched names created as inactive former employees. `build_name_to_uuid_map()` returns 537 entries for downstream import.
+- **seed_data.py:** Added `person_coverage_owners` and `user_roles` to `tables_to_clean` in `cleanup_seed_data()`.
+- **Admin panel:** Added create user (`POST /admin/users/create`), edit user (`POST /admin/users/{user_id}/edit`), "View As" impersonation (`POST /admin/users/{user_id}/view-as`, `POST /admin/view-as/exit`). Updated `admin/users.html` with search/filter, create/edit modals, view-as buttons.
+- **dependencies.py:** `get_current_user()` now checks session for `view_as_user_id` to support admin impersonation. Yellow "Viewing as" banner in `base.html`.
+
+**Results:** 434 active users (5 admins: Miles, Aggeliki, Antouella, Clifton, Thalia) + 41 inactive former employees = 475 total. Dev user retained (FK constraints from audit_log/saved_views/duplicates).
 
 **Employee list received:** March 30, 2026.
 
@@ -486,13 +494,13 @@ Renamed all remaining fundraise→product references across 15 files (variables,
 - **3A:** person_coverage_owners junction table (Phase 9 migration). Dual-write to legacy column. Typeahead autocomplete UI on people form. All queries (dashboard, grid, org rollup, activities, tasks) updated to junction table.
 - **3B:** Prospect→client auto-transition when lead rating=won. 5 client_team_coverage EAV fields on orgs (visible+suggested when client).
 
-### Step 4: Import Script — Core Entities (NEEDS STEP 0)
+### Step 4: Import Script — Core Entities (READY)
 Build scripts/import_echo_data.py. Import orgs → people → person-org links → leads → lead owners → contracts. Delete dummy data first. All ID→text mappings complete.
 
-### Step 5: Import Script — Activities (NEEDS STEP 0)
+### Step 5: Import Script — Activities (READY)
 Import 27.4K activities from CSV + create org/person links from ActivityEntities.xlsx.
 
-### Step 6: Import Script — Distribution Lists + Coverage (NEEDS STEP 0)
+### Step 6: Import Script — Distribution Lists + Coverage (READY)
 DL membership from People publication columns (L1=value 4, L2=value 2, L1-downgraded=value 5). Coverage from org coverage fields → person_coverage_owners.
 
 ### Step 7: Post-Import Validation
