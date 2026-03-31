@@ -113,7 +113,7 @@ def batch_resolve_users(user_ids: list[str]) -> dict:
     if not user_ids:
         return {}
     sb = get_supabase()
-    unique_ids = list(set(str(uid) for uid in user_ids if uid))
+    unique_ids = list(set(str(uid) for uid in user_ids if uid and str(uid) != "None"))
     if not unique_ids:
         return {}
     resp = (

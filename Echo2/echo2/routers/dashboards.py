@@ -1015,7 +1015,7 @@ async def advisory_pipeline(
     # 6. Owner Coverage
     owner_data = defaultdict(lambda: {"active": 0, "won": 0, "pipeline_revenue": 0.0})
     for lead in all_leads:
-        oid = str(lead.get("aksia_owner_id", ""))
+        oid = lead.get("aksia_owner_id")
         if not oid:
             continue
         rating = lead.get("rating", "")
