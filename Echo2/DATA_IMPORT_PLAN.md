@@ -2,7 +2,7 @@
 
 **Created:** March 29, 2026
 **Updated:** March 30, 2026
-**Status:** Steps 0-3 COMPLETE. Steps 4-7 (data import) ready to implement.
+**Status:** Steps 0-4 COMPLETE. Step 5 (activities), 6 (DLs + coverage), 7 (validation) ready to implement.
 
 ---
 
@@ -494,8 +494,23 @@ Renamed all remaining fundraise→product references across 15 files (variables,
 - **3A:** person_coverage_owners junction table (Phase 9 migration). Dual-write to legacy column. Typeahead autocomplete UI on people form. All queries (dashboard, grid, org rollup, activities, tasks) updated to junction table.
 - **3B:** Prospect→client auto-transition when lead rating=won. 5 client_team_coverage EAV fields on orgs (visible+suggested when client).
 
-### Step 4: Import Script — Core Entities (READY)
-Build scripts/import_echo_data.py. Import orgs → people → person-org links → leads → lead owners → contracts. Delete dummy data first. All ID→text mappings complete.
+### Step 4: Import Script — Core Entities ✅ COMPLETE (March 30, 2026)
+Built `scripts/import_echo_data.py` — 8-phase import with `--dry-run` (default) and `--apply` flags.
+
+**Changes made:**
+- **import_echo_data.py (NEW):** Header-name-based Excel reading, 12 ID→text mapping dicts, 70+ entry country normalization map, safe value helpers. 8 phases: setup → reference_data → field_defs → cleanup → orgs → people → leads → contracts → EAV.
+- **Phase 1:** Upserted 14 new organization_type values + 55 new country codes into reference_data.
+- **Phase 2:** Created power_apps_id EAV field_definitions for 4 entity types.
+- **Phase 3:** Hard-deleted all existing entity data (cleanup for fresh import).
+- **Phase 4:** 5,383 organizations imported. All org types mapped. 1 unmapped country ("77479" — zip code). Target allocation pcts clamped to max 100 (1 bad data point at 30M).
+- **Phase 5:** 12,912 people imported. 11,986 person_organization_links created (25 org not found, 901 no orgid).
+- **Phase 6:** 2,451 leads imported (5 skipped — no matching org). 2,441 lead_owners created. 46 leads without owner. Lead type inferred from service_type (5=product, else=service).
+- **Phase 7:** 404 contracts imported. 353 placeholder leads created for contracts without `leadlinked` (NOT NULL constraint on originating_lead_id). 51 contracts matched to real leads.
+- **Phase 8:** 20,746 EAV power_apps_id values stored (orgs + people + leads).
+
+**Results:** 5,383 orgs, 12,912 people, 2,804 leads (2,451 real + 353 placeholders), 404 contracts, 11,986 org links, 2,441 lead owners, 20,746 EAV values.
+
+**Currency mapping resolved:** IDs [1, 2, 7] → [USD, EUR, CAD].
 
 ### Step 5: Import Script — Activities (READY)
 Import 27.4K activities from CSV + create org/person links from ActivityEntities.xlsx.
@@ -519,35 +534,28 @@ We are continuing work on Echo 2.0 data import. Read these files to get full con
 2. `@DATA_IMPORT_PLAN.md` — the comprehensive plan with all decisions, field mappings, implementation steps
 3. `@feedback.md` — testing feedback history
 
-**Where we left off:** Steps 0, 1, 2, 3A, and 3B are COMPLETE. Code committed and pushed. 475 real users created in the database (434 active employees + 41 inactive former employees). Admin panel now supports create/edit/view-as user management.
+**Where we left off:** Steps 0-4 are COMPLETE. Core entities imported into database:
+- 475 users (434 active + 41 inactive former employees)
+- 5,383 organizations with country normalization (55 new country codes, 14 new org types)
+- 12,912 people with 11,986 person_organization_links
+- 2,451 real leads + 353 placeholder leads (for contracts without linked leads)
+- 404 contracts, 2,441 lead_owners, 20,746 EAV power_apps_id values
 
-**What was done in Step 0 (Create Users):**
-- New `scripts/create_users.py`: loads 434 employees from CSV, extracts 176 CRM names (org coverage, lead owners, activity authors), 3-tier name matching (exact/nickname/prefix), creates 475 user records
-- `build_name_to_uuid_map()` returns 537 name→UUID entries for downstream import (handles Tim↔Timothy, Alejandro Guerra↔Alejandro Guerra A, etc.)
-- Admin panel: create user form, edit user (name/email/first/last), "View As" impersonation with yellow banner
-- 5 admins: Miles Greenspoon, Aggeliki Charalampopoulou, Antouella Santikai, Clifton Ramsundar, Thalia Panopoulou
-- Dev user (00000000-...-0001) retained due to FK constraints — will be cleaned up when SSO replaces it
+**Key scripts:**
+- `scripts/create_users.py` — user creation + `build_name_to_uuid_map()` (538 entries)
+- `scripts/import_echo_data.py` — core entity import (orgs, people, leads, contracts)
 
-**What to work on next — Step 4: Import Core Entities:**
-Build `scripts/import_echo_data.py` to import real CRM data from `EchoData.xlsx`:
-1. Delete existing dummy/seed data (orgs, people, leads, contracts)
-2. Import Organizations (5,383 rows) — ID→text mappings for entity_type, relationship_type, coverage_office. Country normalization. Store `organizationid` as EAV `power_apps_id` for FK matching.
-3. Import People (12,912 rows) — Link to orgs via `orgid` → person_organization_links. Store `peopleid` as EAV for FK matching.
-4. Import Leads (2,456 rows) — All V17 field mappings. Lead type inference (servicetype=5 → product, else → service). Match org by `organizationlinked` UUID. Match owner by display name via `build_name_to_uuid_map()`. Create lead_owners junction entries.
-5. Import Contracts (404 rows) — Match org by `organizationlinked` UUID. Match originating lead by `leadlinked` UUID.
+**What to work on next — Step 5: Import Activities:**
+Build activity import into `scripts/import_echo_data.py` (or new script):
+1. Import 27,373 activities from `cr932_crmactivities.csv` — columns: cr932_crmactivityid (GUID), cr932_title, cr932_type (1-4 ID→text), cr932_author (display name→user UUID), cr932_effectivedate, cr932_descriptionplaintext, cr932_isdeleted
+2. Create activity_organization_links and activity_people_links from `ActivityEntities` sheet in EchoData.xlsx — 76,964 link rows mapping activity GUIDs to org/person GUIDs
+3. Activity type mapping: 1→call, 2→meeting, 3→note, 4→email
+4. Match authors via `build_name_to_uuid_map()`
+5. Match orgs/people via power_apps_id EAV values (query entity_custom_values to build PA UUID→Echo UUID maps)
 
-**Key reference:** All ID→text mappings are in `DATA_IMPORT_PLAN.md` under "Numeric ID → Text Mappings". Field mappings for each entity are under "Field Mapping" sections. All mappings are COMPLETE.
+**Important:** Activities CSV is 258MB with 27K+ rows. cr932_descriptionplaintext can be very large. Use streaming/batched approach.
 
-**Important patterns:**
-- Use `from scripts.create_users import build_name_to_uuid_map` for user resolution
-- Use `_batch_insert()` pattern from seed_data.py (batches of 50)
-- Support `--dry-run` (default) and `--apply` flags
-- Store Power Apps UUIDs as EAV `power_apps_id` for cross-entity FK resolution
-- Country values need normalization (84 variants → standardized reference_data values)
-- `aksiallc_currency` ID→text mapping is PENDING — needs investigation during import
-
-**After Step 4, proceed to:**
-- Step 5: Import Activities (27.4K from CSV + org/person links from ActivityEntities sheet)
-- Step 6: Import Distribution Lists + Coverage (publication subscriptions + org coverage → person_coverage_owners)
+**After Step 5:**
+- Step 6: Import Distribution Lists + Coverage (publication subscriptions from People sheet + org coverage → person_coverage_owners)
 - Step 7: Post-import validation
 ```

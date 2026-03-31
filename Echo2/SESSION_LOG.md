@@ -588,8 +588,34 @@ _Use this section to track decisions made during Claude Code sessions:_
 - `15a6ac8` — update data import plan: Step 0 complete, add next session prompt
 
 **Pending for next session:**
-- Step 4: Import Core Entities (orgs → people → leads → contracts) from EchoData.xlsx
 - Step 5: Import Activities (27.4K from CSV)
 - Step 6: Import Distribution Lists + Coverage
 - Step 7: Post-import validation
 - Future: User Profile Page (each user gets a page showing coverage + latest activities)
+
+### Session 31 — March 30, 2026 (continued)
+**Goal:** Step 4 — Import core entities from EchoData.xlsx
+
+**Changes made:**
+- **scripts/import_echo_data.py (NEW):** ~600 lines. 8-phase import script with `--dry-run` (default) and `--apply` flags.
+  - Phase 0: Load 4 Excel sheets via header-name-based access (robust to column reordering), build user name→UUID map (538 entries)
+  - Phase 1: Upsert 14 new organization_type values + 55 new country codes into reference_data
+  - Phase 2: Create power_apps_id EAV field_definitions for 4 entity types
+  - Phase 3: Hard-delete all existing entity data (reverse FK order, 20 tables)
+  - Phase 4: Import 5,383 organizations with 28 field mappings, 3 ID→text maps, 70+ entry country normalization
+  - Phase 5: Import 12,912 people + 11,986 person_organization_links (25 orgs not found, 901 no orgid)
+  - Phase 6: Import 2,451 leads with 42 field mappings, 10 ID→text maps + 2,441 lead_owners
+  - Phase 7: Import 404 contracts + 353 placeholder leads (NOT NULL originating_lead_id constraint)
+  - Phase 8: Batch store 20,746 EAV power_apps_id values
+
+**Data quality findings:**
+- 1 org had hedge fund allocation = 30,000,000% (clamped to 100)
+- 1 country value was a zip code "77479" (mapped to null)
+- 5 leads had unresolvable org UUIDs (skipped)
+- 353/404 contracts had no linked lead (placeholder leads created)
+- Currency IDs [1, 2, 7] resolved to [USD, EUR, CAD]
+
+**Pending for next session:**
+- Step 5: Import Activities (27.4K from CSV + org/person links from ActivityEntities sheet)
+- Step 6: Import Distribution Lists + Coverage
+- Step 7: Post-import validation
