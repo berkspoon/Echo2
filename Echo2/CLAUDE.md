@@ -124,25 +124,36 @@ Admin-configurable settings for DL filters, dashboard table columns, group-by/me
 - `pg_trgm` for fuzzy duplicate detection. Full-text search on activities.
 
 ## Build Status
-All core modules complete. Phases 0–6 done. Outstanding:
-- [ ] SSO / Auth (Microsoft Entra ID — awaiting IT app registration)
-- [ ] Data migration (scope TBD — awaiting Miles/Admin team)
-- [ ] Deferred: multi-tenant, generic calculated fields admin, duplicate merge, editable Excel-style grid
+All core modules complete. Phases 0–6 done. Data migration complete (Steps 0-7).
 
-## Open Items (from PRD Section 15)
-1. Entra ID Tenant ID + SSO app registration — IT
-2. Ostrako NDA export format — Ostrako/IT
-3. Authorized senders for publication lists — Marketing
-4. Declined reason codes for Fundraise Leads — Product
-5. Offshore feeder fund DL structure — Product/IR
-6. Soft Circle vs Hard Circle logic — Product
-7. Management dashboard access list — Leadership
-8. Audit log access beyond Admins — Leadership
-9. Data migration scope — Miles/Admin
-10. Events management spec — Aggeliki/Marketing
-11. CRM name — Leadership
-12. crm.aksia.com DNS — IT
-13. Railway deployment config — Miles/IT
+### Done
+- [x] All 12 entity modules (orgs, people, activities, leads, contracts, DLs, tasks, dashboards, admin, documents, views, fund_prospects)
+- [x] Data import: 5,383 orgs, 12,912 people, 2,804 leads, 404 contracts, 27,371 activities, 10,717 DL memberships, 17,152 coverage owners — all validated with 0 FK orphans
+- [x] V17 lead field restructuring (engagement_status, coverage_office, decline fields, IM fee fields, etc.)
+- [x] Multi-coverage junction table (person_coverage_owners)
+- [x] Admin panel (fields, layouts, views, roles, users, reference data, duplicates)
+
+### Blocking on IT
+- [ ] SSO / Auth — Microsoft Entra ID app registration. Dev stub in `dependencies.py` (`get_current_user` returns hardcoded user). All routes use `Depends(get_current_user)` + `require_role()` — permissions enforced once SSO wired up.
+- [ ] crm.aksia.com DNS
+- [ ] Railway deployment config
+
+### Blocking on Business Stakeholders
+- [ ] Ostrako NDA export format — Ostrako/IT
+- [ ] Authorized senders for publication lists — Marketing
+- [ ] Declined reason codes for Fundraise Leads — Product
+- [ ] Offshore feeder fund DL structure — Product/IR
+- [ ] Soft Circle vs Hard Circle logic — Product
+- [ ] Management dashboard access list — Leadership
+- [ ] Audit log access beyond Admins — Leadership
+- [ ] Events management spec — Aggeliki/Marketing
+- [ ] CRM name — Leadership
+
+### Deferred (not Phase 1)
+- [ ] Multi-tenant architecture
+- [ ] Generic admin-configurable calculated fields
+- [ ] Duplicate detection merge UI
+- [ ] Editable Excel-style grid
 
 ## Dev Workflow
 ```bash
