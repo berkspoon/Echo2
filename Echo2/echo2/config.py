@@ -18,15 +18,18 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
 
-    # Microsoft Entra ID (SSO)
-    entra_client_id: str
-    entra_client_secret: str
-    entra_tenant_id: str
+    # Microsoft Entra ID (SSO) — optional until IT wires up the app registration
+    entra_client_id: str = ""
+    entra_client_secret: str = ""
+    entra_tenant_id: str = ""
     entra_redirect_uri: str = "http://localhost:8000/auth/callback"
     entra_authority: str = ""
 
     # App URL
     base_url: str = "http://localhost:8000"
+
+    # Tester gate (HTTP Basic Auth). Leave empty to disable.
+    tester_password: str = ""
 
     model_config = {
         "env_file": ".env",
@@ -37,7 +40,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def set_entra_authority(self):
-        if not self.entra_authority:
+        if not self.entra_authority and self.entra_tenant_id:
             self.entra_authority = (
                 f"https://login.microsoftonline.com/{self.entra_tenant_id}"
             )
