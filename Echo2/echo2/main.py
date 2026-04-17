@@ -51,14 +51,15 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         header = request.headers.get("authorization", "")
+        supplied = None
         if header.startswith("Basic "):
             try:
                 decoded = b64decode(header[6:]).decode("utf-8")
                 _, _, supplied = decoded.partition(":")
-                if secrets.compare_digest(supplied, self.password):
-                    return await call_next(request)
             except Exception:
-                pass
+                supplied = None
+        if supplied is not None and secrets.compare_digest(supplied, self.password):
+            return await call_next(request)
         return Response(
             status_code=401,
             headers={"WWW-Authenticate": 'Basic realm="Echo 2.0 Tester Access"'},
